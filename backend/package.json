@@ -1,0 +1,24 @@
+{
+  "name": "fashion-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "scrape": "node scripts/scrapers/scraper.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.2.0",
+    "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
