@@ -1,41 +1,52 @@
 'use client';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+  const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
 
-  const handleLogout = () => {
-    logout();
-    router.push('/');
-  };
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 30);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const isActive = useCallback((href: string) => pathname === href, [pathname]);
+
+  const links = [
+    { href: '/', label: 'Home' },
+    { href: '/discover', label: 'Discover' },
+    { href: '/search', label: 'Search' },
+    { href: '/categories', label: 'Categories' },
+    { href: '/favorites', label: 'Favorites' }
+  ];
 
   return (
-    <nav style={{ padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 100 }}>
-      <Link href="/">
-        <span className="title-gradient" style={{ fontSize: '1.5rem', fontWeight: 700 }}>AI Stylist</span>
-      </Link>
-      
-      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-        <Link href="/" style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Home</Link>
-        {user ? (
-          <>
-            <span style={{ fontWeight: 500, color: 'var(--accent)' }}>Welcome, {user.name}</span>
-            <button 
-              onClick={handleLogout}
-              style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
-            >
-              Logout
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href="/login" style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Login</Link>
-            <Link href="/register" style={{ padding: '8px 16px', background: 'var(--accent)', borderRadius: '6px', color: '#fff', fontWeight: 600 }}>Sign Up</Link>
-          </>
-        )}
+    <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
+      <div className="navbar__inner">
+        <Link href="/" className="navbar__logo">
+          Muse<span>AI</span>
+        </Link>
+
+        <ul className="navbar__links">
+          {links.map((l) => (
+            <li key={l.href}>
+              <Link href={l.href} className={isActive(l.href) ? 'active' : ''}>{l.label}</Link>
+            </li>
+          ))}
+        </ul>
+
+        <div className="navbar__actions">
+          <Link href="/search" className="btn btn-ghost btn-sm">
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            Search
+          </Link>
+          <Link href="/admin" className="btn btn-secondary btn-sm">Admin</Link>
+        </div>
       </div>
     </nav>
   );

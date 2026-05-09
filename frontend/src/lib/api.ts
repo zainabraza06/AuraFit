@@ -1,0 +1,63 @@
+/**
+ * api.ts — Axios instance & typed API helpers
+ */
+
+import axios from 'axios';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+export const api = axios.create({
+  baseURL: API_BASE,
+  timeout: 15000
+});
+
+// Attach token on every request
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('fashion_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ─── Products ─────────────────────────────────────────────────────────────────
+export const productsApi = {
+  list: (params?: Record<string, any>) => api.get('/products', { params }),
+  featured: () => api.get('/products/featured'),
+  stats: () => api.get('/products/stats'),
+  getById: (id: string) => api.get(`/products/${id}`)
+};
+
+// ─── Recommendations ─────────────────────────────────────────────────────────
+export const recommendationsApi = {
+  forProduct: (id: string) => api.get(`/recommendations/${id}`),
+  outfit: (message: string) => api.post('/recommendations/outfit', { message })
+};
+
+// ─── Search ──────────────────────────────────────────────────────────────────
+export const searchApi = {
+  search: (params?: Record<string, any>) => api.get('/search', { params }),
+  suggestions: (q: string) => api.get('/search/suggestions', { params: { q } })
+};
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+export const authApi = {
+  login: (email: string, password: string) => api.post('/auth/login', { email, password }),
+  register: (name: string, email: string, password: string) => api.post('/auth/register', { name, email, password }),
+  me: () => api.get('/auth/me')
+};
+
+// ─── Favorites ───────────────────────────────────────────────────────────────
+export const favoritesApi = {
+  list: () => api.get('/favorites'),
+  toggle: (productId: string) => api.post(`/favorites/${productId}`),
+  check: (productId: string) => api.get(`/favorites/check/${productId}`)
+};
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+export const adminApi = {
+  stats: () => api.get('/admin/stats'),
+  scraperLogs: (limit = 20) => api.get('/admin/scraper/logs', { params: { limit } }),
+  scraperStatus: () => api.get('/admin/scraper/status'),
+  triggerScrape: () => api.post('/admin/scraper/run')
+};

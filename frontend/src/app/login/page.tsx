@@ -1,58 +1,76 @@
 'use client';
 import { useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { authApi } from '@/lib/api';
 
-export default function Login() {
+export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-      
-      login({ _id: data._id, name: data.name, email: data.email }, data.token);
+      const res = await authApi.login(email, password);
+      localStorage.setItem('fashion_token', res.data.token);
       router.push('/');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <main style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <form onSubmit={handleSubmit} className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '3rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <h1 className="title-gradient" style={{ textAlign: 'center', fontSize: '2rem' }}>Welcome Back</h1>
-        
-        {error && <div style={{ color: 'var(--error)', textAlign: 'center', fontSize: '0.9rem' }}>{error}</div>}
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.3)', color: 'var(--text-primary)', outline: 'none' }} />
+    <main className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="container" style={{ maxWidth: '480px' }}>
+        <div className="glass-card" style={{ padding: '3rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <h1 className="title">Welcome Back</h1>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Access your personalized fashion collection</p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label">Email Address</label>
+              <input 
+                type="email" 
+                className="input" 
+                placeholder="name@example.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <input 
+                type="password" 
+                className="input" 
+                placeholder="••••••••" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            {error && <p style={{ color: 'var(--error)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>{error}</p>}
+
+            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginBottom: '1.5rem' }} disabled={loading}>
+              {loading ? <span className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} /> : 'Login'}
+            </button>
+          </form>
+
+          <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+            Don't have an account? <Link href="/register" style={{ color: 'var(--accent)', fontWeight: 600 }}>Create one</Link>
+          </p>
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.3)', color: 'var(--text-primary)', outline: 'none' }} />
-        </div>
-
-        <button type="submit" style={{ padding: '14px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 600, marginTop: '1rem', cursor: 'pointer' }}>Login</button>
-
-        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Don't have an account? <Link href="/register" style={{ color: 'var(--accent)' }}>Sign up</Link>
-        </p>
-      </form>
+      </div>
     </main>
   );
 }

@@ -1,16 +1,107 @@
 import mongoose from 'mongoose';
 
-const ProductSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  brand: { type: String, required: true },
-  price: { type: Number, required: true },
-  category: { type: String, enum: ['Dress', 'Shoe', 'Jewelry'], required: true },
-  imageUrl: { type: String, required: true },
-  productUrl: { type: String, required: true, unique: true },
-  color: { type: String, required: true },
-  occasion: [{ type: String }],
-  style: [{ type: String }],
-  createdAt: { type: Date, default: Date.now }
+/**
+ * Unified Product Schema — normalizes clothing, shoes, and accessories
+ * from all scraped Pakistani fashion brands into one consistent structure.
+ */
+const ProductSchema = new mongoose.Schema(
+  {
+    // ─── Core Identity ───────────────────────────────────────────────
+    name: { type: String, required: true, trim: true, maxlength: 200 },
+    brand: { type: String, required: true, trim: true, index: true },
+
+    // ─── Classification ──────────────────────────────────────────────
+    category: {
+      type: String,
+      required: true,
+      enum: ['clothing', 'shoes', 'accessories'],
+      index: true
+    },
+    subCategory: {
+      type: String,
+      enum: [
+        // Clothing
+        '2-piece', '3-piece', 'pret', 'unstitched', 'western', 'festive',
+        'formal', 'casual', 'kurti', 'tops', 'bottoms', 'co-ord',
+        // Shoes
+        'heels', 'flats', 'sandals', 'sneakers', 'khussa', 'boots',
+        // Accessories
+        'jewelry', 'bags', 'scarves', 'other'
+      ],
+      default: 'other'
+    },
+    type: { type: String, trim: true },         // e.g. "lawn", "chiffon", "block heel"
+
+    // ─── Style Metadata ──────────────────────────────────────────────
+    style: [{ type: String }],                  // e.g. ["elegant", "minimal", "trendy"]
+    occasion: [{ type: String }],               // e.g. ["wedding", "office", "casual"]
+    season: [{ type: String }],                 // e.g. ["summer", "winter", "all-season"]
+    fabric: { type: String, trim: true },       // e.g. "Pure Lawn", "Chiffon"
+
+    // ─── Colors ──────────────────────────────────────────────────────
+    colors: [{ type: String }],                 // e.g. ["Black", "Gold"]
+    primaryColor: { type: String, index: true },// dominant color for filtering
+
+    // ─── Sizing ──────────────────────────────────────────────────────
+    sizes: [{ type: String }],                  // e.g. ["XS", "S", "M", "L"]
+
+    // ─── Media ───────────────────────────────────────────────────────
+    images: [{ type: String }],                 // array of absolute image URLs
+    imageUrl: { type: String },                 // primary image (alias for compatibility)
+
+    // ─── Content ─────────────────────────────────────────────────────
+    description: { type: String, maxlength: 2000 },
+    tags: [{ type: String }],                   // free-form searchable tags
+
+    // ─── Pricing ─────────────────────────────────────────────────────
+    price: { type: Number, required: true, min: 0, index: true },
+    compareAtPrice: { type: Number, min: 0 },   // original price before sale
+    currency: { type: String, default: 'PKR' },
+
+    // ─── Source ──────────────────────────────────────────────────────
+    productUrl: { type: String, required: true, unique: true },
+    source: { type: String },                   // scraper adapter name
+    handle: { type: String },                   // Shopify handle
+
+    // ─── AI Layer ────────────────────────────────────────────────────
+    embedding: [{ type: Number }],              // semantic embedding vector
+    embeddingModel: { type: String },           // e.g. "text-embedding-3-small"
+    metadataScore: { type: Number, default: 0 },// completeness score 0-1
+
+    // ─── Timestamps ──────────────────────────────────────────────────
+    scrapedAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  {
+    timestamps: { createdAt: 'scrapedAt', updatedAt: 'updatedAt' },
+    toJSON: { virtuals: true }
+  }
+);
+
+// ─── Indexes ─────────────────────────────────────────────────────────────────
+ProductSchema.index({ brand: 1, category: 1 });
+ProductSchema.index({ primaryColor: 1, category: 1 });
+ProductSchema.index({ occasion: 1 });
+ProductSchema.index({ price: 1 });
+ProductSchema.index({ tags: 1 });
+ProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });
+
+// ─── Virtual: primary image ───────────────────────────────────────────────────
+ProductSchema.virtual('primaryImage').get(function () {
+  return this.imageUrl || (this.images && this.images[0]) || null;
+});
+
+// ─── Pre-save: sync imageUrl with images array ────────────────────────────────
+ProductSchema.pre('save', function (next) {
+  if (this.images && this.images.length > 0 && !this.imageUrl) {
+    this.imageUrl = this.images[0];
+  } else if (this.imageUrl && (!this.images || this.images.length === 0)) {
+    this.images = [this.imageUrl];
+  }
+  if (!this.primaryColor && this.colors && this.colors.length > 0) {
+    this.primaryColor = this.colors[0];
+  }
+  next();
 });
 
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);
