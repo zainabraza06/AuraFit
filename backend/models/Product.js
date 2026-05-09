@@ -8,14 +8,13 @@ const ProductSchema = new mongoose.Schema(
   {
     // ─── Core Identity ───────────────────────────────────────────────
     name: { type: String, required: true, trim: true, maxlength: 200 },
-    brand: { type: String, required: true, trim: true, index: true },
+    brand: { type: String, required: true, trim: true },
 
     // ─── Classification ──────────────────────────────────────────────
     category: {
       type: String,
       required: true,
-      enum: ['clothing', 'shoes', 'accessories'],
-      index: true
+      enum: ['clothing', 'shoes', 'accessories']
     },
     subCategory: {
       type: String,
@@ -40,7 +39,7 @@ const ProductSchema = new mongoose.Schema(
 
     // ─── Colors ──────────────────────────────────────────────────────
     colors: [{ type: String }],                 // e.g. ["Black", "Gold"]
-    primaryColor: { type: String, index: true },// dominant color for filtering
+    primaryColor: { type: String },// dominant color for filtering
 
     // ─── Sizing ──────────────────────────────────────────────────────
     sizes: [{ type: String }],                  // e.g. ["XS", "S", "M", "L"]
@@ -54,7 +53,7 @@ const ProductSchema = new mongoose.Schema(
     tags: [{ type: String }],                   // free-form searchable tags
 
     // ─── Pricing ─────────────────────────────────────────────────────
-    price: { type: Number, required: true, min: 0, index: true },
+    price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number, min: 0 },   // original price before sale
     currency: { type: String, default: 'PKR' },
 
