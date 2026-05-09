@@ -124,13 +124,21 @@ const STOP_WORDS = new Set([
 
 // ─── Main recommendation function ────────────────────────────────────────────
 
+// ─── Sister Color Fallback Map ──────────────────────────────────────────────
+const SISTER_COLORS = {
+  'Red': ['Maroon', 'Pink', 'Orange', 'Rust'],
+  'Blue': ['Navy', 'Cyan', 'Teal', 'Grey'],
+  'Green': ['Emerald', 'Mint', 'Olive', 'Lime'],
+  'Yellow': ['Gold', 'Mustard', 'Orange'],
+  'Pink': ['Peach', 'Maroon', 'Red'],
+  'Black': ['Grey', 'Navy', 'Charcoal'],
+  'White': ['Silver', 'Gold', 'Beige', 'Ivory'],
+  'Gold': ['Yellow', 'Silver', 'Beige']
+};
+
 /**
  * getRecommendations(productId, options)
  * Finds best-matching shoes and complementary clothing for a given product.
- *
- * @param {string} productId - MongoDB product _id
- * @param {object} options   - { maxShoes, maxClothing, maxAccessories }
- * @returns {object} { shoes[], complementaryClothing[], scores }
  */
 export async function getRecommendations(productId, options = {}) {
   const { maxShoes = 6, maxClothing = 6, maxAccessories = 4 } = options;
@@ -142,7 +150,6 @@ export async function getRecommendations(productId, options = {}) {
   const isShoe = source.category === 'shoes';
 
   // ── Find candidates ──
-  // Exclude same product and same brand to broaden discovery
   const baseQuery = {
     _id: { $ne: source._id }
   };
@@ -153,7 +160,7 @@ export async function getRecommendations(productId, options = {}) {
       : [],
     isShoe
       ? Product.find({ ...baseQuery, category: 'clothing' }).limit(100).lean()
-      : Product.find({ ...baseQuery, category: 'clothing', _id: { $ne: source._id } }).limit(50).lean()
+      : Product.find({ ...baseQuery, category: 'clothing' }).limit(50).lean()
   ]);
 
   // ── Score and rank ──
@@ -177,16 +184,12 @@ export async function getRecommendations(productId, options = {}) {
 
 /**
  * getOutfitForQuery(intent)
- * AI-powered outfit builder from a parsed user intent.
- * Used by the chat API.
- *
- * @param {object} intent - { color, occasion, style, maxBudget }
- * @returns {object} { heroDress, otherDresses, shoes, scores }
+ * Enhanced AI-powered outfit builder with "Sister Color" fallback.
  */
 export async function getOutfitForQuery(intent) {
   const { color, occasion = [], style = [], maxBudget = 0 } = intent;
 
-  // ── Clothing query ──
+  // ── 1. Primary retrieval ──
   const clothingQuery = { category: 'clothing' };
   if (color && color.toLowerCase() !== 'any') {
     clothingQuery.$or = [
@@ -198,16 +201,30 @@ export async function getOutfitForQuery(intent) {
   if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget };
 
   let dresses = await Product.aggregate([{ $match: clothingQuery }, { $sample: { size: 12 } }]);
+
+  // ── 2. "Sister Color" Fallback ──
+  if (dresses.length < 3 && color && SISTER_COLORS[color]) {
+    const fallbackColors = SISTER_COLORS[color];
+    const fallbackQuery = { 
+      category: 'clothing', 
+      primaryColor: { $in: fallbackColors } 
+    };
+    if (occasion.length > 0) fallbackQuery.occasion = { $in: occasion };
+    const fallbackDresses = await Product.aggregate([{ $match: fallbackQuery }, { $sample: { size: 8 } }]);
+    dresses = [...dresses, ...fallbackDresses];
+  }
+
+  // ── 3. Total Fallback (General) ──
   if (dresses.length === 0) {
     dresses = await Product.aggregate([{ $match: { category: 'clothing' } }, { $sample: { size: 8 } }]);
   }
 
   const heroDress = dresses[0] || null;
 
-  // ── Shoe recommendations for the hero dress ──
+  // ── 4. Shoe recommendations for the hero dress ──
   let shoes = [];
   if (heroDress) {
-    const shoePool = await Product.find({ category: 'shoes' }).limit(80).lean();
+    const shoePool = await Product.find({ category: 'shoes' }).limit(100).lean();
     shoes = shoePool
       .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
       .sort((a, b) => b._score - a._score)
@@ -217,6 +234,30 @@ export async function getOutfitForQuery(intent) {
   return {
     heroDress,
     otherDresses: dresses.slice(1, 7),
-    shoes
+    shoes,
+    intent
   };
+}
+
+/**
+ * generateAIStylistReasoning(hero, pair)
+ * Generates a short professional fashion justification.
+ */
+export async function generateAIStylistReasoning(hero, pair, aiInstance) {
+  if (!aiInstance) return "These pieces complement each other in style and occasion.";
+  
+  try {
+    const model = aiInstance.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+      You are a luxury fashion stylist. Briefly explain (1 sentence) why this ${pair.category} item:
+      "${pair.name}" (${pair.primaryColor}, ${pair.style.join(', ')})
+      is a perfect match for this ${hero.category}:
+      "${hero.name}" (${hero.primaryColor}, ${hero.style.join(', ')})
+      Focus on color harmony, occasion, and aesthetics.
+    `;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim();
+  } catch (err) {
+    return "A perfect match for a cohesive and elegant look.";
+  }
 }
