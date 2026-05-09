@@ -173,6 +173,9 @@ export function mapShopifyProduct(rawProduct, baseOrigin) {
     ? rawProduct.tags.split(',').map((t) => t.trim()).filter(Boolean)
     : [];
 
+  // Stock availability check
+  const isAvailable = (rawProduct?.variants || []).some((v) => v?.available === true);
+
   return {
     title,
     handle,
@@ -185,7 +188,8 @@ export function mapShopifyProduct(rawProduct, baseOrigin) {
     description: stripHtml(rawProduct?.body_html || ''),
     vendor: rawProduct?.vendor,
     productType: rawProduct?.product_type,
-    rawTags: tags
+    rawTags: tags,
+    isAvailable
   };
 }
 

@@ -149,6 +149,9 @@ export function normalizeProduct(raw, brandConfig) {
     handle: raw.handle || undefined,
     metadataScore
   };
+  
+  // Stock Check: Only allow available products
+  if (raw.isAvailable === false) return null;
 
   return normalized;
 }

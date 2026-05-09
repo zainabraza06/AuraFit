@@ -30,7 +30,7 @@ import { SHOE_BRANDS } from './config/shoeBrands.js';
 // ─── Adapter registry ─────────────────────────────────────────────────────────
 import { BeechtreeAdapter }   from './adapters/BeechtreeAdapter.js';
 import { LimelightAdapter }   from './adapters/LimelightAdapter.js';
-import { KhaadiAdapter }      from './adapters/KhaadiAdapter.js';
+import { ZellburyAdapter }    from './adapters/ZellburyAdapter.js';
 import { AlkaramAdapter }     from './adapters/AlkaramAdapter.js';
 import { GulAhmedAdapter }    from './adapters/GulAhmedAdapter.js';
 import { StyloAdapter }       from './adapters/StyloAdapter.js';
@@ -42,7 +42,7 @@ import { NdureAdapter }       from './adapters/NdureAdapter.js';
 const ADAPTER_MAP = {
   BeechtreeAdapter,
   LimelightAdapter,
-  KhaadiAdapter,
+  ZellburyAdapter,
   AlkaramAdapter,
   GulAhmedAdapter,
   StyloAdapter,

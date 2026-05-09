@@ -118,65 +118,60 @@ export const CLOTHING_BRANDS = [
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // KHAADI — pk.khaadi.com  (Custom platform, NOT Shopify — JS-rendered)
-  // Menu: READY TO WEAR (Essentials/Signature/Casuals) | FABRICS | EID COLLECTION
-  // Note: HTML extraction used; Shopify strategies will always return 0.
+  // ZELLBURY — zellbury.com  (Shopify)
+  // Menu: READY TO WEAR (1-piece / 2-piece / 3-piece) | UNSTITCHED | BOTTOMS
   // ════════════════════════════════════════════════════════════════════════════
   {
-    brand: 'Khaadi',
-    baseUrl: 'https://pk.khaadi.com',
-    adapter: 'KhaadiAdapter',
+    brand: 'Zellbury',
+    baseUrl: 'https://zellbury.com',
+    adapter: 'ZellburyAdapter',
     category: 'clothing',
     collections: [
-      // ── Ready to Wear — Essentials ───────────────────────────────────
-      { path: '/ready-to-wear/essentials/2-piece/',
-        subCategory: '2-piece',           occasion: ['casual', 'office'],                style: ['minimal', 'printed'] },
-      { path: '/ready-to-wear/essentials/3-piece/',
-        subCategory: '3-piece',           occasion: ['casual', 'party'],                 style: ['elegant', 'printed'] },
-      { path: '/ready-to-wear/essentials/kurta/',
-        subCategory: 'kurta',             occasion: ['casual', 'office'],                style: ['minimal', 'printed'] },
-      { path: '/ready-to-wear/essentials/pants/',
-        subCategory: 'pants',             occasion: ['casual', 'office'],                style: ['minimal'] },
-      { path: '/ready-to-wear/essentials/shalwar/',
-        subCategory: 'shalwar',           occasion: ['casual'],                          style: ['traditional', 'minimal'] },
-      { path: '/ready-to-wear/essentials/dupatta/',
-        subCategory: 'dupatta',           occasion: ['casual', 'eid'],                   style: ['minimal', 'printed'] },
-      { path: '/ready-to-wear/essentials/shawl/',
-        subCategory: 'dupatta',           occasion: ['casual', 'winter'],                style: ['minimal'] },
-      // ── Ready to Wear — Signature ────────────────────────────────────
-      { path: '/ready-to-wear/signature/2-piece/',
-        subCategory: '2-piece',           occasion: ['party', 'office', 'eid'],          style: ['embroidered', 'elegant'] },
-      { path: '/ready-to-wear/signature/3-piece/',
+      // ── Ready to Wear — 1 Piece ─────────────────────────────────────
+      { path: '/collections/1-piece-essential-summer-pret',
+        subCategory: 'kurta',             occasion: ['casual', 'summer'],                style: ['minimal', 'printed'] },
+      { path: '/collections/1-piece-luxury-summer-pret',
+        subCategory: 'kurta',             occasion: ['party', 'eid'],                    style: ['embroidered', 'elegant'] },
+      { path: '/collections/1-piece-signature-summer-pret',
+        subCategory: 'kurta',             occasion: ['party', 'formal'],                 style: ['elegant'] },
+      
+      // ── Ready to Wear — 2 Piece ─────────────────────────────────────
+      { path: '/collections/2-piece-essential-summer-pret-kd',
+        subCategory: '2-piece',           occasion: ['casual', 'office'],                style: ['printed'] },
+      { path: '/collections/2-piece-essential-summer-pret-kt',
+        subCategory: '2-piece',           occasion: ['casual', 'office'],                style: ['printed'] },
+      { path: '/collections/2-piece-luxury-summer-pret-kd',
+        subCategory: '2-piece',           occasion: ['party', 'eid'],                    style: ['embroidered', 'elegant'] },
+      { path: '/collections/2-piece-signature-summer-pret-kd',
+        subCategory: '2-piece',           occasion: ['party', 'formal'],                 style: ['elegant'] },
+
+      // ── Ready to Wear — 3 Piece ─────────────────────────────────────
+      { path: '/collections/3-piece-essential-summer-pret',
+        subCategory: '3-piece',           occasion: ['casual', 'party'],                 style: ['printed', 'elegant'] },
+      { path: '/collections/3-piece-luxury-summer-pret',
         subCategory: '3-piece',           occasion: ['party', 'eid', 'wedding'],         style: ['embroidered', 'elegant'] },
-      { path: '/ready-to-wear/signature/kurta/',
-        subCategory: 'kurta',             occasion: ['party', 'office', 'eid'],          style: ['embroidered', 'elegant'] },
-      { path: '/ready-to-wear/signature/pants/',
-        subCategory: 'pants',             occasion: ['office', 'party'],                 style: ['elegant'] },
-      { path: '/ready-to-wear/signature/shalwar/',
-        subCategory: 'shalwar',           occasion: ['eid', 'party'],                    style: ['traditional', 'elegant'] },
-      { path: '/ready-to-wear/signature/dupatta/',
-        subCategory: 'dupatta',           occasion: ['eid', 'party'],                    style: ['embroidered', 'elegant'] },
-      // ── Ready to Wear — Casuals ──────────────────────────────────────
-      { path: '/ready-to-wear/casuals/shirt/',
-        subCategory: 'kurta',             occasion: ['casual'],                          style: ['minimal', 'printed'] },
-      { path: '/ready-to-wear/casuals/blouse/',
-        subCategory: 'kurta',             occasion: ['casual', 'office'],                style: ['minimal', 'western'] },
-      { path: '/ready-to-wear/casuals/tunic/',
-        subCategory: 'kurta',             occasion: ['casual'],                          style: ['minimal'] },
-      { path: '/ready-to-wear/casuals/trousers/',
-        subCategory: 'pants',             occasion: ['casual', 'office'],                style: ['minimal', 'western'] },
-      // ── Fabrics / Unstitched ─────────────────────────────────────────
-      { path: '/fabrics/essentials/2-piece/',
-        subCategory: 'unstitched-2-piece',occasion: ['casual', 'office'],                style: ['printed', 'minimal'] },
-      { path: '/fabrics/essentials/3-piece/',
-        subCategory: 'unstitched-3-piece',occasion: ['casual', 'party'],                 style: ['printed', 'elegant'] },
-      { path: '/fabrics/signature/2-piece/',
-        subCategory: 'unstitched-2-piece',occasion: ['party', 'eid'],                    style: ['embroidered', 'elegant'] },
-      { path: '/fabrics/signature/3-piece/',
-        subCategory: 'unstitched-3-piece',occasion: ['party', 'eid', 'wedding'],         style: ['embroidered', 'elegant'] },
-      // ── Eid Collection ───────────────────────────────────────────────
-      { path: '/eid-collection/ready-to-wear/',
-        subCategory: 'festive',           occasion: ['eid', 'party'],                    style: ['embroidered', 'elegant'] }
+      { path: '/collections/3-piece-signature-summer-pret',
+        subCategory: '3-piece',           occasion: ['wedding', 'formal'],               style: ['elegant', 'heavy'] },
+
+      // ── Co-ords & Pants ─────────────────────────────────────────────
+      { path: '/collections/basic-co-ord-sets',
+        subCategory: '2-piece',           occasion: ['casual', 'trendy'],                style: ['western', 'minimal'] },
+      { path: '/collections/all-day-pants',
+        subCategory: 'pants',             occasion: ['casual', 'office'],                style: ['minimal'] },
+
+      // ── Accessories ─────────────────────────────────────────────────
+      { path: '/collections/accessories',
+        subCategory: 'other',             occasion: ['casual'],                          style: ['minimal'] },
+      { path: '/collections/bags',
+        subCategory: 'other',             occasion: ['casual', 'party'],                 style: ['trendy'] },
+
+      // ── Unstitched (Fabric) ──────────────────────────────────────────
+      { path: '/collections/unstitched-1-piece',
+        subCategory: 'unstitched-2-piece',occasion: ['casual', 'office'],                style: ['printed'] },
+      { path: '/collections/unstitched-2-piece',
+        subCategory: 'unstitched-2-piece',occasion: ['casual', 'party'],                 style: ['printed'] },
+      { path: '/collections/unstitched-3-piece',
+        subCategory: 'unstitched-3-piece',occasion: ['party', 'eid'],                    style: ['printed', 'elegant'] }
     ]
   },
 
