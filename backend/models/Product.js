@@ -19,13 +19,16 @@ const ProductSchema = new mongoose.Schema(
     subCategory: {
       type: String,
       enum: [
-        // Clothing
-        '2-piece', '3-piece', 'pret', 'unstitched', 'western', 'festive',
-        'formal', 'casual', 'kurti', 'tops', 'bottoms', 'co-ord',
+        // Clothing — stitched
+        '2-piece', '3-piece', 'kurta', 'pants', 'shalwar', 'dupatta', 'western', 'festive',
+        // Clothing — unstitched
+        'unstitched-2-piece', 'unstitched-3-piece',
         // Shoes
-        'heels', 'flats', 'sandals', 'sneakers', 'khussa', 'boots',
+        'heels', 'flats', 'sandals', 'sneakers', 'khussa', 'boots', 'mules',
         // Accessories
-        'jewelry', 'bags', 'scarves', 'other'
+        'jewelry', 'bags', 'scarves',
+        // Fallback
+        'other'
       ],
       default: 'other'
     },
@@ -79,6 +82,7 @@ const ProductSchema = new mongoose.Schema(
 
 // ─── Indexes ─────────────────────────────────────────────────────────────────
 ProductSchema.index({ brand: 1, category: 1 });
+ProductSchema.index({ category: 1, subCategory: 1 });
 ProductSchema.index({ primaryColor: 1, category: 1 });
 ProductSchema.index({ occasion: 1 });
 ProductSchema.index({ price: 1 });

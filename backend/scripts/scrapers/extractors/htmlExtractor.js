@@ -61,9 +61,12 @@ const LINK_SELECTORS = ['a.product-item__link', 'a[href*="/products/"]', 'h2 a',
  * Extracts product data from an HTML page using Cheerio.
  * @param {string} pageUrl - Full URL of the collection/category page
  * @param {number} maxItems - Maximum items to extract
+ * @param {object} options - Optional overrides
+ * @param {function} options.urlValidator - Custom URL validity check (default: requires /products/)
  * @returns {{ products: [], strategy: 'html' | 'failed' }}
  */
-export async function extractFromHtml(pageUrl, maxItems = 50) {
+export async function extractFromHtml(pageUrl, maxItems = 50, options = {}) {
+  const urlValidator = options.urlValidator ?? ((url) => url.includes('/products/'));
   let html;
   try {
     const res = await withRetry(() => safeGet(pageUrl, { responseType: 'text', timeout: 20000 }));
@@ -97,7 +100,7 @@ export async function extractFromHtml(pageUrl, maxItems = 50) {
       const productUrl = extractLink($, el, LINK_SELECTORS, baseOrigin);
 
       // Validation: must have image and valid URL
-      if (!imageUrl || !productUrl || !productUrl.includes('/products/')) return;
+      if (!imageUrl || !productUrl || !urlValidator(productUrl)) return;
 
       products.push({
         title: title.trim().slice(0, 200),

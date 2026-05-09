@@ -33,19 +33,28 @@ const STYLE_MAP = [
   { keywords: ['heavy', 'bridal', 'chikankari', 'handwork'], style: 'heavy' }
 ];
 
-// ─── SubCategory from brand config + tags ────────────────────────────────────
+// ─── SubCategory keyword overrides (only valid Product schema enum values) ────
+// Config-level subCategory takes priority; these only apply when text content
+// strongly implies a different classification than the collection default.
+// NOTE: 'pret'/'unstitched' are NOT valid enum values — do not add them here.
 const SUBCATEGORY_KEYWORDS = {
-  '2-piece': ['2-piece', '2piece', 'two-piece', 'shirt-trouser', 'shirt dupatta'],
-  '3-piece': ['3-piece', '3piece', 'three-piece'],
-  'pret': ['pret', 'ready to wear', 'ready-to-wear', 'rtw'],
-  'unstitched': ['unstitched', 'un-stitched'],
-  'western': ['western', 'jeans', 'denim', 'tops', 'hoodie', 'sweatshirt'],
-  'festive': ['festive', 'eid', 'bridal', 'wedding', 'formal'],
-  'heels': ['heels', 'heel', 'stiletto', 'pump'],
-  'flats': ['flat', 'flats', 'mules', 'ballet'],
-  'sandals': ['sandals', 'sandal', 'slipper', 'slides'],
-  'sneakers': ['sneaker', 'sneakers', 'trainers', 'joggers', 'sports shoe'],
-  'khussa': ['khussa', 'khusse', 'mojri', 'juti']
+  '2-piece':            ['2-piece', '2piece', 'two-piece', 'shirt & trouser', 'shirt and trouser'],
+  '3-piece':            ['3-piece', '3piece', 'three-piece', 'shirt trouser dupatta'],
+  'kurta':              ['kurti', 'kameez', '1-piece', 'one piece'],
+  'pants':              ['trousers only', 'bottoms only', 'palazzo', 'cigarette pant'],
+  'shalwar':            ['shalwar only', 'salwar only'],
+  'dupatta':            ['dupatta only', 'stole only', 'shawl only'],
+  'unstitched-2-piece': ['unstitched 2-piece', 'un-stitched 2 piece'],
+  'unstitched-3-piece': ['unstitched 3-piece', 'un-stitched 3 piece'],
+  'western':            ['western wear', 'jeans', 'denim', 'hoodie', 'sweatshirt', 't-shirt'],
+  'festive':            ['bridal', 'wedding wear', 'shadi'],
+  'heels':              ['heels', 'stiletto', 'pump', 'block heel', 'court shoe'],
+  'flats':              ['ballet flat', 'loafer', 'moccasin'],
+  'sandals':            ['sandal', 'chappal', 'slides', 'slipper'],
+  'sneakers':           ['sneaker', 'trainer', 'jogger', 'sports shoe'],
+  'khussa':             ['khussa', 'mojri', 'juti', 'kohati'],
+  'boots':              ['ankle boot', 'long boot', 'knee boot'],
+  'mules':              ['mules', 'back-open', 'wedge']
 };
 
 // ─── Season inference ─────────────────────────────────────────────────────────
@@ -177,6 +186,9 @@ function inferStyles(textBlob) {
 }
 
 function inferSubCategory(textBlob, configDefault) {
+  // Config-level subCategory (set per-collection) is authoritative.
+  // Keyword inference only kicks in as a last resort when config defaulted to 'other'.
+  if (configDefault && configDefault !== 'other') return configDefault;
   for (const [subCat, keywords] of Object.entries(SUBCATEGORY_KEYWORDS)) {
     if (keywords.some((k) => textBlob.includes(k))) return subCat;
   }

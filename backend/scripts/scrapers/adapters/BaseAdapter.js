@@ -71,7 +71,7 @@ export class BaseAdapter {
     if (rawProducts.length === 0) {
       try {
         await politeSleep();
-        const result = await extractFromHtml(collectionUrl, maxItems);
+        const result = await extractFromHtml(collectionUrl, maxItems, this.getHtmlOptions());
         if (result.products.length > 0) {
           rawProducts = result.products;
           strategy = result.strategy;
@@ -118,6 +118,15 @@ export class BaseAdapter {
    */
   async extractCollectionProducts(collectionUrl, maxItems) {
     return extractFromShopifyCollection(collectionUrl, maxItems);
+  }
+
+  /**
+   * getHtmlOptions()
+   * Returns options passed to extractFromHtml in Strategy 3.
+   * Override in subclasses for non-Shopify sites that use different URL formats.
+   */
+  getHtmlOptions() {
+    return {};
   }
 
   /**
