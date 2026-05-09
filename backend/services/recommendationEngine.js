@@ -183,13 +183,13 @@ export async function getRecommendations(productId, options = {}) {
 }
 
 /**
- * getOutfitForQuery(intent)
- * Enhanced AI-powered outfit builder with "Sister Color" fallback.
+ * getOutfitForQuery(intent, aiInstance)
+ * Master Stylist Version: Uses AI to pick the best from a filtered pool.
  */
-export async function getOutfitForQuery(intent) {
+export async function getOutfitForQuery(intent, aiInstance) {
   const { color, occasion = [], style = [], maxBudget = 0 } = intent;
 
-  // ── 1. Primary retrieval ──
+  // 1. Get a pool of 20 high-quality candidates
   const clothingQuery = { category: 'clothing' };
   if (color && color.toLowerCase() !== 'any') {
     clothingQuery.$or = [
@@ -200,41 +200,69 @@ export async function getOutfitForQuery(intent) {
   if (occasion.length > 0) clothingQuery.occasion = { $in: occasion };
   if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget };
 
-  let dresses = await Product.aggregate([{ $match: clothingQuery }, { $sample: { size: 12 } }]);
-
-  // ── 2. "Sister Color" Fallback ──
-  if (dresses.length < 3 && color && SISTER_COLORS[color]) {
-    const fallbackColors = SISTER_COLORS[color];
-    const fallbackQuery = { 
-      category: 'clothing', 
-      primaryColor: { $in: fallbackColors } 
-    };
-    if (occasion.length > 0) fallbackQuery.occasion = { $in: occasion };
-    const fallbackDresses = await Product.aggregate([{ $match: fallbackQuery }, { $sample: { size: 8 } }]);
-    dresses = [...dresses, ...fallbackDresses];
+  let pool = await Product.aggregate([{ $match: clothingQuery }, { $sample: { size: 20 } }]);
+  
+  // Fallback if empty
+  if (pool.length === 0) {
+    pool = await Product.aggregate([{ $match: { category: 'clothing' } }, { $sample: { size: 10 } }]);
   }
 
-  // ── 3. Total Fallback (General) ──
-  if (dresses.length === 0) {
-    dresses = await Product.aggregate([{ $match: { category: 'clothing' } }, { $sample: { size: 8 } }]);
+  // 2. If we have AI, let it pick the best "Hero" and provide reasoning
+  if (aiInstance && pool.length > 0) {
+    try {
+      const model = aiInstance.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
+      });
+
+      const prompt = `
+        You are a Master Fashion Stylist for a premium Pakistani brand.
+        User Intent: Color: ${color}, Occasion: ${occasion.join(', ')}, Style: ${style.join(', ')}.
+        
+        From this pool of products, select the absolute BEST single 'Hero' dress that matches the intent.
+        Explain your choice professionally.
+        
+        Pool:
+        ${pool.map((p, i) => `[ID:${i}] Name: ${p.name}, Brand: ${p.brand}, Style: ${p.style.join(', ')}, Color: ${p.primaryColor}`).join('\n')}
+        
+        Return JSON:
+        {
+          "selectedIndex": number,
+          "reasoning": "1 sentence expert stylist explanation"
+        }
+      `;
+
+      const result = await model.generateContent(prompt);
+      const response = JSON.parse(result.response.text());
+      
+      const heroDress = pool[response.selectedIndex] || pool[0];
+      
+      // 3. Get matching shoes for the hero
+      const shoePool = await Product.find({ category: 'shoes' }).limit(40).lean();
+      const shoes = shoePool
+        .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 6);
+
+      return {
+        heroDress,
+        otherDresses: pool.filter((_, i) => i !== response.selectedIndex).slice(0, 6),
+        shoes,
+        reasoning: response.reasoning,
+        intent
+      };
+    } catch (err) {
+      console.error("Master Stylist AI failed, falling back to basic logic:", err);
+    }
   }
 
-  const heroDress = dresses[0] || null;
-
-  // ── 4. Shoe recommendations for the hero dress ──
-  let shoes = [];
-  if (heroDress) {
-    const shoePool = await Product.find({ category: 'shoes' }).limit(100).lean();
-    shoes = shoePool
-      .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
-      .sort((a, b) => b._score - a._score)
-      .slice(0, 6);
-  }
-
+  // Fallback to basic logic if AI is unavailable
+  const heroDress = pool[0] || null;
   return {
     heroDress,
-    otherDresses: dresses.slice(1, 7),
-    shoes,
+    otherDresses: pool.slice(1, 7),
+    shoes: [],
+    reasoning: "A coordinated selection based on your preference.",
     intent
   };
 }

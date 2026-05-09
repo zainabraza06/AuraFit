@@ -70,6 +70,10 @@ Return ONLY a valid JSON object with:
         let text = response.text();
         if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         parsedIntent = JSON.parse(text);
+
+        // Get outfit with AI judgment
+        const outfit = await getOutfitForQuery(parsedIntent, ai);
+        return res.json({ intent: parsedIntent, outfit });
       } catch (aiErr) {
         console.warn('Gemini intent parsing failed, using defaults:', aiErr.message);
       }
