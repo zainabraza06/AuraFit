@@ -70,3 +70,37 @@ export const adminApi = {
     return es;
   }
 };
+
+// ─── Wardrobe & Boards ───────────────────────────────────────────────────────
+export const wardrobeApi = {
+  list: () => api.get('/wardrobe'),
+  add: (formData: FormData) => api.post('/wardrobe', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+};
+
+export const outfitsApi = {
+  list: () => api.get('/outfits'),
+  save: (data: any) => api.post('/outfits', data),
+  remove: (id: string) => api.delete(`/outfits/${id}`)
+};
+
+// ─── Visual Search ───────────────────────────────────────────────────────────
+export const visualSearchApi = {
+  searchByImage: (formData: FormData) => api.post('/search/visual/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+};
+
+// ─── Virtual Try-On ──────────────────────────────────────────────────────────
+export const tryonApi = {
+  generate: (formData: FormData) => api.post('/tryon', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000 // VTON can take up to 2 minutes
+  })
+};
+
+// ─── Vector / Semantic Search ──────────────────────────────────────────────────
+export const vectorSearchApi = {
+  /** True semantic similarity search using HuggingFace embeddings */
+  semantic: (q: string, params?: Record<string, any>) =>
+    api.get('/search/semantic', { params: { q, ...params } }),
+  /** Batch-generate HF embeddings for products that don't have them */
+  embedAll: (limit = 50) => api.post('/search/embed-all', { limit }),
+};

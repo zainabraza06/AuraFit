@@ -80,9 +80,14 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 
 ### Premium UI
 - **Next.js 16** with App Router and TypeScript
-- **Glassmorphism design system** — dynamic dark luxury aesthetic with gold accents, custom select dropdowns, and animated orbs
-- Product image gallery with zoom and error fallback
-- Responsive — mobile-first CSS Grid, Flexbox, and mobile slide-out menu
+- **Glassmorphism design system** — dynamic dark luxury aesthetic with animated orbs and gold accents
+- **AI Chatbot** — full-screen messaging UI with RAG outfit recommendations and quick-prompt chips
+- **Virtual Try-On** — two-panel before/after with Replicate IDM-VTON integration and step progress
+- **Wardrobe Manager** — upload clothes, Gemini auto-tags category/color/style, filter by type
+- **Outfit Boards** — save and manage AI-generated outfit combinations
+- **Semantic Search** — Keyword/AI toggle; semantic mode uses HuggingFace cosine similarity with % match badges
+- **Visual Search** — upload inspiration photo, Gemini analyzes and finds similar products
+- Responsive — mobile-first with slide-out menu and AI Tools dropdown
 
 ---
 
@@ -97,6 +102,8 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 | Database | MongoDB via Mongoose 8 |
 | Authentication | JWT (jsonwebtoken), bcryptjs |
 | AI / NLP | Google Gemini 2.5 Flash (`@google/generative-ai`) |
+| Vector Embeddings | HuggingFace `all-MiniLM-L6-v2` (free inference API) |
+| Virtual Try-On | Replicate `IDM-VTON` model |
 | Web Scraping | Axios (HTTP), Cheerio (HTML parsing) |
 | Scheduling | node-cron |
 | Logging | Winston |
@@ -468,6 +475,8 @@ Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 ag
 | `NODE_ENV` | No | `development` | Environment mode |
 | `FRONTEND_URL` | Yes | — | CORS allowed origin (e.g., `http://localhost:3000`) |
 | `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
+| `REPLICATE_API_KEY` | No | — | Replicate API token for IDM-VTON virtual try-on (free at replicate.com) |
+| `HUGGINGFACE_API_KEY` | No | — | HuggingFace token for semantic vector search (free at huggingface.co/settings/tokens) |
 | `SCRAPER_DRY_RUN` | No | `false` | `true` = parse without writing to DB |
 | `SCRAPER_MAX_PER_BRAND` | No | `50` | Max products to scrape per brand per run |
 | `SCRAPER_DELAY_MS` | No | `1500` | Delay between HTTP requests (ms) |
