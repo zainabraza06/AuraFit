@@ -34,7 +34,7 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 ## Features
 
 ### Intelligent Scraper Pipeline
-- Scrapes **10 leading Pakistani brands**: Beechtree, Limelight, Khaadi, Alkaram, Gul Ahmed, Stylo, ECS, Borjan, Hush Puppies, and Ndure
+- Scrapes **10 leading Pakistani brands**: Beechtree, Limelight, Zellbury, Alkaram, Gul Ahmed, Stylo, ECS, Borjan, Hush Puppies, and Ndure
 - **3-Strategy Waterfall Extraction**:
   1. **Shopify JSON API** — fastest, most structured (`/products.json`)
   2. **Site-wide product listing** — fallback for non-standard Shopify
@@ -168,7 +168,7 @@ AuraFit/
 │   │   ├── scraper.js               # Core scraping logic
 │   │   ├── adapters/                # Brand-specific configurations
 │   │   │   ├── BaseAdapter.js
-│   │   │   ├── KhaadiAdapter.js
+│   │   │   ├── ZellburryAdapter.js
 │   │   │   ├── BeechtreeAdapter.js
 │   │   │   ├── LimelightAdapter.js
 │   │   │   ├── AlkaramAdapter.js
@@ -385,7 +385,7 @@ Every raw scraped item passes through `productParser.js`:
 
 | # | Brand | Category | Strategy |
 |---|-------|----------|----------|
-| 1 | Khaadi | Clothing | Shopify JSON |
+| 1 | Zellburry | Clothing | Shopify JSON |
 | 2 | Beechtree | Clothing | Shopify JSON |
 | 3 | Limelight | Clothing | Shopify JSON |
 | 4 | Alkaram | Clothing | Shopify JSON |
