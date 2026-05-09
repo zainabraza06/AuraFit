@@ -1,6 +1,8 @@
 /**
  * admin.js — Admin Dashboard API
  *
+ * ALL routes require: JWT token with role=admin
+ *
  * GET  /api/admin/stats              — product counts, brand breakdown
  * GET  /api/admin/scraper/logs       — recent scraper run logs
  * POST /api/admin/scraper/run        — trigger manual scrape
@@ -11,9 +13,12 @@
 import express from 'express';
 import Product from '../models/Product.js';
 import ScraperLog from '../models/ScraperLog.js';
+import { protect, adminOnly } from '../middleware/auth.js';
 
 const router = express.Router();
-// NOTE: Auth removed for development. Re-add `protect, adminOnly` middleware in production.
+
+// Apply authentication to ALL admin routes
+router.use(protect, adminOnly);
 
 // ─── In-memory scraper state ──────────────────────────────────────────────────
 let activeScrapePromise = null;

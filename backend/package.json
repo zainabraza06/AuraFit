@@ -7,6 +7,7 @@
     "dev": "nodemon server.js",
     "scrape": "node scripts/scrapers/index.js",
     "scrape:dry": "cross-env SCRAPER_DRY_RUN=true node scripts/scrapers/index.js",
+    "seed:admin": "node scripts/seedAdmin.js",
     "test": "node --test"
   },
   "dependencies": {

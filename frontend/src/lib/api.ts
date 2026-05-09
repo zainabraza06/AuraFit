@@ -44,7 +44,9 @@ export const searchApi = {
 export const authApi = {
   login: (email: string, password: string) => api.post('/auth/login', { email, password }),
   register: (name: string, email: string, password: string) => api.post('/auth/register', { name, email, password }),
-  me: () => api.get('/auth/me')
+  me: () => api.get('/auth/me'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.put('/auth/change-password', { currentPassword, newPassword })
 };
 
 // ─── Favorites ───────────────────────────────────────────────────────────────
