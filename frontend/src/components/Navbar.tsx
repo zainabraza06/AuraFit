@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const AI_LINKS = [
-  { href: '/chat',         label: '✨ AI Stylist Chat', desc: 'Get outfit recommendations' },
   { href: '/try-on',       label: '👗 Virtual Try-On',  desc: 'See clothes on you with AI' },
   { href: '/search/visual',label: '📸 Visual Search',   desc: 'Search by photo' },
+  { href: '/wardrobe',     label: '👕 My Wardrobe',     desc: 'Manage your digital closet' },
+  { href: '/boards',       label: '📋 Outfit Boards',   desc: 'Saved AI-curated outfits' },
 ];
 
 const NAV_LINKS = [
@@ -14,8 +15,6 @@ const NAV_LINKS = [
   { href: '/discover',  label: 'Discover' },
   { href: '/search',    label: 'Search' },
   { href: '/favorites', label: 'Favourites' },
-  { href: '/wardrobe',  label: 'Wardrobe' },
-  { href: '/boards',    label: 'Boards' },
 ];
 
 export default function Navbar() {

@@ -1,12 +1,55 @@
 'use client';
 
-export default function RecommendationResult({ data }: { data: any }) {
+export default function RecommendationResult({ data, compact = false }: { data: any; compact?: boolean }) {
   if (!data || !data.intent) return null;
 
   const { intent, outfit } = data;
-  const heroDress = outfit?.heroDress;
-  const shoes     = outfit?.shoes     || [];
+  const heroDress    = outfit?.heroDress;
+  const shoes        = outfit?.shoes        || [];
   const otherDresses = outfit?.otherDresses || [];
+
+  // ── Compact mode: slim card for chat widget ──
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%' }}>
+        {outfit?.reasoning && (
+          <p style={{ fontSize: '0.78rem', color: '#9898b8', fontStyle: 'italic', lineHeight: 1.5, padding: '0.6rem 0.8rem', background: 'rgba(167,139,250,0.05)', borderRadius: 8, borderLeft: '2px solid rgba(167,139,250,0.4)' }}>
+            "{outfit.reasoning}"
+          </p>
+        )}
+        {heroDress && (
+          <a href={heroDress.productUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', gap: '0.7rem', background: '#1c1c28', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, overflow: 'hidden', transition: 'border-color 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(167,139,250,0.3)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+          >
+            <img src={heroDress.imageUrl || heroDress.images?.[0] || '/placeholder.jpg'} alt={heroDress.name} style={{ width: 70, height: 90, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+            <div style={{ padding: '0.65rem 0.65rem 0.65rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+              <p style={{ fontSize: '0.65rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{heroDress.brand}</p>
+              <p style={{ fontSize: '0.82rem', color: '#e8e8ff', fontWeight: 500, lineHeight: 1.3, marginBottom: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{heroDress.name}</p>
+              <p style={{ fontSize: '0.82rem', color: '#fbbf24', fontWeight: 700 }}>PKR {heroDress.price?.toLocaleString()}</p>
+              {heroDress.primaryColor && <p style={{ fontSize: '0.68rem', color: '#6b6b8a', marginTop: '0.2rem' }}>{heroDress.primaryColor}</p>}
+            </div>
+          </a>
+        )}
+        {shoes.length > 0 && (
+          <div>
+            <p style={{ fontSize: '0.65rem', color: '#55557a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Matched Shoes</p>
+            <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
+              {shoes.slice(0, 3).map((s: any, i: number) => (
+                <a key={i} href={s.productUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', flexShrink: 0, width: 68 }}>
+                  <img src={s.imageUrl || s.images?.[0] || '/placeholder.jpg'} alt={s.name} style={{ width: 68, height: 68, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)' }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+                  <p style={{ fontSize: '0.62rem', color: '#9898b8', marginTop: '0.2rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {(otherDresses.length > 0 || shoes.length > 0) && (
+          <p style={{ fontSize: '0.68rem', color: '#6b6b8a', textAlign: 'center' }}>Click any item to shop ↗</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
