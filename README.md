@@ -487,7 +487,7 @@ Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 ag
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL (e.g., `http://localhost:5000/api`) |
+| `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL (e.g., `https://aurafit-8e3u.onrender.com/api`) |
 
 ---
 
@@ -523,7 +523,7 @@ cp .env.example .env
 ```bash
 # Frontend
 cd AuraFit/frontend
-echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
+echo "NEXT_PUBLIC_API_URL=https://aurafit-8e3u.onrender.com/api" > .env.local
 ```
 
 ### 3. Start the backend
@@ -531,7 +531,7 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
 ```bash
 cd AuraFit/backend
 npm run dev
-# Running at http://localhost:5000
+# Running at https://aurafit-8e3u.onrender.com
 ```
 
 ### 4. Start the frontend

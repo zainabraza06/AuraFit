@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://aurafit-8e3u.onrender.com/api';
 
 export const api = axios.create({
   baseURL: API_BASE,

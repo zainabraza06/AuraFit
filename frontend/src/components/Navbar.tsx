@@ -23,7 +23,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const pathname = usePathname();
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     const s = () => setScrolled(window.scrollY > 30);

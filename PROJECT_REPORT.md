@@ -1273,7 +1273,7 @@ cp .env.example .env
 
 # 3. Configure frontend
 cd ../frontend
-echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
+echo "NEXT_PUBLIC_API_URL=https://aurafit-8e3u.onrender.com/api" > .env.local
 
 # 4. Start backend (port 5000)
 cd ../backend && npm run dev
