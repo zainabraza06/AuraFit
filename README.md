@@ -72,7 +72,7 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 - First registered user auto-promoted to admin
 
 ### Admin Dashboard
-- Real-time scraper status (running / idle)
+- Real-time scraper status and live logs stream (via Server-Sent Events / SSE)
 - Manual scrape trigger (runs async, non-blocking)
 - Full scrape history with per-brand breakdown
 - Product stats by category, brand, and 7-day growth
@@ -80,9 +80,9 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 
 ### Premium UI
 - **Next.js 16** with App Router and TypeScript
-- **Glassmorphism design system** — dark luxury aesthetic with gold accents
+- **Glassmorphism design system** — dynamic dark luxury aesthetic with gold accents, custom select dropdowns, and animated orbs
 - Product image gallery with zoom and error fallback
-- Responsive — mobile-first CSS Grid and Flexbox
+- Responsive — mobile-first CSS Grid, Flexbox, and mobile slide-out menu
 
 ---
 

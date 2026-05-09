@@ -28,7 +28,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <main className="page auth-bg">
       <div className="container" style={{ maxWidth: '480px' }}>
         <div className="glass-card" style={{ padding: '3rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>

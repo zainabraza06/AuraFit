@@ -4,11 +4,11 @@
 
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export const api = axios.create({
   baseURL: API_BASE,
-  timeout: 15000
+  timeout: 45000, // AI calls can take up to 30s
 });
 
 // Attach token on every request
@@ -59,5 +59,14 @@ export const adminApi = {
   stats: () => api.get('/admin/stats'),
   scraperLogs: (limit = 20) => api.get('/admin/scraper/logs', { params: { limit } }),
   scraperStatus: () => api.get('/admin/scraper/status'),
-  triggerScrape: () => api.post('/admin/scraper/run')
+  triggerScrape: () => api.post('/admin/scraper/run'),
+  /** Opens a Server-Sent Events stream for real-time scraper progress */
+  scraperStream: (onMessage: (data: any) => void, onError?: (e: Event) => void): EventSource => {
+    const es = new EventSource(`${API_BASE}/admin/scraper/stream`);
+    es.onmessage = (e) => {
+      try { onMessage(JSON.parse(e.data)); } catch { /* ignore malformed */ }
+    };
+    if (onError) es.onerror = onError;
+    return es;
+  }
 };

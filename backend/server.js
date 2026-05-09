@@ -21,6 +21,9 @@ import recommendationRoutes from './routes/recommendations.js';
 import searchRoutes         from './routes/search.js';
 import favoriteRoutes       from './routes/favorites.js';
 import adminRoutes          from './routes/admin.js';
+import outfitRoutes         from './routes/outfits.js';
+import imageSearchRoutes    from './routes/imageSearch.js';
+import wardrobeRoutes       from './routes/wardrobe.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);

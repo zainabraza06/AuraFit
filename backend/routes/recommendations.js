@@ -12,30 +12,8 @@ dotenv.config();
 
 const router = express.Router();
 
-// ─── GET /api/recommendations/:productId ──────────────────────────────────────
-router.get('/:productId', async (req, res) => {
-  try {
-    const result = await getRecommendations(req.params.productId, {
-      maxShoes: 6,
-      maxClothing: 6
-    });
-
-    res.json({
-      source: result.source,
-      shoes: result.shoes,
-      complementaryClothing: result.complementaryClothing,
-      generatedAt: result.generatedAt
-    });
-  } catch (err) {
-    if (err.message === 'Product not found') {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-    console.error('Recommendation error:', err);
-    res.status(500).json({ error: 'Failed to generate recommendations' });
-  }
-});
-
 // ─── POST /api/recommendations/outfit ─────────────────────────────────────────
+// IMPORTANT: Must be defined BEFORE /:productId to avoid param route matching "/outfit"
 // Chat-based outfit generation using Gemini for intent parsing
 router.post('/outfit', async (req, res) => {
   try {
@@ -85,6 +63,29 @@ Return ONLY a valid JSON object with:
   } catch (err) {
     console.error('Outfit generation error:', err);
     res.status(500).json({ error: 'Failed to generate outfit' });
+  }
+});
+
+// ─── GET /api/recommendations/:productId ──────────────────────────────────────
+// NOTE: Defined AFTER /outfit to prevent param swallowing
+router.get('/:productId', async (req, res) => {
+  try {
+    const result = await getRecommendations(req.params.productId, {
+      maxShoes: 6,
+      maxClothing: 6
+    });
+    res.json({
+      source: result.source,
+      shoes: result.shoes,
+      complementaryClothing: result.complementaryClothing,
+      generatedAt: result.generatedAt
+    });
+  } catch (err) {
+    if (err.message === 'Product not found') {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    console.error('Recommendation error:', err);
+    res.status(500).json({ error: 'Failed to generate recommendations' });
   }
 });
 
