@@ -83,19 +83,19 @@ export default function Navbar() {
 
               {aiOpen && (
                 <div style={{
-                  position: 'absolute', top: 'calc(100% + 12px)', left: '50%', transform: 'translateX(-50%)',
-                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-                  padding: '0.6rem', minWidth: 240, zIndex: 200,
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(167,139,250,0.1)',
-                  animation: 'fadeUp 0.15s ease forwards',
+                  position: 'absolute', top: 'calc(100% + 14px)', left: '50%', transform: 'translateX(-50%)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius)',
+                  padding: '0.5rem', minWidth: 220, zIndex: 200,
+                  boxShadow: 'var(--shadow-lg)',
+                  animation: 'fadeUp 0.18s ease forwards',
                 }}>
                   {AI_LINKS.map(l => (
-                    <Link key={l.href} href={l.href} style={{ display: 'block', padding: '0.8rem 1rem', borderRadius: 'var(--radius-sm)', textDecoration: 'none', transition: 'background 0.15s ease' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--glass-strong)')}
+                    <Link key={l.href} href={l.href} style={{ display: 'block', padding: '0.7rem 0.9rem', borderRadius: 'var(--radius-sm)', textDecoration: 'none', transition: 'background 0.15s ease' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <div style={{ fontSize: '0.88rem', fontWeight: 500, color: isActive(l.href) ? 'var(--accent)' : 'var(--text-primary)', marginBottom: '0.2rem' }}>{l.label}</div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{l.desc}</div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.04em', color: isActive(l.href) ? 'var(--accent)' : 'var(--text-primary)', marginBottom: '0.18rem' }}>{l.label}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{l.desc}</div>
                     </Link>
                   ))}
                 </div>
@@ -124,7 +124,7 @@ export default function Navbar() {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div style={{ position: 'fixed', top: 'var(--nav-h)', left: 0, right: 0, bottom: 0, zIndex: 99, background: 'rgba(8,8,16,0.97)', backdropFilter: 'blur(24px)', display: 'flex', flexDirection: 'column', padding: '1.5rem 2rem', overflowY: 'auto', animation: 'fadeIn 0.2s ease' }}>
+        <div style={{ position: 'fixed', top: 'var(--nav-h)', left: 0, right: 0, bottom: 0, zIndex: 99, background: 'var(--bg-primary)', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '1.5rem 2rem', overflowY: 'auto', animation: 'fadeIn 0.22s ease' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1.5rem' }}>
             {NAV_LINKS.map(l => (
               <Link key={l.href} href={l.href} style={{ padding: '1rem 0', borderBottom: '1px solid var(--border)', color: isActive(l.href) ? 'var(--accent)' : 'var(--text-primary)', textDecoration: 'none', fontSize: '1.15rem', fontFamily: 'var(--font-display)' }}>
@@ -132,10 +132,10 @@ export default function Navbar() {
               </Link>
             ))}
           </div>
-          <p style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>AI Tools</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2rem' }}>
+          <p style={{ fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>AI Tools</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '2rem' }}>
             {AI_LINKS.map(l => (
-              <Link key={l.href} href={l.href} style={{ padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', background: 'var(--glass-strong)', border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+              <Link key={l.href} href={l.href} style={{ padding: '0.8rem 1rem', borderRadius: 'var(--radius-sm)', background: 'var(--bg-card)', border: '1px solid var(--border-mid)', textDecoration: 'none', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                 {l.label}
               </Link>
             ))}

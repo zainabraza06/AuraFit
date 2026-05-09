@@ -11,6 +11,13 @@ const PROMPTS = [
   'Embroidered festive suit for weddings',
   'Western casual look under PKR 5000',
 ];
+const BRANDS = ['Khaadi', 'Beechtree', 'Limelight', 'Alkaram', 'Gul Ahmed', 'Stylo', 'Borjan', 'ECS'];
+const HOW = [
+  { num: '01', title: 'Real Product Scraping', desc: 'Daily automated scraping from Beechtree, Khaadi, Limelight, Alkaram, Gul Ahmed and more.' },
+  { num: '02', title: 'Gemini AI Styling', desc: 'Gemini parses your intent, color theory scores compatibility, and embeddings match styles semantically.' },
+  { num: '03', title: 'Complete Outfits', desc: 'Clothing + matching shoes sourced from real Pakistani brands — curated in seconds.' },
+  { num: '04', title: 'Save Favourites', desc: 'Bookmark looks you love and build your personal style archive.' },
+];
 
 export default function HomePage() {
   const [featured, setFeatured] = useState<any[]>([]);
@@ -39,7 +46,7 @@ export default function HomePage() {
     const iv = setInterval(() => {
       if (i < prompt.length) { setTypedPrompt(prompt.slice(0, ++i)); }
       else { clearInterval(iv); setTimeout(() => setPromptIdx((p) => (p + 1) % PROMPTS.length), 2800); }
-    }, 50);
+    }, 48);
     return () => clearInterval(iv);
   }, [promptIdx]);
 
@@ -58,8 +65,7 @@ export default function HomePage() {
         setChatError('No matching outfits found. Try a different prompt!');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Unable to reach the AI stylist. Is the backend running?';
-      setChatError(msg);
+      setChatError(err?.response?.data?.error || 'Unable to reach the AI stylist. Is the backend running?');
     } finally {
       setChatLoading(false);
     }
@@ -72,31 +78,35 @@ export default function HomePage() {
 
   return (
     <main className="page">
-      {/* ── Hero ── */}
-      <section style={{ position: 'relative', minHeight: '94vh', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-        <div className="hero-gradient" />
-        {/* Floating orbs */}
-        <div className="hero-orb" style={{ top: '12%', right: '8%', width: 420, height: 420, background: 'radial-gradient(circle, rgba(167,139,250,0.14) 0%, transparent 70%)', animationDelay: '0s' }} />
-        <div className="hero-orb" style={{ bottom: '8%', left: '3%', width: 320, height: 320, background: 'radial-gradient(circle, rgba(232,121,249,0.09) 0%, transparent 70%)', animationDelay: '3s' }} />
-        <div className="hero-orb" style={{ top: '55%', right: '20%', width: 200, height: 200, background: 'radial-gradient(circle, rgba(251,191,36,0.07) 0%, transparent 70%)', animationDelay: '5s' }} />
 
-        <div className="container" style={{ padding: '7rem clamp(1rem,4vw,3rem)', position: 'relative', zIndex: 1 }}>
-          <div style={{ maxWidth: 800 }}>
-            <div className="fade-up">
-              <span className="section-label">✦ AI Fashion Stylist for Pakistan</span>
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section style={{ position: 'relative', minHeight: '96vh', display: 'flex', alignItems: 'center', overflow: 'hidden', borderBottom: '1px solid var(--border)' }}>
+        <div className="hero-gradient" />
+        {/* Soft ambient orbs */}
+        <div className="hero-orb" style={{ top: '10%', right: '6%', width: 500, height: 500, background: 'radial-gradient(circle, rgba(201,169,110,0.09) 0%, transparent 70%)', animationDelay: '0s' }} />
+        <div className="hero-orb" style={{ bottom: '5%', left: '2%', width: 340, height: 340, background: 'radial-gradient(circle, rgba(212,149,106,0.06) 0%, transparent 70%)', animationDelay: '3s' }} />
+
+        <div className="container" style={{ padding: '8rem clamp(1rem,4vw,3rem)', position: 'relative', zIndex: 1 }}>
+          <div style={{ maxWidth: 820 }}>
+
+            <div className="fade-up" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+              <div style={{ height: 1, width: 40, background: 'var(--accent)' }} />
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+                AI Fashion Stylist for Pakistan
+              </span>
             </div>
 
-            <h1 className="display fade-up-d1" style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+            <h1 className="display fade-up-d1" style={{ marginBottom: '1.75rem' }}>
               Discover Your<br />
-              <em className="gradient-text">Perfect Style</em>
+              <em style={{ fontStyle: 'italic', fontWeight: 300, color: 'var(--accent-light)' }}>Perfect Style</em>
             </h1>
 
-            <p className="subtitle fade-up-d2" style={{ maxWidth: 540, marginBottom: '2.5rem' }}>
+            <p className="subtitle fade-up-d2" style={{ maxWidth: 500, marginBottom: '3rem', lineHeight: 1.75 }}>
               AI-curated outfits from Pakistan's finest brands — Khaadi, Beechtree, Limelight, Alkaram and more.
             </p>
 
             {/* Style Me Input */}
-            <div className="fade-up-d3" style={{ maxWidth: 660 }}>
+            <div className="fade-up-d3" style={{ maxWidth: 640 }}>
               <div className="style-input-wrap">
                 <input
                   ref={inputRef}
@@ -111,34 +121,25 @@ export default function HomePage() {
                 <button
                   id="style-me-btn"
                   className="btn btn-primary"
-                  style={{ flexShrink: 0, minWidth: 120 }}
+                  style={{ flexShrink: 0 }}
                   onClick={() => handleChat(chatMessage)}
                   disabled={chatLoading || !chatMessage.trim()}
                 >
                   {chatLoading
-                    ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />Styling…</>
-                    : '✦ Style Me'}
+                    ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />Styling…</>
+                    : 'Style Me'}
                 </button>
               </div>
 
-              {/* Error */}
               {chatError && (
-                <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 'var(--radius)', color: 'var(--error)', fontSize: '0.88rem' }}>
-                  ⚠ {chatError}
+                <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(196,114,114,0.08)', border: '1px solid rgba(196,114,114,0.2)', borderRadius: 'var(--radius-sm)', color: 'var(--error)', fontSize: '0.83rem' }}>
+                  {chatError}
                 </div>
               )}
 
-              {/* Quick prompts */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
                 {PROMPTS.map((p) => (
-                  <button
-                    key={p}
-                    className="chip"
-                    onClick={() => { setChatMessage(p); handleChat(p); }}
-                    disabled={chatLoading}
-                  >
-                    {p}
-                  </button>
+                  <button key={p} className="chip" onClick={() => { setChatMessage(p); handleChat(p); }} disabled={chatLoading}>{p}</button>
                 ))}
               </div>
             </div>
@@ -146,34 +147,28 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── AI Result ── */}
+      {/* ── AI Result ────────────────────────────────────────────────────── */}
       {chatResult && (
-        <section id="ai-result" className="fade-in" style={{ padding: '5rem 0', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+        <section id="ai-result" className="fade-in" style={{ padding: '5rem 0', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
           <div className="container">
-            <div className="section-header">
-              <span className="section-label">✦ AI Recommendation</span>
-              <h2 className="title" style={{ marginTop: '0.75rem' }}>Your Curated Outfit</h2>
-              {chatResult.intent?.intentSummary && (
-                <p className="subtitle" style={{ marginTop: '0.5rem', maxWidth: 600, margin: '0.5rem auto 0' }}>
-                  {chatResult.intent.intentSummary}
-                </p>
-              )}
+            <div style={{ marginBottom: '2.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ height: 1, width: 32, background: 'var(--accent)' }} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--accent)' }}>AI Recommendation</span>
+              </div>
+              <h2 className="title">Your Curated Outfit</h2>
               {chatResult.outfit?.reasoning && (
-                <p style={{ marginTop: '0.75rem', color: 'var(--accent)', fontStyle: 'italic', fontSize: '0.9rem' }}>
+                <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.95rem', fontFamily: 'var(--font-display)', maxWidth: 580 }}>
                   "{chatResult.outfit.reasoning}"
                 </p>
               )}
             </div>
 
             {chatResult.outfit?.heroDress ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
+              <div className="product-grid">
                 <ProductCard product={chatResult.outfit.heroDress} showBadge="Hero Look" />
-                {chatResult.outfit.otherDresses?.slice(0, 3).map((p: any) => (
-                  <ProductCard key={p._id} product={p} />
-                ))}
-                {chatResult.outfit.shoes?.slice(0, 4).map((p: any) => (
-                  <ProductCard key={p._id || p.name} product={p} showBadge="Matching Shoe" />
-                ))}
+                {chatResult.outfit.otherDresses?.slice(0, 3).map((p: any) => <ProductCard key={p._id} product={p} />)}
+                {chatResult.outfit.shoes?.slice(0, 4).map((p: any) => <ProductCard key={p._id || p.name} product={p} showBadge="Matched Shoe" />)}
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
@@ -185,68 +180,63 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* ── Featured Products ── */}
-      <section style={{ padding: '6rem 0' }}>
+      {/* ── Featured Products ─────────────────────────────────────────────── */}
+      <section style={{ padding: '7rem 0' }}>
         <div className="container">
-          <div className="section-header">
-            <span className="section-label">✦ Curated For You</span>
-            <h2 className="title" style={{ marginTop: '0.75rem' }}>Featured Collections</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem', flexWrap: 'wrap', gap: '1.5rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+                <div style={{ height: 1, width: 32, background: 'var(--accent)' }} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--accent)' }}>Curated For You</span>
+              </div>
+              <h2 className="title">Featured Collections</h2>
+            </div>
+            <Link href="/discover" className="btn btn-ghost btn-sm">Browse All →</Link>
           </div>
 
           {/* Occasion Filter */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
             {OCCASIONS.map((occ) => (
-              <button
-                key={occ}
-                className={`chip ${activeOccasion === occ ? 'active' : ''}`}
-                onClick={() => setActiveOccasion(occ)}
-              >
-                {occ}
-              </button>
+              <button key={occ} className={`chip ${activeOccasion === occ ? 'active' : ''}`} onClick={() => setActiveOccasion(occ)}>{occ}</button>
             ))}
           </div>
 
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '5rem' }}>
-              <div className="spinner" style={{ width: 50, height: 50 }} />
+              <div className="spinner" style={{ width: 48, height: 48 }} />
             </div>
           ) : filteredFeatured.length > 0 ? (
             <div className="product-grid">
-              {filteredFeatured.map((product) => (
-                <ProductCard key={product._id} product={product} />
-              ))}
+              {filteredFeatured.map((product) => <ProductCard key={product._id} product={product} />)}
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👗</div>
-              <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>No products yet</p>
-              <p style={{ marginBottom: '1.5rem', color: 'var(--text-muted)' }}>Run the scraper to populate fashion products.</p>
-              <Link href="/admin" className="btn btn-primary">Run Scraper →</Link>
+              <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', marginBottom: '0.5rem' }}>No products yet</p>
+              <p style={{ marginBottom: '1.75rem', color: 'var(--text-muted)', fontSize: '0.88rem' }}>Run the scraper from the Admin Dashboard to populate fashion products.</p>
+              <Link href="/admin" className="btn btn-primary">Go to Admin →</Link>
             </div>
           )}
 
           {filteredFeatured.length > 0 && (
-            <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-              <Link href="/discover" className="btn btn-secondary btn-lg">Browse All Collections →</Link>
+            <div style={{ textAlign: 'center', marginTop: '3.5rem' }}>
+              <Link href="/discover" className="btn btn-secondary btn-lg">View All Collections</Link>
             </div>
           )}
         </div>
       </section>
 
-      {/* ── Brand Strip ── */}
-      <section style={{ padding: '3.5rem 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+      {/* ── Brand Strip ──────────────────────────────────────────────────── */}
+      <section style={{ padding: '4rem 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
         <div className="container">
-          <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: '1.75rem' }}>
+          <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.22em', marginBottom: '2rem' }}>
             Powered by real products from
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(1.5rem,4vw,3.5rem)', flexWrap: 'wrap', alignItems: 'center' }}>
-            {['Khaadi', 'Beechtree', 'Limelight', 'Alkaram', 'Gul Ahmed', 'Stylo', 'Borjan', 'ECS'].map((brand) => (
-              <Link
-                key={brand}
-                href={`/discover?brand=${brand}`}
-                style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontFamily: 'var(--font-display)', fontSize: '1.15rem', transition: 'color 0.2s', fontWeight: 400 }}
+            {BRANDS.map((brand) => (
+              <Link key={brand} href={`/discover?brand=${brand}`}
+                style={{ color: 'var(--text-muted)', textDecoration: 'none', fontFamily: 'var(--font-display)', fontSize: '1.1rem', transition: 'color 0.22s', fontWeight: 400, letterSpacing: '0.04em' }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
               >
                 {brand}
               </Link>
@@ -255,35 +245,44 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── How It Works ── */}
-      <section style={{ padding: '7rem 0' }}>
+      {/* ── How It Works ─────────────────────────────────────────────────── */}
+      <section style={{ padding: '8rem 0' }}>
         <div className="container">
-          <div className="section-header">
-            <span className="section-label">✦ How It Works</span>
-            <h2 className="title" style={{ marginTop: '0.75rem' }}>Intelligence Meets Fashion</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ height: 1, width: 32, background: 'var(--accent)' }} />
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--accent)' }}>How It Works</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '2rem', marginTop: '3rem' }}>
-            {[
-              { icon: '🔍', title: 'Real Product Scraping', desc: 'Automated daily scraping from Beechtree, Khaadi, Limelight, Alkaram, Gul Ahmed, Stylo and more.' },
-              { icon: '🤖', title: 'Gemini AI Styling', desc: 'Gemini parses your intent, color theory scores compatibility, and embeddings match styles semantically.' },
-              { icon: '👗', title: 'Complete Outfits', desc: 'Get clothing + matching shoes + accessories — all sourced from real Pakistani brands.' },
-              { icon: '♡', title: 'Save Favourites', desc: 'Bookmark looks you love and revisit your curated collection anytime.' },
-            ].map((item, i) => (
-              <div key={i} className="glass-card" style={{ padding: '2.25rem', textAlign: 'center' }}>
-                <div style={{ fontSize: '2.75rem', marginBottom: '1.25rem' }}>{item.icon}</div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', marginBottom: '0.75rem' }}>{item.title}</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.65 }}>{item.desc}</p>
+          <h2 className="title" style={{ marginBottom: '4rem', maxWidth: 500 }}>Intelligence Meets Fashion</h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '0' }}>
+            {HOW.map((item, i) => (
+              <div key={i} style={{ padding: '2.5rem 2rem', borderLeft: i === 0 ? '1px solid var(--border)' : 'none', borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', transition: 'background 0.25s ease' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-card)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: '2.5rem', color: 'var(--border-mid)', fontWeight: 300, lineHeight: 1, marginBottom: '1.5rem' }}>{item.num}</p>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.75rem', fontWeight: 500 }}>{item.title}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.7 }}>{item.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CTA ── */}
-      <section style={{ padding: '6rem 0', textAlign: 'center', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+      {/* ── CTA ──────────────────────────────────────────────────────────── */}
+      <section style={{ padding: '7rem 0', textAlign: 'center', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
         <div className="container">
-          <h2 className="title" style={{ marginBottom: '1rem' }}>Ready to discover your <em className="gradient-text">style?</em></h2>
-          <p className="subtitle" style={{ marginBottom: '2.5rem' }}>Browse thousands of real products from Pakistan's top fashion brands.</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div style={{ height: 1, flex: 1, maxWidth: 60, background: 'var(--border-mid)' }} />
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--accent)' }}>Begin</span>
+            <div style={{ height: 1, flex: 1, maxWidth: 60, background: 'var(--border-mid)' }} />
+          </div>
+          <h2 className="title" style={{ marginBottom: '1rem' }}>
+            Ready to discover your <em style={{ fontStyle: 'italic', color: 'var(--accent-light)', fontWeight: 300 }}>style?</em>
+          </h2>
+          <p className="subtitle" style={{ marginBottom: '2.75rem', maxWidth: 480, margin: '0.75rem auto 2.75rem' }}>
+            Browse thousands of real products from Pakistan's top fashion brands.
+          </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link href="/discover" className="btn btn-primary btn-lg">Explore Collections</Link>
             <Link href="/search" className="btn btn-ghost btn-lg">Search Products</Link>
