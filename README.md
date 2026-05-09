@@ -69,19 +69,21 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 - JWT authentication (30-day tokens)
 - Personal favorites — toggle-save any product
 - User preferences — occasions, styles, colors, budget
-- First registered user auto-promoted to admin
+- Public registration disabled for production security
+- Admin seeder script to initialize secure admin access
 
 ### Admin Dashboard
 - Real-time scraper status and live logs stream (via Server-Sent Events / SSE)
 - Manual scrape trigger (runs async, non-blocking)
 - Full scrape history with per-brand breakdown
 - Product stats by category, brand, and 7-day growth
+- Change Password modal for secure credentials management
 - Delete all products for a specific brand
 
 ### Premium UI
 - **Next.js 16** with App Router and TypeScript
-- **Glassmorphism design system** — dynamic dark luxury aesthetic with animated orbs and gold accents
-- **AI Chatbot** — full-screen messaging UI with RAG outfit recommendations and quick-prompt chips
+- **Editorial Fashion Design System** — refined charcoal and gold aesthetic, solid surfaces, no glassmorphism
+- **Floating AI ChatWidget** — side-panel messaging UI with RAG outfit recommendations, toast notifications, and compact product cards
 - **Virtual Try-On** — two-panel before/after with Replicate IDM-VTON integration and step progress
 - **Wardrobe Manager** — upload clothes, Gemini auto-tags category/color/style, filter by type
 - **Outfit Boards** — save and manage AI-generated outfit combinations
@@ -96,7 +98,7 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16, React 19, TypeScript |
-| Styling | Vanilla CSS — custom Glassmorphism design system |
+| Styling | Vanilla CSS — custom Editorial Fashion design system |
 | HTTP Client | Axios with interceptors |
 | Backend | Node.js, Express 4 (ES Modules) |
 | Database | MongoDB via Mongoose 8 |
@@ -214,11 +216,11 @@ AuraFit/
     │   │   ├── register/page.tsx    # Registration form
     │   │   ├── admin/page.tsx       # Admin dashboard
     │   │   ├── categories/page.tsx  # Category browser
-    │   │   └── globals.css          # Glassmorphism design system
+    │   │   └── globals.css          # Editorial Fashion design system
     │   ├── components/
     │   │   ├── Navbar.tsx           # Top navigation
     │   │   ├── ProductCard.tsx      # Reusable product card
-    │   │   ├── ChatBox.tsx          # AI chat input
+    │   │   ├── ChatWidget.tsx       # Floating AI chat side-panel
     │   │   └── RecommendationResult.tsx # Outfit result display
     │   ├── context/
     │   │   └── AuthContext.tsx      # Global auth state
@@ -354,6 +356,7 @@ Normalized join table — unique compound index on `{ user, product }`.
 | GET | `/scraper/status` | Admin | Is scraper currently running? |
 | POST | `/scraper/run` | Admin | Trigger async scrape |
 | DELETE | `/products/brand/:brand` | Admin | Delete all products for a brand |
+| PUT | `/auth/change-password` | Admin | Change admin password securely |
 
 ---
 
@@ -482,6 +485,9 @@ Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 ag
 | `SCRAPER_DELAY_MS` | No | `1500` | Delay between HTTP requests (ms) |
 | `SCRAPER_RETRY_LIMIT` | No | `3` | Max retries on failed requests |
 | `SCRAPER_CRON_SCHEDULE` | No | `0 3 * * 0` | Cron expression (default: Sunday 3 AM) |
+| `ADMIN_NAME` | Yes | — | Name of the admin for seeder script |
+| `ADMIN_EMAIL` | Yes | — | Email of the admin for seeder script |
+| `ADMIN_PASSWORD` | Yes | — | Initial password of the admin for seeder script |
 
 ### Frontend (`frontend/.env.local`)
 
@@ -518,6 +524,7 @@ npm install
 cd AuraFit/backend
 cp .env.example .env
 # Fill in MONGO_URI, JWT_SECRET, GEMINI_API_KEY, FRONTEND_URL
+# Fill in ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD
 ```
 
 ```bash
@@ -542,15 +549,22 @@ npm run dev
 # Running at http://localhost:3000
 ```
 
-### 5. Populate the database
+### 5. Seed the Admin Account
+
+Since public registration is disabled for security, you must seed the initial admin account:
+
+```bash
+cd AuraFit/backend
+npm run seed:admin
+```
+
+### 6. Populate the database
 
 ```bash
 cd AuraFit/backend
 npm run scrape        # Live scrape — writes to DB
 npm run scrape:dry    # Dry run — no DB writes (testing)
 ```
-
-The first user to register via the UI or API will automatically be granted admin privileges.
 
 ---
 
@@ -576,6 +590,7 @@ Access at `/admin` after logging in with an admin account.
 | Start dev (watch) | `npm run dev` | `nodemon server.js` |
 | Run scraper | `npm run scrape` | Execute full scrape, write to DB |
 | Dry-run scraper | `npm run scrape:dry` | Execute scrape, no DB writes |
+| Seed Admin | `npm run seed:admin` | Create admin from .env credentials |
 | Run tests | `npm test` | `node --test` |
 
 ---
