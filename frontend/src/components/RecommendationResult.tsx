@@ -14,7 +14,9 @@ export default function RecommendationResult({ data }: { data: any }) {
       {/* Styling Summary Banner */}
       <div className="glass-panel" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
         <h3 style={{ color: 'var(--accent)', marginBottom: '0.5rem' }}>Stylist's Vision</h3>
-        <p style={{ color: 'var(--text-secondary)' }}>{intent.intentSummary}</p>
+        <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '1.1rem' }}>
+          "{outfit?.reasoning || intent.intentSummary}"
+        </p>
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
           {intent.color && intent.color !== 'Any' && (
             <span style={{ fontSize: '0.8rem', padding: '4px 10px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}>
@@ -46,7 +48,16 @@ export default function RecommendationResult({ data }: { data: any }) {
                 <span style={{ fontSize: '0.8rem', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>{heroDress.brand}</span>
                 <h3 style={{ margin: '0.5rem 0', fontSize: '1.5rem' }}>{heroDress.title}</h3>
                 <p style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: '1rem' }}>Rs. {heroDress.price.toLocaleString()}</p>
-                <a href={heroDress.productUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: '1.5rem', padding: '10px 20px', background: 'var(--accent)', color: '#fff', borderRadius: '8px', fontWeight: 600 }}>Get This Look</a>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '1.5rem' }}>
+                  <a href={heroDress.productUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '10px 20px', background: 'var(--accent)', color: '#fff', borderRadius: '8px', fontWeight: 600 }}>Get This Look</a>
+                  <button 
+                    onClick={() => alert('Outfit Saved to your Boards!')}
+                    className="glass-button" 
+                    style={{ padding: '10px 20px', borderRadius: '8px' }}
+                  >
+                    Save Outfit
+                  </button>
+                </div>
               </div>
             </div>
           </div>
