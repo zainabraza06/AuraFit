@@ -13,39 +13,39 @@ export default function RecommendationResult({ data, compact = false }: { data: 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%' }}>
         {outfit?.reasoning && (
-          <p style={{ fontSize: '0.78rem', color: '#9898b8', fontStyle: 'italic', lineHeight: 1.5, padding: '0.6rem 0.8rem', background: 'rgba(167,139,250,0.05)', borderRadius: 8, borderLeft: '2px solid rgba(167,139,250,0.4)' }}>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, padding: '0.6rem 0.8rem', background: 'rgba(201,169,110,0.06)', borderRadius: 'var(--radius-sm)', borderLeft: '2px solid rgba(201,169,110,0.4)', fontFamily: 'var(--font-display)' }}>
             "{outfit.reasoning}"
           </p>
         )}
         {heroDress && (
-          <a href={heroDress.productUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', gap: '0.7rem', background: '#1c1c28', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, overflow: 'hidden', transition: 'border-color 0.2s' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(167,139,250,0.3)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+          <a href={heroDress.productUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', gap: '0.7rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', transition: 'border-color 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
             <img src={heroDress.imageUrl || heroDress.images?.[0] || '/placeholder.jpg'} alt={heroDress.name} style={{ width: 70, height: 90, objectFit: 'cover', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
             <div style={{ padding: '0.65rem 0.65rem 0.65rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-              <p style={{ fontSize: '0.65rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{heroDress.brand}</p>
-              <p style={{ fontSize: '0.82rem', color: '#e8e8ff', fontWeight: 500, lineHeight: 1.3, marginBottom: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{heroDress.name}</p>
-              <p style={{ fontSize: '0.82rem', color: '#fbbf24', fontWeight: 700 }}>PKR {heroDress.price?.toLocaleString()}</p>
-              {heroDress.primaryColor && <p style={{ fontSize: '0.68rem', color: '#6b6b8a', marginTop: '0.2rem' }}>{heroDress.primaryColor}</p>}
+              <p style={{ fontSize: '0.65rem', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{heroDress.brand}</p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.3, marginBottom: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{heroDress.name}</p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--accent-light)', fontWeight: 600 }}>PKR {heroDress.price?.toLocaleString()}</p>
+              {heroDress.primaryColor && <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>{heroDress.primaryColor}</p>}
             </div>
           </a>
         )}
         {shoes.length > 0 && (
           <div>
-            <p style={{ fontSize: '0.65rem', color: '#55557a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Matched Shoes</p>
-            <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
+            <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Matched Shoes</p>
+            <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.2rem', scrollbarWidth: 'none' }}>
               {shoes.slice(0, 3).map((s: any, i: number) => (
                 <a key={i} href={s.productUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', flexShrink: 0, width: 68 }}>
-                  <img src={s.imageUrl || s.images?.[0] || '/placeholder.jpg'} alt={s.name} style={{ width: 68, height: 68, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)' }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
-                  <p style={{ fontSize: '0.62rem', color: '#9898b8', marginTop: '0.2rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
+                  <img src={s.imageUrl || s.images?.[0] || '/placeholder.jpg'} alt={s.name} style={{ width: 68, height: 68, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+                  <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
                 </a>
               ))}
             </div>
           </div>
         )}
         {(otherDresses.length > 0 || shoes.length > 0) && (
-          <p style={{ fontSize: '0.68rem', color: '#6b6b8a', textAlign: 'center' }}>Click any item to shop ↗</p>
+          <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Click any item to shop ↗</p>
         )}
       </div>
     );
@@ -67,12 +67,12 @@ export default function RecommendationResult({ data, compact = false }: { data: 
             <span className="tag" style={{ color: 'var(--text-primary)' }}>🎨 {intent.color}</span>
           )}
           {intent.occasion?.map((o: string) => (
-            <span key={o} className="tag" style={{ color: 'var(--accent)', borderColor: 'var(--border-accent)', background: 'rgba(167,139,250,0.08)' }}>
+            <span key={o} className="tag" style={{ color: 'var(--accent)', borderColor: 'var(--border-accent)', background: 'rgba(201,169,110,0.06)' }}>
               #{o}
             </span>
           ))}
           {intent.maxBudget > 0 && (
-            <span className="tag" style={{ color: 'var(--success)', borderColor: 'rgba(52,211,153,0.2)', background: 'rgba(52,211,153,0.08)' }}>
+            <span className="tag" style={{ color: 'var(--success)', borderColor: 'rgba(114,168,132,0.2)', background: 'rgba(114,168,132,0.08)' }}>
               Under PKR {intent.maxBudget.toLocaleString()}
             </span>
           )}
@@ -91,7 +91,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                 <img
                   src={heroDress.imageUrl || heroDress.images?.[0] || '/placeholder.jpg'}
                   alt={heroDress.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s var(--ease)' }}
                   onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
                   onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                   onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
@@ -101,7 +101,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                 <div>
                   <p className="product-card__brand" style={{ fontSize: '0.72rem', marginBottom: '0.5rem' }}>{heroDress.brand}</p>
                   <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', lineHeight: 1.25, marginBottom: '0.75rem' }}>{heroDress.name}</h3>
-                  <p style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--accent-gold)', marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--accent-light)', marginBottom: '1rem' }}>
                     PKR {heroDress.price?.toLocaleString()}
                   </p>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
@@ -138,7 +138,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                       <img
                         src={p.imageUrl || p.images?.[0] || '/placeholder.jpg'}
                         alt={p.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s var(--ease)' }}
                         onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.06)')}
                         onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                         onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
@@ -160,7 +160,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
             <div>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 Matching <em className="gradient-text">Shoes</em>
-                <span className="tag" style={{ fontSize: '0.65rem', color: 'var(--accent-teal)', borderColor: 'rgba(45,212,191,0.25)', background: 'rgba(45,212,191,0.08)' }}>
+                <span className="tag" style={{ fontSize: '0.65rem', color: 'var(--accent-teal)', borderColor: 'rgba(106,173,160,0.25)', background: 'rgba(106,173,160,0.08)' }}>
                   AI Matched
                 </span>
               </h3>
@@ -171,7 +171,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                       <img
                         src={shoe.imageUrl || shoe.images?.[0] || '/placeholder.jpg'}
                         alt={shoe.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s var(--ease)' }}
                         onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.06)')}
                         onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                         onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
