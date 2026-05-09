@@ -1,6 +1,6 @@
-# MuseAI — AI-Powered Pakistani Fashion Platform
+# AuraFit — AI-Powered Pakistani Fashion Platform
 
-> A production-grade, full-stack fashion discovery and outfit recommendation platform built exclusively for the Pakistani market. MuseAI aggregates real-time product data from 10 leading Pakistani fashion brands and uses AI to generate intelligent, color-coordinated outfit recommendations.
+> A production-grade, full-stack fashion discovery and outfit recommendation platform built exclusively for the Pakistani market. AuraFit aggregates real-time product data from 10 leading Pakistani fashion brands and uses AI to generate intelligent, color-coordinated outfit recommendations.
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## Overview
 
-MuseAI solves a real market gap: Pakistani fashion shoppers have no single intelligent platform that aggregates products across the country's top brands and recommends complete, styled outfits. 
+AuraFit solves a real market gap: Pakistani fashion shoppers have no single intelligent platform that aggregates products across the country's top brands and recommends complete, styled outfits. 
 
 The platform automatically scrapes **10 top Pakistani brands** on a weekly schedule, normalizes all product data into a unified schema, and uses a multi-factor AI scoring system to recommend complementary items — giving users complete outfit suggestions from a single search or chat query.
 

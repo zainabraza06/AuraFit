@@ -32,7 +32,7 @@ export default function RegisterPage() {
       <div className="container" style={{ maxWidth: '480px' }}>
         <div className="glass-card" style={{ padding: '3rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-            <h1 className="title">Join MuseAI</h1>
+            <h1 className="title">Join AuraFit</h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Start your AI-powered fashion journey</p>
           </div>
 
