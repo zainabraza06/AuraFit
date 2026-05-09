@@ -2,7 +2,7 @@
  * testGemini.js
  * Quick test to verify the Gemini API key and fashion intent parsing.
  */
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,8 +22,8 @@ async function testGemini() {
   console.log('🚀 Testing Gemini API Connection...');
 
   try {
-    const genAI = new GoogleGenAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = `
       You are a fashion stylist. 

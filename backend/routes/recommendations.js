@@ -6,7 +6,7 @@
 
 import express from 'express';
 import { getRecommendations, getOutfitForQuery } from '../services/recommendationEngine.js';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -47,7 +47,7 @@ router.post('/outfit', async (req, res) => {
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const prompt = `
 You are an AI fashion stylist for a Pakistani platform.
 Parse the following user request and extract fashion intent as JSON.
@@ -60,12 +60,14 @@ Return ONLY a valid JSON object with:
 - maxBudget (number in PKR, 0 if not specified)
 - intentSummary (string, 1 sentence)
 `;
-        const response = await ai.models.generateContent({
+        const model = ai.getGenerativeModel({ 
           model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: { responseMimeType: 'application/json', temperature: 0.1 }
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
         });
-        let text = response.text;
+        
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        let text = response.text();
         if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         parsedIntent = JSON.parse(text);
       } catch (aiErr) {
