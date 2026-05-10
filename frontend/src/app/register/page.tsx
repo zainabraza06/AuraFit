@@ -19,6 +19,8 @@ export default function RegisterPage() {
     try {
       const res = await authApi.register(name, email, password);
       localStorage.setItem('fashion_token', res.data.token);
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
       router.push('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');

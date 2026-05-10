@@ -1,6 +1,6 @@
 /**
  * auth.js — Authentication Routes
- * POST /api/auth/register       — CLOSED: returns 403 (use seed-admin script)
+ * POST /api/auth/register       — public registration (role defaults to "user")
  * POST /api/auth/login          — get JWT token
  * GET  /api/auth/me             — get current user (protected)
  * PUT  /api/auth/change-password — change admin password (protected)
@@ -18,13 +18,28 @@ function generateToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 }
 
-// ─── POST /api/auth/register — CLOSED TO PUBLIC ──────────────────────────────
-// Registration is disabled. Only the seeded admin account exists.
-// To create the admin, run: node scripts/seedAdmin.js
+// ─── POST /api/auth/register ─────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
-  return res.status(403).json({
-    error: 'Public registration is disabled. Please contact the administrator.'
-  });
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    const exists = await User.findOne({ email });
+    if (exists) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+    const user = await User.create({ name, email, password });
+    res.status(201).json({
+      user: user.toJSON(),
+      token: generateToken(user._id)
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Registration failed' });
+  }
 });
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
