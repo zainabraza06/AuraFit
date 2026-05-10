@@ -78,7 +78,7 @@ Return ONLY a valid JSON object with these exact fields:
   • ivory, cream, off-white, pearl, chalk, snow, milk white → White
   • silver, ash, charcoal, slate, smoke, steel grey, graphite, gray → Grey
   • mustard, lemon, saffron, butter, canary, pastel yellow, lemon yellow, zard, peela → Yellow
-  • coral, terracotta, amber, burnt orange, apricot, pumpkin, narangi → Orange
+  • coral, terracotta, amber, burnt orange, apricot, pumpkin, narangi, tangerine, mango → Orange
   • golden, antique gold, champagne, bronze, dull gold → Gold
   • beige, nude, camel, fawn, khaki, khaaki, sand, oat, linen, wheat, biscuit → Beige
   • chocolate, mocha, coffee, caramel, tan, walnut, chestnut, dark brown → Brown
@@ -86,6 +86,12 @@ Return ONLY a valid JSON object with these exact fields:
 
   For "pastel" alone: look at the rest of the message for clues; if unclear use "Any".
   If no color is mentioned at all → "Any".
+
+- shade: (string) The EXACT color word(s) the user mentioned, before any normalization.
+  Copy it verbatim from the user's message (lowercase).
+  Examples: user says "ferozi" → "ferozi", user says "tangerine" → "tangerine",
+  user says "blue" → "blue", user says "mustard yellow" → "mustard yellow".
+  If no color was mentioned → "any".
 
 - occasion: (array of strings) Pick all that apply from:
   ["casual", "wedding", "office", "party", "eid", "formal", "mehndi"]
@@ -105,6 +111,7 @@ Return ONLY a valid JSON object with these exact fields:
 Example — "I need a ferozi lawn suit for eid under 8000":
 {
   "color": "Teal",
+  "shade": "ferozi",
   "occasion": ["eid"],
   "style": ["elegant", "traditional"],
   "maxBudget": 8000,
@@ -131,6 +138,7 @@ Example — "I need a ferozi lawn suit for eid under 8000":
           color: isCanonical ? rawColor : (CANONICAL_COLORS.find(
             c => rawColor.toLowerCase().includes(c.toLowerCase())
           ) || 'Any'),
+          shade: (parsed.shade && parsed.shade !== 'any') ? parsed.shade.toLowerCase().trim() : null,
           occasion: Array.isArray(parsed.occasion) ? parsed.occasion : ['casual'],
           style: Array.isArray(parsed.style) ? parsed.style : ['elegant'],
           maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,

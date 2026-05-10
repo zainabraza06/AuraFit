@@ -324,39 +324,54 @@ finalScore = colorMatch    × 0.45
 
 **Why different weights?** When a user explicitly says "purple dress", color correctness matters most. The 45% color weight ensures purple items rank far above white/black items even if the DB-level color storage format varies.
 
-### 5.2 Color Match Algorithm (Intent System)
+### 5.2 Three-Tier Color Match Algorithm (Intent System)
 
-This is the fix for the "purple shows white" bug. The algorithm works in three tiers:
+This is the fix for the "purple shows white" bug, extended to also handle exact shade lookups.
 
 ```
-User asks: "purple dress for eid"
-Gemini parses: color = "Purple"
+User asks: "tangerine dress for eid"
+Gemini parses: color = "Orange", shade = "tangerine"
 
 For each product in pool (300 items):
 
-  Tier 1 — Canonical alias match
-    normalizeColor("Lavender") → "Purple"
-    normalizeColor("Lilac")    → "Purple"
-    normalizeColor("Violet")   → "Purple"
-    If product's normalized color == target normalized color → score = 1.0
+  Tier 1 — Exact raw shade match (score = 1.0)
+    shadeToMatch = "tangerine"   (from Gemini's 'shade' field)
+    product.primaryColor = "tangerine"
+    productRawLower.some(c => c.includes("tangerine")) → true
+    → colorScore = 1.0  ← DB stores the exact shade the user typed
 
-  Tier 2 — Substring match
-    product.primaryColor = "Light Purple"
-    "light purple".includes("purple") → true → score = 0.82
+  Tier 2 — Canonical alias match (score = 0.82)
+    product.primaryColor = "coral"
+    normalizeColor("coral") → "Orange"
+    targetNorm = normalizeColor("Orange") → "Orange"
+    productNorms.includes("Orange") → true
+    → colorScore = 0.82  ← DB uses a different shade, but same color family
 
-  Tier 3 — No match
-    product.primaryColor = "White" → score = 0.08 (hard penalty)
+  Tier 3 — Wrong color family (score = 0.08)
+    product.primaryColor = "White"
+    No raw match, no alias match
+    → colorScore = 0.08 ← hard penalty pushes this to the bottom
 
-Color alias map covers 40+ common variations:
-  lavender/lilac/mauve/plum/violet/grape → Purple
-  navy/cobalt/sky blue/royal blue        → Blue
-  maroon/crimson/burgundy/wine/rust      → Red
-  ivory/cream/off-white/snow             → White
-  blush/peach/rose/fuchsia               → Pink
-  ...
+Color alias map covers 180+ shade variants including Pakistani Urdu terms:
+  lavender/lilac/mauve/plum/violet/grape/jamuni/baingan → Purple
+  navy/cobalt/sky blue/royal blue/indigo/nila            → Blue
+  maroon/crimson/burgundy/wine/rust/mehroon/surkh/laal   → Red
+  ivory/cream/off-white/snow/safed                       → White
+  blush/peach/rose/fuchsia/gulabi                        → Pink
+  ferozi/firozi/turquoise/aqua/cyan/seafoam              → Teal
+  dhani/mehendi/sabz/emerald/olive/mint/sage             → Green
+  narangi/coral/terracotta/amber/tangerine/mango         → Orange
+  zard/peela/mustard/lemon/saffron                       → Yellow
+  jamuni → Purple, nila → Blue, gulabi → Pink (Urdu terms)
 ```
 
 This replaces the old approach of `$regex` filtering on MongoDB (which failed when colors were stored as aliases).
+
+**The `shade` field:** Gemini now extracts two color fields from every user query:
+- `color` — the canonical system color (e.g., `"Orange"`) — used for alias matching
+- `shade` — the exact word the user typed (e.g., `"tangerine"`) — used for raw DB matching
+
+If a product literally stores `primaryColor: "tangerine"` and the user searched "tangerine", it gets Tier 1 (1.0). If the product stores "coral" (same Orange family), it gets Tier 2 (0.82). Only products outside Orange entirely get the 0.08 penalty.
 
 ### 5.3 Intent Parsing with Gemini
 
@@ -366,10 +381,13 @@ User Input: "I need a pastel purple outfit for my sister's wedding under 15000"
                 ▼
         Gemini 2.5 Flash
         (responseMimeType: 'application/json')
+        Prompt includes: full list of 15 canonical colors + shade→canonical
+        mapping table so Gemini never invents non-canonical color names
                 │
                 ▼
 {
   "color": "Purple",
+  "shade": "pastel purple",
   "occasion": ["wedding"],
   "style": ["elegant", "traditional"],
   "maxBudget": 15000,
@@ -629,21 +647,43 @@ Notable fashion rules encoded:
 
 ### 9.2 Color Normalization & Aliases
 
-40+ color aliases are resolved to canonical names before matrix lookup:
+180+ color aliases are resolved to canonical names before matrix lookup, including Pakistani Urdu transliterations used by local brands:
 
 ```
-lavender, lilac, mauve, plum, violet, grape → Purple
-navy, navy blue, cobalt, sky blue, royal blue → Blue
-maroon, crimson, burgundy, wine, rust → Red
-ivory, cream, off-white, snow → White
-blush, peach, rose, fuchsia, hot pink → Pink
-emerald, olive, mint, sage, forest green → Green
-beige, nude, camel, fawn, khaki, sand → Beige
-chocolate, mocha, coffee, caramel, tan → Brown
-turquoise, aqua, cyan, seafoam → Teal
-mustard, lemon, saffron → Yellow
-coral, terracotta, amber → Orange
+English / International:
+  lavender, lilac, mauve, plum, violet, grape, wisteria, amethyst, orchid → Purple
+  navy, navy blue, cobalt, sky blue, royal blue, indigo, denim, cerulean  → Blue
+  maroon, crimson, burgundy, wine, rust, scarlet, ruby, raspberry          → Red
+  ivory, cream, off-white, snow, pearl, chalk, eggshell                    → White
+  blush, peach, rose, fuchsia, hot pink, salmon, dusty pink, magenta       → Pink
+  emerald, olive, mint, sage, forest green, bottle green, sea green        → Green
+  beige, nude, camel, fawn, khaki, sand, oat, linen, wheat, taupe          → Beige
+  chocolate, mocha, coffee, caramel, tan, walnut, chestnut, hazel          → Brown
+  turquoise, aqua, cyan, seafoam, peacock, teal green                      → Teal
+  mustard, lemon, saffron, butter, canary, sunflower, ochre                → Yellow
+  coral, terracotta, amber, burnt orange, apricot, tangerine, mango        → Orange
+  golden, champagne, bronze, brass, rose gold, antique gold                → Gold
+  silver, ash, slate, stone, smoke, platinum, gunmetal                     → Grey
+  charcoal, graphite, onyx, ebony, jet black                               → Black
+
+Pakistani Urdu transliterations:
+  ferozi, firozi                → Teal    (turquoise — very common in Pakistan)
+  jamuni, baingan               → Purple  (violet / eggplant purple)
+  gulabi                        → Pink    (پنک)
+  mehroon, mehrun, merun        → Red     (maroon)
+  surkh, laal                   → Red
+  nila                          → Blue    (dark indigo blue)
+  narangi                       → Orange
+  zard, peela                   → Yellow
+  safed                         → White
+  dhani, mehendi, sabz          → Green   (grass green / henna green)
 ```
+
+**`colorTheory.js` fixes applied:**
+- `Beige` is now a full row in the compatibility matrix (was missing)
+- `Beige` and `Multicolor` added to `NEUTRAL_COLORS` set
+- `beige/nude/camel` now correctly map to `Beige` (was wrongly mapped to `Gold`)
+- All Urdu terms synced between `colorTheory.js` and `recommendationEngine.js`
 
 ---
 

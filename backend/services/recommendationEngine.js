@@ -209,29 +209,35 @@ export function scoreProduct(source, candidate) {
 }
 
 // ─── Score a product against a user intent ────────────────────────────────────
-// Fixes the "purple shows white" bug: no DB-level color filtering here.
-// Every product in the pool is scored; correct color ranks at the top.
+// Three-tier color scoring:
+//   Tier 1 (1.00): product stores the exact shade the user typed  → "tangerine" in DB, user said "tangerine"
+//   Tier 2 (0.82): canonical alias match → "coral" in DB, user said "tangerine" (both → Orange)
+//   Tier 3 (0.08): wrong color family  → hard penalty to push non-matching products to bottom
 function scoreProductAgainstIntent(product, intent) {
-  const { color, occasion = [], style = [] } = intent;
+  const { color, shade, occasion = [], style = [] } = intent;
 
   // ── Color match ────────────────────────────────────────────────────────────
   let colorScore = 0.4; // baseline when no color requested
 
   if (color && color.toLowerCase() !== 'any') {
+    const productColors = [product.primaryColor, ...(product.colors || [])].filter(Boolean);
+    const productRawLower = productColors.map((c) => c.toLowerCase());
+    const productNorms = productColors.map(normalizeColor).filter(Boolean);
     const targetNorm = normalizeColor(color);
 
-    const productColors = [product.primaryColor, ...(product.colors || [])].filter(Boolean);
-    const productNorms = productColors.map(normalizeColor).filter(Boolean);
+    // Tier 1: exact raw shade stored in DB matches what the user typed
+    // e.g. user said "tangerine" and product.primaryColor === "tangerine"
+    const shadeToMatch = shade || color.toLowerCase();
+    const rawShadeMatch = productRawLower.some(
+      (c) => c.includes(shadeToMatch) || shadeToMatch.includes(c)
+    );
 
-    if (productNorms.includes(targetNorm)) {
-      colorScore = 1.0; // canonical match (e.g. Lavender → Purple ✓)
+    if (rawShadeMatch) {
+      colorScore = 1.0; // exact shade hit
+    } else if (productNorms.includes(targetNorm)) {
+      colorScore = 0.82; // canonical alias match (e.g. coral → Orange ✓)
     } else {
-      const targetLower = (targetNorm || color).toLowerCase();
-      const rawLower = productColors.map((c) => (c || '').toLowerCase());
-      const substringMatch = rawLower.some(
-        (c) => c.includes(targetLower) || targetLower.includes(c)
-      );
-      colorScore = substringMatch ? 0.82 : 0.08; // hard penalty for wrong color
+      colorScore = 0.08; // wrong color family — hard penalty
     }
   }
 
@@ -242,7 +248,8 @@ function scoreProductAgainstIntent(product, intent) {
   // ── Keyword / text match ──────────────────────────────────────────────────
   const queryTerms = [
     ...occasion, ...style,
-    color && color !== 'Any' ? color.toLowerCase() : ''
+    color && color !== 'Any' ? color.toLowerCase() : '',
+    shade || ''
   ].filter(Boolean);
 
   const productText = [
