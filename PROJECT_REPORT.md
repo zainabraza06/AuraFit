@@ -1,6 +1,6 @@
 # AuraFit — Comprehensive Project Report
 
-**Date:** May 9, 2026  
+**Date:** May 10, 2026  
 **Project:** AuraFit — AI-Powered Pakistani Fashion Platform  
 **Stack:** MERN (MongoDB, Express, React/Next.js, Node.js)  
 **Module System:** ES Modules (`"type": "module"`)
@@ -707,35 +707,53 @@ Example:
 
 Same Jaccard computation over `style[]` arrays. Given lower weight because style compatibility is more subjective and flexible than occasion.
 
-#### Chat-Based Generation (Gemini)
+#### Chat-Based Generation (Gemini + Intent Scoring)
 
 ```
 POST /api/recommendations/outfit { message }
         │
         ▼
-Gemini 2.5 Flash — system prompt:
-  "You are a fashion intent parser. Extract from the user message:
-   { occasion, colors: [], style, category }
-   Return valid JSON only."
+Gemini 2.5 Flash — structured prompt includes:
+  - List of 15 CANONICAL_COLORS — Gemini must map any shade to one of these
+  - Exhaustive shade→canonical mapping table (180+ variants including Urdu)
+  - Returns JSON with 6 fields including new 'shade' field
         │
         ▼
-Parse Gemini JSON response
+Gemini JSON response:
+  {
+    color:         "Orange"         ← canonical (always one of 15)
+    shade:         "tangerine"      ← raw word user typed (NEW)
+    occasion:      ["casual"]
+    style:         ["trendy"]
+    maxBudget:     0
+    intentSummary: "..."
+    aiAnalysis:    "..."
+  }
         │
         ▼
-Query MongoDB:
-  { occasion: { $in: [parsedOccasion] } }
-  { colors: { $in: parsedColors } }   (if colors extracted)
-  { category: "clothing" }            (or "shoes" based on intent)
+Safety net: validate color is canonical; substring fallback if Gemini slips
         │
         ▼
-For each clothing × shoes pair:
-  Compute finalScore
+getOutfitForQuery(parsedIntent)
+  - Fetch 300 clothing (budget filter only — NO color filter at DB level)
+  - Score each with scoreProductAgainstIntent()
         │
         ▼
-Sort by finalScore DESC → take top 5
+scoreProductAgainstIntent() — three-tier color scoring:
+  Tier 1 (1.00): raw shade in DB matches user's shade ("tangerine" = "tangerine")
+  Tier 2 (0.82): canonical alias match ("coral" → Orange = "Orange")
+  Tier 3 (0.08): wrong color family (hard penalty)
         │
         ▼
-Return: [{ clothing, shoes, scores, description }]
+Sort by finalScore DESC → take top 10
+heroDress = top 1, otherDresses = top 2–10
+        │
+        ▼
+Score 150 shoes against heroDress (System A — product-to-product)
+Return top 6 shoes
+        │
+        ▼
+Return: { heroDress, otherDresses[9], shoes[6], scores[10] }
 ```
 
 ---
@@ -746,9 +764,11 @@ Return: [{ clothing, shoes, scores, description }]
 
 A hand-crafted, fashion-informed 14×14 color compatibility matrix. Scores are based on fashion design principles: complementary colors, analogous palettes, and established Pakistani fashion pairings.
 
-#### Supported Colors (14 base)
+#### Supported Canonical Colors (15 base)
 
-`Black` • `White` • `Grey` • `Navy` • `Blue` • `Green` • `Red` • `Maroon` • `Pink` • `Purple` • `Yellow` • `Orange` • `Gold` • `Silver` • `Beige` • `Brown`
+`Black` • `White` • `Grey` • `Blue` • `Green` • `Red` • `Pink` • `Purple` • `Yellow` • `Orange` • `Gold` • `Teal` • `Beige` • `Brown` • `Multicolor`
+
+> Note: `Beige` is a full compatibility matrix row (not just an alias). `Multicolor` and `Beige` are members of `NEUTRAL_COLORS` and score ≥ 0.7 against any color.
 
 #### Compatibility Score Reference (Selected Pairs)
 
@@ -768,17 +788,30 @@ A hand-crafted, fashion-informed 14×14 color compatibility matrix. Scores are b
 
 **Neutral color rule:** Black, White, Grey, Gold, Silver, Beige, Brown all score ≥ 0.7 against virtually any other color because they are versatile anchors.
 
-**Color normalization** (aliases handled):
+**Color normalization** (aliases handled — 180+ entries, synced between `colorTheory.js` and `recommendationEngine.js`):
 
-| Input | Normalized |
-|-------|-----------|
-| "Navy Blue" | "Navy" |
-| "Off-White" | "White" |
-| "Cream" | "Beige" |
-| "Ivory" | "Beige" |
-| "Olive" | "Green" |
-| "Burgundy" | "Maroon" |
-| "Rose" | "Pink" |
+| Input | Normalized | Notes |
+|-------|-----------|-------|
+| "Off-White", "Ivory", "Cream" | "White" | |
+| "Lavender", "Lilac", "Mauve" | "Purple" | |
+| "Navy", "Cobalt", "Indigo" | "Blue" | |
+| "Maroon", "Burgundy", "Wine" | "Red" | |
+| "Coral", "Tangerine", "Amber" | "Orange" | |
+| "Olive", "Mint", "Sage" | "Green" | |
+| "Beige", "Nude", "Camel", "Khaki" | "Beige" | Fixed: was wrongly mapped to Gold |
+| "Turquoise", "Aqua", "Cyan" | "Teal" | |
+| "Golden", "Bronze", "Champagne" | "Gold" | |
+| **Pakistani Urdu terms:** | | |
+| "Ferozi", "Firozi" | "Teal" | Very common in Pakistan |
+| "Jamuni", "Baingan" | "Purple" | |
+| "Gulabi" | "Pink" | |
+| "Mehroon", "Mehrun" | "Red" | Maroon |
+| "Surkh", "Laal" | "Red" | |
+| "Nila" | "Blue" | Dark indigo |
+| "Narangi" | "Orange" | |
+| "Zard", "Peela" | "Yellow" | |
+| "Safed" | "White" | |
+| "Dhani", "Mehendi", "Sabz" | "Green" | |
 
 **Multi-color products:** Iterates all combinations across both products' `colors[]` arrays and returns the maximum score found.
 
@@ -1057,31 +1090,43 @@ Frontend: localStorage.setItem("fashion_token", token)
 ### AI Chat Outfit Flow
 
 ```
-User types: "Need a red wedding outfit"
+User types: "Need a mehroon wedding outfit"
         │
         ▼
 ChatBox submits → POST /api/recommendations/outfit
         │
         ▼
 Backend: call Gemini 2.5 Flash API
-  Prompt: "Extract fashion intent as JSON: { occasion, colors, style, category }"
-  Input: "Need a red wedding outfit"
-  Output: { "occasion": "wedding", "colors": ["red", "maroon"], "style": "formal" }
+  Prompt includes: 15 canonical colors + shade→canonical mapping table
+  Input: "Need a mehroon wedding outfit"
+  Output: {
+    "color": "Red",          ← canonical (mehroon → Red)
+    "shade": "mehroon",      ← raw word user typed
+    "occasion": ["wedding"],
+    "style": ["elegant", "traditional"],
+    "maxBudget": 0,
+    "intentSummary": "...",
+    "aiAnalysis": "..."
+  }
         │
         ▼
-Query products:
-  { occasion: { $in: ["wedding"] }, colors: { $in: ["red","maroon"] }, category: "clothing" }
-  + matching shoes: { category: "shoes" }
+getOutfitForQuery(parsedIntent) — NO DB-level color filter
+  Fetch 300 clothing products (budget filter only)
+  Score each with scoreProductAgainstIntent():
+    Tier 1 (1.0): primaryColor "mehroon" in DB → raw shade match
+    Tier 2 (0.82): primaryColor "maroon" → normalizes to Red → canonical match
+    Tier 3 (0.08): primaryColor "white" → wrong family, hard penalty
+  Sort DESC, take top 10
         │
         ▼
-Compute finalScore for each clothing × shoes pair
-Sort DESC, take top 5
+Score 150 shoes against heroDress (product-to-product scoring)
+Take top 6 shoes
         │
         ▼
-Return outfits array
+Return: { intent, outfit: { heroDress, otherDresses[9], shoes[6], scores[10] } }
         │
         ▼
-Frontend: RecommendationResult renders outfit cards
+Frontend: AI Analysis card → Hero card → ranked grid (#2–#10) → Shoes section
 ```
 
 ### Weekly Auto-Scrape Flow
@@ -1387,7 +1432,8 @@ npm run scrape       # Real scrape
 | Scrape frequency | Weekly (Sunday 3 AM PKT) |
 | Categories | 3 (clothing, shoes, accessories) |
 | Occasions modeled | 8+ |
-| Colors in theory matrix | 14 base + aliases |
+| Canonical colors | 15 (Black, White, Grey, Red, Pink, Purple, Blue, Green, Teal, Yellow, Orange, Gold, Beige, Brown, Multicolor) |
+| Color aliases in normalization map | 180+ (including Pakistani Urdu terms) |
 
 ### Scoring Weights Summary
 
@@ -1401,6 +1447,6 @@ npm run scrape       # Real scrape
 
 ---
 
-*Report generated: May 9, 2026*  
+*Report generated: May 10, 2026*  
 *Project: AuraFit — AI-Powered Pakistani Fashion Platform*  
 *Working directory: `AuraFit/`*

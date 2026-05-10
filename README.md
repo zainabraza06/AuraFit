@@ -45,18 +45,22 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 - **Full audit logs** — every scrape run logged with per-brand stats
 
 ### AI Recommendation Engine
-- **Weighted scoring formula**: `finalScore = (embedding × 0.5) + (color × 0.2) + (occasion × 0.2) + (style × 0.1)`
+- **Two scoring systems:**
+  - **Product-to-product** (product detail page): `embedding×0.5 + color×0.2 + occasion×0.2 + style×0.1`
+  - **Intent-to-product** (AI chat): `colorMatch×0.45 + occasion×0.25 + style×0.15 + keywords×0.15`
 - **Semantic embeddings** — cosine similarity between Gemini-generated product vectors
-- **Color theory matrix** — 14-color fashion compatibility lookup (e.g., Maroon + Gold = 1.0)
+- **Color theory matrix** — 15-color fashion compatibility lookup (e.g., Black + Gold = 1.0)
 - **Occasion matching** — Jaccard overlap between occasion arrays
 - **Style matching** — Jaccard overlap between style arrays
-- **Gemini intent parsing** — natural language chat queries parsed to structured filters
+- **Gemini intent parsing** — natural language chat queries parsed to structured JSON with canonical color + raw shade
 
 ### AI Style Chat
-- Type natural language: *"Need a pastel outfit for Eid"*
-- Gemini 2.5 Flash extracts intent: `{ occasion, colors, style, category }`
-- Engine queries DB, scores all clothing × shoes combinations, returns top 5 outfits
-- Each result includes product details, score breakdown, and AI-generated description
+- Type natural language: *"I want a ferozi lawn suit for Eid"*
+- Gemini 2.5 Flash extracts: `{ color: "Teal", shade: "ferozi", occasion, style, maxBudget, intentSummary, aiAnalysis }`
+- Three-tier color scoring: exact shade match (1.0) → canonical alias match (0.82) → wrong color (0.08)
+- Fetches 300 products, scores all without DB-level color filter — correct colors always rank first
+- Returns top 10 clothing (hero + 9 others) + top 6 matching shoes
+- Each result shows score breakdown bars, AI analysis card, and "Shop This Look" CTA
 
 ### Discovery & Search
 - **Advanced filters**: category, brand, color, occasion, price range
@@ -328,7 +332,28 @@ Normalized join table — unique compound index on `{ user, product }`.
 
 **POST `/outfit` body:**
 ```json
-{ "message": "Need a pastel outfit for Eid" }
+{ "message": "Need a ferozi lawn suit for Eid under 8000" }
+```
+
+**POST `/outfit` response shape:**
+```json
+{
+  "intent": {
+    "color": "Teal",
+    "shade": "ferozi",
+    "occasion": ["eid"],
+    "style": ["elegant", "traditional"],
+    "maxBudget": 8000,
+    "intentSummary": "A teal lawn suit for Eid under PKR 8,000.",
+    "aiAnalysis": "Ferozi is one of the most beloved Eid colors in Pakistan..."
+  },
+  "outfit": {
+    "heroDress": { ...product },
+    "otherDresses": [ ...9 products ],
+    "shoes": [ ...6 products ],
+    "scores": [ { "productId": "...", "total": 0.91, "colorMatch": 1.0, ... } ]
+  }
+}
 ```
 
 ### Search — `/api/search`
@@ -446,9 +471,9 @@ User query → Gemini parses intent → structured filters
 
 ## Color Theory Engine
 
-A handcrafted 14×14 fashion color compatibility matrix.
+A handcrafted 15×15 fashion color compatibility matrix (`colorTheory.js`).
 
-**Supported colors:** Black, White, Grey, Navy, Blue, Green, Red, Maroon, Pink, Purple, Yellow, Orange, Gold, Silver, Beige, Brown
+**15 canonical colors:** Black, White, Grey, Red, Pink, Purple, Blue, Green, Teal, Yellow, Orange, Gold, Beige, Brown, Multicolor
 
 **Selected compatibility scores:**
 
@@ -456,13 +481,20 @@ A handcrafted 14×14 fashion color compatibility matrix.
 |---------|---------|-------|------|
 | Black | Gold | 1.0 | Classic luxury |
 | Black | White | 1.0 | Timeless contrast |
-| Maroon | Gold | 1.0 | Pakistani bridal |
-| Navy | White | 0.95 | Crisp formal |
-| Pink | Gold | 0.9 | Feminine festive |
+| White | Blue | 0.95 | Fresh, clean |
+| Pink | White | 0.9 | Feminine |
 | Red | Orange | 0.2 | Clashing warm tones |
-| Purple | Orange | 0.2 | Low compatibility |
+| Purple | Orange | 0.3 | Low compatibility |
+| Pink | Red | 0.3 | Similar warm tones |
 
-Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 against virtually any color. Handles color aliases (`"Navy Blue"` → `"Navy"`, `"Cream"` → `"Beige"`) and multi-color products by taking the best pair score.
+**Neutral colors** (Black, White, Grey, Gold, Silver, Beige, Brown, Multicolor) score ≥ 0.7 against virtually any color.
+
+**Color alias resolution** — 180+ aliases mapped to canonical names before lookup, including Pakistani Urdu transliterations:
+- `ferozi/firozi` → Teal, `jamuni/baingan` → Purple, `gulabi` → Pink
+- `mehroon/surkh/laal` → Red, `nila` → Blue, `narangi` → Orange
+- `zard/peela` → Yellow, `safed` → White, `dhani/mehendi/sabz` → Green
+
+Multi-color products use best-pair scoring across all `colors[]` combinations.
 
 ---
 

@@ -732,8 +732,8 @@ sequenceDiagram
 
     U->>FE: Types "purple outfit for eid"
     FE->>BE: POST /api/recommendations/outfit
-    BE->>G: Parse intent (JSON schema prompt)
-    G-->>BE: {color:"Purple", occasion:["eid"], aiAnalysis:"..."}
+    BE->>G: Parse intent (JSON schema prompt + 15 canonical colors)
+    G-->>BE: {color:"Purple", shade:"purple", occasion:["eid"], aiAnalysis:"..."}
     BE->>DB: Find clothing (budget filter only, limit 300)
     DB-->>BE: 300 clothing products
     BE->>BE: scoreProductAgainstIntent() × 300
@@ -773,32 +773,46 @@ graph TD
 
 ### 11.3 Color Scoring in Recommendation Engine
 
+Three-tier scoring — the `shade` field enables exact DB shade matching before falling back to canonical alias lookup:
+
 ```
-User Query: "purple"
+User Query: "tangerine dress"
+Gemini output: { color: "Orange", shade: "tangerine" }
                 │
                 ▼
-    normalizeColor("purple") → "Purple"
+    shadeToMatch = "tangerine"
+    targetNorm   = normalizeColor("Orange") → "Orange"
                 │
     For each product:
-    ┌─────────────────────────────────────┐
-    │ Product.primaryColor = "Lavender"   │
-    │ normalizeColor("Lavender") = "Purple"│
-    │ Match! colorScore = 1.0             │
-    └─────────────────────────────────────┘
-    ┌─────────────────────────────────────┐
-    │ Product.primaryColor = "Light Purple"│
-    │ "light purple".includes("purple") ✓ │
-    │ Substring match: colorScore = 0.82  │
-    └─────────────────────────────────────┘
-    ┌─────────────────────────────────────┐
-    │ Product.primaryColor = "White"      │
-    │ No match, no alias overlap          │
-    │ Hard penalty: colorScore = 0.08     │
-    └─────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────┐
+    │ Tier 1 — Exact raw shade (score = 1.0)          │
+    │ Product.primaryColor = "tangerine"              │
+    │ productRawLower.includes("tangerine") ✓         │
+    │ → colorScore = 1.0 (DB stores exactly this shade│
+    └─────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────┐
+    │ Tier 2 — Canonical alias (score = 0.82)         │
+    │ Product.primaryColor = "coral"                  │
+    │ normalizeColor("coral") → "Orange"              │
+    │ productNorms.includes("Orange") ✓               │
+    │ → colorScore = 0.82 (same family, diff shade)   │
+    └─────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────┐
+    │ Tier 3 — Wrong color (score = 0.08)             │
+    │ Product.primaryColor = "White"                  │
+    │ No raw match, no alias match                    │
+    │ → colorScore = 0.08 (hard penalty)              │
+    └─────────────────────────────────────────────────┘
                 │
     Sort by finalScore desc
-    → Purple items always rank above White items
+    → Tangerine products rank first
+    → Other Orange shades (coral, amber) rank second
+    → Non-orange products pushed to bottom
 ```
+
+Same logic applies for "purple" query (shade = "purple"):
+- Products with `primaryColor: "lavender"` or `"lilac"` → normalizeColor → `"Purple"` → Tier 2 (0.82)
+- Products with `primaryColor: "white"` → Tier 3 (0.08) → never shown at top
 
 ---
 
@@ -856,4 +870,4 @@ npm run scrape:dry   # Dry run (no DB writes)
 
 ---
 
-*AuraFit Technical Documentation — Generated 2026-05-10*
+*AuraFit Technical Documentation — Last updated 2026-05-10*
