@@ -17,6 +17,7 @@ Return ONLY a valid JSON object with these exact fields:
 - occasion: array — pick all that apply from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"]. Empty array [] if not mentioned.
 - dressStyle: ONE of ["saree", "lehenga", "frock", "maxi", "shalwar-kameez", "kurta", "co-ord", "palazzo", "western"] or null if not mentioned.
 - stitching: "stitched" or "unstitched" or null if not mentioned.
+- pieces: number of pieces — 1, 2, or 3. Infer from: "kurta"/"top"/"shirt" alone → 1, "2-piece"/"2 piece"/"do piece" → 2, "3-piece"/"3 piece"/"teen piece" → 3, "shalwar kameez" → 2. null if not mentioned.
 - print: "embroidered" or "printed" or "plain" or "embellished" or null if not mentioned.
 - gender: "women", "men", "kids", or "unisex". Default "women" if not specified.
 - fabric: string (e.g. "lawn", "chiffon", "silk") or null if not mentioned.
@@ -59,6 +60,7 @@ export async function generateOutfit(req, res) {
         occasion:      Array.isArray(parsed.occasion) ? parsed.occasion : [],
         dressStyle:    (parsed.dressStyle && parsed.dressStyle !== 'null') ? parsed.dressStyle.toLowerCase().trim() : null,
         stitching:     ['stitched', 'unstitched'].includes(parsed.stitching) ? parsed.stitching : null,
+        pieces:        (typeof parsed.pieces === 'number' && [1, 2, 3].includes(parsed.pieces)) ? parsed.pieces : null,
         print:         ['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) ? parsed.print : null,
         gender:        ['women', 'men', 'kids', 'unisex'].includes(parsed.gender) ? parsed.gender : 'women',
         fabric:        (parsed.fabric && parsed.fabric !== 'null') ? parsed.fabric.toLowerCase().trim() : null,
@@ -71,7 +73,7 @@ export async function generateOutfit(req, res) {
       parsedIntent = {
         colorExact: null, colorFamily: 'Any',
         occasion: [], dressStyle: null,
-        stitching: null, print: null,
+        stitching: null, pieces: null, print: null,
         gender: 'women', fabric: null,
         maxBudget: 0,
         intentSummary: message,

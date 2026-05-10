@@ -7,9 +7,9 @@
  *
  * "Style Me" flow:
  *   1. Build DB query from ONLY the fields the user specified.
- *   2. Progressive constraint relaxation (one-by-one) until ≥10 candidates found.
- *      Relaxation order: occasion → print → dressStyle → stitching → exact color → color family
- *   3. Top 20 candidates sent to Gemini for AI ranking with per-product reasons.
+ *   2. Progressive constraint relaxation (one-by-one) until ≥50 candidates found.
+ *      Relaxation order: occasion → print → dressStyle → stitching → pieces → fabric → exact color → color family
+ *   3. Top 50 candidates sent to Gemini for AI ranking with per-product reasons.
  *   4. Top 10 ranked results returned; one best-matching shoe found per product.
  */
 
@@ -217,6 +217,8 @@ function getSpecifiedConstraints(intent) {
   if (intent.print)                                         specified.add('print');
   if (intent.dressStyle)                                    specified.add('dressStyle');
   if (intent.stitching)                                     specified.add('stitching');
+  if (intent.pieces)                                        specified.add('pieces');
+  if (intent.fabric)                                        specified.add('fabric');
   if (intent.colorExact)                                    specified.add('colorExact');
   if (intent.colorFamily && intent.colorFamily !== 'Any')   specified.add('colorFamily');
   return specified;
@@ -247,6 +249,12 @@ function buildDBQuery(intent, dropped, colorMode) {
   if (!dropped.has('stitching') && intent.stitching) {
     query.stitching = intent.stitching;
   }
+  if (!dropped.has('pieces') && intent.pieces) {
+    query.pieces = intent.pieces;
+  }
+  if (!dropped.has('fabric') && intent.fabric) {
+    query.fabric = { $regex: new RegExp(intent.fabric, 'i') };
+  }
 
   // Color — exact shade → canonical family → none
   if (colorMode === 'exact' && intent.colorExact) {
@@ -266,7 +274,7 @@ async function fetchCandidates(intent) {
 
   // Build the ordered relaxation sequence based on what the user actually specified
   // Each step drops one more constraint from the DB query
-  const relaxOrder = ['occasion', 'print', 'dressStyle', 'stitching'];
+  const relaxOrder = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric'];
 
   const levels = [];
   const dropped = new Set();
@@ -298,7 +306,7 @@ async function fetchCandidates(intent) {
 
   for (const level of levels) {
     const query = buildDBQuery(intent, level.dropped, level.colorMode);
-    const pool = await Product.find(query).select(SELECT_FIELDS).limit(50).lean();
+    const pool = await Product.find(query).select(SELECT_FIELDS).limit(100).lean();
 
     if (pool.length > bestProducts.length) {
       bestProducts = pool;
@@ -310,7 +318,7 @@ async function fetchCandidates(intent) {
       }
     }
 
-    if (pool.length >= 10) break; // enough to rank
+    if (pool.length >= 50) break; // enough to send to AI
   }
 
   // Build relaxation message for the frontend
@@ -363,8 +371,8 @@ export async function getOutfitForQuery(intent) {
     };
   }
 
-  // 2. AI ranking — send up to 20 candidates, get back ranked list with reasons
-  const ranked = await rankProductsWithAI(products.slice(0, 20), intent);
+  // 2. AI ranking — send up to 50 candidates, get back ranked list with reasons
+  const ranked = await rankProductsWithAI(products.slice(0, 50), intent);
   const top10  = ranked.slice(0, 10);
 
   // 3. One shoe per dress (parallel)

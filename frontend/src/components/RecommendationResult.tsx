@@ -56,6 +56,11 @@ function CategoryChips({ product }: { product: any }) {
           {product.stitching}
         </span>
       )}
+      {product.pieces && (
+        <span className="tag" style={{ fontSize: '0.68rem', color: 'var(--accent-teal)', borderColor: 'rgba(106,173,160,0.25)', background: 'rgba(106,173,160,0.07)' }}>
+          {product.pieces}-piece
+        </span>
+      )}
       {product.occasion?.slice(0, 2).map((o: string) => (
         <span key={o} className="tag" style={{ fontSize: '0.68rem', color: 'var(--accent)', borderColor: 'var(--border-accent)', background: 'rgba(201,169,110,0.06)' }}>
           #{o}
@@ -192,6 +197,9 @@ export default function RecommendationResult({ data, compact = false }: { data: 
           )}
           {intent?.stitching && (
             <span className="tag" style={{ color: 'var(--success)', borderColor: 'rgba(114,168,132,0.25)', background: 'rgba(114,168,132,0.07)' }}>{intent.stitching}</span>
+          )}
+          {intent?.pieces && (
+            <span className="tag" style={{ color: 'var(--accent-teal)', borderColor: 'rgba(106,173,160,0.25)', background: 'rgba(106,173,160,0.07)' }}>{intent.pieces}-piece</span>
           )}
           {intent?.occasion?.map((o: string) => (
             <span key={o} className="tag" style={{ color: 'var(--accent)', borderColor: 'var(--border-accent)', background: 'rgba(201,169,110,0.06)' }}>#{o}</span>
