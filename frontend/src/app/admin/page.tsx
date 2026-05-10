@@ -42,6 +42,13 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  const handleLogout = () => {
+    localStorage.removeItem('fashion_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/login');
+  };
+
   const fetchData = async () => {
     try {
       const [statsRes, logsRes, statusRes] = await Promise.all([
@@ -195,6 +202,7 @@ export default function AdminDashboard() {
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowPwModal(true)}>🔐 Change Password</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleLogout}>Logout</button>
             <button
               id="trigger-scrape-btn"
               className="btn btn-primary btn-lg"
