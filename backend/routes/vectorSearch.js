@@ -10,23 +10,18 @@ import express from 'express';
 import Product from '../models/Product.js';
 
 const router = express.Router();
-const HF_API = 'https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2';
+import { getTextEmbedding } from '../services/huggingface.js';
 
 // ─── Generate embedding for a text query ─────────────────────────────────────
 async function getEmbedding(text) {
   const token = process.env.HUGGING_FACE_API_KEY;
   if (!token) return null;
-
-  const res = await fetch(HF_API, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ inputs: text, options: { wait_for_model: true } }),
-  });
-
-  if (!res.ok) throw new Error(`HuggingFace API error: ${res.status}`);
-  const data = await res.json();
-  // Returns nested array; flatten for sentence-level embedding
-  return Array.isArray(data[0]) ? data[0] : data;
+  
+  const embedding = await getTextEmbedding(text);
+  if (!embedding) throw new Error('HuggingFace SDK failed to return embedding');
+  
+  // The SDK usually returns a flat array for text embeddings, but we check just in case
+  return Array.isArray(embedding[0]) ? embedding[0] : embedding;
 }
 
 // ─── Cosine similarity ─────────────────────────────────────────────────────────
