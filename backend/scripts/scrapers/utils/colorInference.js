@@ -33,7 +33,11 @@ export function inferColors(text) {
 
   const found = [];
   for (const entry of COLOR_MAP) {
-    if (entry.keywords.some((kw) => lower.includes(kw))) {
+    if (entry.keywords.some((kw) => {
+      // Use regex with word boundaries to prevent "embroidered" from matching "red"
+      const regex = new RegExp(`\\b${kw}\\b`);
+      return regex.test(lower);
+    })) {
       found.push(entry.color);
     }
   }
