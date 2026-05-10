@@ -10,7 +10,7 @@ import express from 'express';
 import Product from '../models/Product.js';
 
 const router = express.Router();
-const HF_API = 'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2';
+const HF_API = 'https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2';
 
 // ─── Generate embedding for a text query ─────────────────────────────────────
 async function getEmbedding(text) {
