@@ -89,6 +89,13 @@ export function normalizeProduct(raw, brandConfig) {
   const name = (raw.title || raw.name || '').trim();
   if (!name || name.length < 3) return null;
 
+  // ── Filter Non-Clothing (Bedsheets, Home Decor, etc.) ──
+  const searchBlob = [name, raw.productType || raw.type || '', (raw.tags || []).join(' ')].join(' ').toLowerCase();
+  const negativeKeywords = ['bedsheet', 'bed sheet', 'bedding', 'quilt', 'cushion', 'pillow', 'duvet', 'towel', 'rug', 'home decor'];
+  if (negativeKeywords.some(kw => searchBlob.includes(kw))) {
+    return null;
+  }
+
   // ── Price ───
   const price = raw.price;
   if (!price || price <= 0) return null;
