@@ -542,19 +542,37 @@ export async function getOutfitForQuery(intent) {
   // Only hard-filter for men/kids — 'unisex' and 'women' use the full product pool
   if (gender && gender !== 'women' && gender !== 'unisex') clothingQuery.gender = gender;
 
-  // Stitching is a hard user preference — filter at DB level so stitched products
-  // never enter the pool when user explicitly asks for unstitched, and vice versa.
   const { stitching } = intent;
-  if (stitching === 'unstitched') {
-    clothingQuery.subCategory = { $regex: /^unstitched/i };
-  } else if (stitching === 'stitched') {
+  let stitchingFallbackMessage = null;
+
+  if (stitching === 'stitched') {
     clothingQuery.subCategory = { $not: /^unstitched/i };
   }
 
-  const clothingPool = await Product.find(clothingQuery)
-    .select('name brand category subCategory pieces fabric type price primaryColor colors occasion style tags imageUrl images productUrl description gender embedding')
-    .limit(400)
-    .lean();
+  const selectFields = 'name brand category subCategory pieces fabric type price primaryColor colors occasion style tags imageUrl images productUrl description gender embedding';
+
+  let clothingPool = [];
+
+  if (stitching === 'unstitched') {
+    // Try unstitched first; if none found, fall back to full pool with a message
+    clothingPool = await Product.find({ ...clothingQuery, subCategory: { $regex: /^unstitched/i } })
+      .select(selectFields)
+      .limit(400)
+      .lean();
+
+    if (clothingPool.length === 0) {
+      stitchingFallbackMessage = 'No unstitched options found. Showing available stitched products instead.';
+      clothingPool = await Product.find(clothingQuery)
+        .select(selectFields)
+        .limit(400)
+        .lean();
+    }
+  } else {
+    clothingPool = await Product.find(clothingQuery)
+      .select(selectFields)
+      .limit(400)
+      .lean();
+  }
 
   if (clothingPool.length === 0) {
     return {
@@ -710,8 +728,9 @@ export async function getOutfitForQuery(intent) {
     scores: top10.map((d) => ({ productId: d.product._id, ...d.scores })),
     matchQuality,
     colorMessage,
-    ...(occasionFallbackMessage ? { occasionFallbackMessage } : {}),
-    ...(pieceFallbackMessage    ? { pieceFallbackMessage }    : {})
+    ...(occasionFallbackMessage  ? { occasionFallbackMessage }  : {}),
+    ...(pieceFallbackMessage     ? { pieceFallbackMessage }     : {}),
+    ...(stitchingFallbackMessage ? { stitchingFallbackMessage } : {})
   };
 }
 

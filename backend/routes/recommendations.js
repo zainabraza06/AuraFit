@@ -120,8 +120,9 @@ Return ONLY a valid JSON object with these exact fields:
       outfit,
       matchQuality: outfit.matchQuality,
       ...(outfit.colorMessage            ? { colorMessage: outfit.colorMessage }                       : {}),
-      ...(outfit.occasionFallbackMessage ? { occasionFallbackMessage: outfit.occasionFallbackMessage } : {}),
-      ...(outfit.pieceFallbackMessage    ? { pieceFallbackMessage: outfit.pieceFallbackMessage }       : {})
+      ...(outfit.occasionFallbackMessage  ? { occasionFallbackMessage: outfit.occasionFallbackMessage }   : {}),
+      ...(outfit.pieceFallbackMessage     ? { pieceFallbackMessage: outfit.pieceFallbackMessage }         : {}),
+      ...(outfit.stitchingFallbackMessage ? { stitchingFallbackMessage: outfit.stitchingFallbackMessage } : {})
     });
   } catch (err) {
     console.error('Outfit generation error:', err);
