@@ -18,7 +18,9 @@ export default function LoginPage() {
     try {
       const res = await authApi.login(email, password);
       localStorage.setItem('fashion_token', res.data.token);
-      router.push('/');
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      router.push(res.data.user?.role === 'admin' ? '/admin' : '/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
     } finally {
