@@ -106,7 +106,11 @@ export function normalizeProduct(raw, brandConfig) {
 
   // ── Filter Non-Clothing (Bedsheets, Home Decor, etc.) ──
   const searchBlob = [name, raw.productType || raw.type || '', (raw.tags || []).join(' ')].join(' ').toLowerCase();
-  const negativeKeywords = ['bedsheet', 'bed sheet', 'bedding', 'quilt', 'cushion', 'pillow', 'duvet', 'towel', 'rug', 'home decor'];
+  const negativeKeywords = [
+    'bedsheet', 'bed sheet', 'bedding', 'quilt', 'cushion', 'pillow', 'duvet', 'towel', 'rug', 'home decor',
+    'wallet', 'wallets', 'handbag', 'tote bag', 'shoulder bag', 'cross-body', 'crossbody', 'clutch bag',
+    'backpack', 'satchel', 'phone case', 'sunglasses', 'jewellery', 'jewelry', 'necklace', 'earring', 'bracelet'
+  ];
   if (negativeKeywords.some(kw => searchBlob.includes(kw))) {
     return null;
   }
