@@ -1,26 +1,162 @@
 /**
  * recommendationEngine.js
- * AI outfit recommendation scoring system.
+ * Dynamic AI outfit recommendation scoring system.
  *
- * Final Score Formula:
- *   finalScore = embeddingSimilarity * 0.5
- *              + colorCompatibility  * 0.2
- *              + occasionMatch       * 0.2
- *              + styleMatch          * 0.1
+ * Score formulas:
+ *   Product-vs-Product: embeddingSimilarity×0.5 + color×0.2 + occasion×0.2 + style×0.1
+ *   Intent-vs-Product (dynamic weights, normalised to 1.0):
+ *     color(60) + style(18) + piece(10)* + fabric(4)* + stitching(4)* + occasion(4)
+ *     (* only counted when the user explicitly mentioned that attribute)
  *
- * For products without embeddings, falls back to metadata-only scoring.
+ * The intent-based scorer does NOT rely on MongoDB-level color filtering, so it
+ * works even when colors are stored as aliases (Lavender→Purple, Cream→White, etc.).
  */
 
 import Product from '../models/Product.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
 
-// ─── Scoring weights ──────────────────────────────────────────────────────────
-const WEIGHTS = {
-  embedding: 0.5,
-  color: 0.2,
-  occasion: 0.2,
-  style: 0.1
+// ─── Scoring weights (product-to-product) ────────────────────────────────────
+const WEIGHTS = { embedding: 0.5, color: 0.2, occasion: 0.2, style: 0.1 };
+
+// ─── Color alias map ──────────────────────────────────────────────────────────
+// Covers English variants + Pakistani Urdu transliterations used by local brands.
+// Keep in sync with colorTheory.js normalize() — both must resolve to the same
+// canonical names so cross-function scoring stays consistent.
+// Canonical colors our system supports (must match CANONICAL_COLORS in recommendations.js)
+export const CANONICAL_COLORS = [
+  'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
+  'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
+  'Gold', 'Beige', 'Brown', 'Multicolor'
+];
+
+// Every shade/variant → canonical color.
+// Gemini now returns canonical colors directly; this map handles the DB side
+// (how brands store colors in scraped product records).
+const COLOR_ALIASES = {
+  // ── Blue ──────────────────────────────────────────────────────────────────
+  'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
+  'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue',
+  'steel blue': 'Blue', 'pastel blue': 'Blue', 'dark blue': 'Blue',
+  'deep blue': 'Blue', 'midnight blue': 'Blue', 'electric blue': 'Blue',
+  'baby blue': 'Blue', 'prussian blue': 'Blue', 'cerulean': 'Blue',
+  'azure': 'Blue', 'denim': 'Blue', 'indigo': 'Blue',
+  'nila': 'Blue',                       // Urdu: dark blue/indigo
+
+  // ── Green ─────────────────────────────────────────────────────────────────
+  'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
+  'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
+  'dark green': 'Green', 'deep green': 'Green', 'mehendi green': 'Green',
+  'mint green': 'Green', 'lime green': 'Green', 'lime': 'Green',
+  'pista': 'Green', 'pistachio': 'Green', 'apple green': 'Green',
+  'jungle green': 'Green', 'hunter green': 'Green', 'kelly green': 'Green',
+  'army green': 'Green', 'military green': 'Green', 'forest': 'Green',
+  'neon green': 'Green', 'grass green': 'Green', 'parrot green': 'Green',
+  'dhani': 'Green',                     // Urdu: light grassy green
+  'mehendi': 'Green',                   // henna green
+  'sabz': 'Green',                      // Urdu: green
+
+  // ── Red / Maroon ──────────────────────────────────────────────────────────
+  'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red',
+  'rust': 'Red', 'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red',
+  'dark maroon': 'Red', 'deep maroon': 'Red', 'dark burgundy': 'Red',
+  'cherry': 'Red', 'cardinal': 'Red', 'scarlet': 'Red', 'ruby': 'Red',
+  'raspberry': 'Red', 'strawberry': 'Red', 'blood red': 'Red',
+  'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', // Urdu: maroon
+  'surkh': 'Red',                       // Urdu: bright red
+  'laal': 'Red',                        // Urdu: red
+
+  // ── Beige / Nude ──────────────────────────────────────────────────────────
+  'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
+  'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
+  'linen': 'Beige', 'biscuit': 'Beige', 'wheat': 'Beige', 'taupe': 'Beige',
+  'nude beige': 'Beige', 'warm beige': 'Beige', 'natural': 'Beige',
+
+  // ── White / Off-white ─────────────────────────────────────────────────────
+  'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
+  'snow': 'White', 'pearl': 'White', 'chalk': 'White', 'milk white': 'White',
+  'pure white': 'White', 'bright white': 'White', 'warm white': 'White',
+  'eggshell': 'White', 'antique white': 'White',
+  'safed': 'White',                     // Urdu: white
+
+  // ── Grey ──────────────────────────────────────────────────────────────────
+  'silver': 'Grey', 'ash': 'Grey', 'steel grey': 'Grey', 'slate': 'Grey',
+  'stone': 'Grey', 'smoke': 'Grey', 'gray': 'Grey', 'grey': 'Grey',
+  'light grey': 'Grey', 'dark grey': 'Grey', 'steel gray': 'Grey',
+  'platinum': 'Grey', 'gunmetal': 'Grey', 'charcoal grey': 'Grey',
+  'warm grey': 'Grey', 'cool grey': 'Grey', 'dove grey': 'Grey',
+  'charcoal': 'Black', 'graphite': 'Black', 'onyx': 'Black',
+  'ebony': 'Black', 'jet black': 'Black', 'pitch black': 'Black',
+  'off black': 'Black',
+
+  // ── Pink ──────────────────────────────────────────────────────────────────
+  'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
+  'hot pink': 'Pink', 'dusty pink': 'Pink', 'baby pink': 'Pink',
+  'nude pink': 'Pink', 'pastel pink': 'Pink', 'dusty rose': 'Pink',
+  'old rose': 'Pink', 'candy pink': 'Pink', 'shocking pink': 'Pink',
+  'light pink': 'Pink', 'deep pink': 'Pink', 'salmon': 'Pink',
+  'magenta': 'Pink', 'cerise': 'Pink', 'flamingo': 'Pink',
+  'carnation': 'Pink', 'blush pink': 'Pink', 'rose pink': 'Pink',
+  'bubblegum': 'Pink', 'millennial pink': 'Pink', 'macaroon pink': 'Pink',
+  'gulabi': 'Pink',                     // Urdu: pink
+
+  // ── Purple / Violet ───────────────────────────────────────────────────────
+  'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
+  'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
+  'pastel purple': 'Purple', 'light purple': 'Purple', 'deep purple': 'Purple',
+  'dark purple': 'Purple', 'royal purple': 'Purple', 'dusty purple': 'Purple',
+  'pastel lavender': 'Purple', 'pastel lilac': 'Purple', 'amethyst': 'Purple',
+  'orchid': 'Purple', 'heather': 'Purple', 'periwinkle': 'Purple',
+  'jamuni': 'Purple',                   // Urdu: purple/violet
+  'baingan': 'Purple',                  // Urdu: eggplant purple
+
+  // ── Orange ────────────────────────────────────────────────────────────────
+  'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
+  'burnt orange': 'Orange', 'peach orange': 'Orange', 'apricot': 'Orange',
+  'pumpkin': 'Orange', 'tangerine': 'Orange', 'mango': 'Orange',
+  'deep orange': 'Orange', 'burnt sienna': 'Orange', 'copper': 'Orange',
+  'narangi': 'Orange',                  // Urdu: orange
+
+  // ── Yellow ────────────────────────────────────────────────────────────────
+  'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
+  'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
+  'canary': 'Yellow', 'sunflower': 'Yellow', 'golden yellow': 'Yellow',
+  'bright yellow': 'Yellow', 'neon yellow': 'Yellow', 'chartreuse': 'Yellow',
+  'ochre': 'Yellow', 'corn': 'Yellow', 'honey': 'Yellow',
+  'zard': 'Yellow', 'peela': 'Yellow', // Urdu: yellow
+
+  // ── Gold ──────────────────────────────────────────────────────────────────
+  'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'dull gold': 'Gold',
+  'champagne': 'Gold', 'bronze': 'Gold', 'brass': 'Gold', 'metallic gold': 'Gold',
+  'light gold': 'Gold', 'rose gold': 'Gold',
+
+  // ── Teal / Turquoise ──────────────────────────────────────────────────────
+  'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
+  'teal green': 'Teal', 'dark teal': 'Teal', 'deep teal': 'Teal',
+  'teal blue': 'Teal', 'peacock': 'Teal', 'peacock blue': 'Teal',
+  'ferozi': 'Teal',                     // Urdu: turquoise/teal (very common in Pakistan)
+  'firozi': 'Teal',                     // alternate spelling
+
+  // ── Brown ─────────────────────────────────────────────────────────────────
+  'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
+  'tan': 'Brown', 'walnut': 'Brown', 'toffee': 'Brown', 'chestnut': 'Brown',
+  'dark brown': 'Brown', 'light brown': 'Brown', 'mahogany': 'Brown',
+  'sienna': 'Brown', 'sepia': 'Brown', 'hazel': 'Brown', 'cocoa': 'Brown',
+  'saddle brown': 'Brown', 'raw umber': 'Brown',
+
+  // ── Multicolor / Printed ──────────────────────────────────────────────────
+  'multi': 'Multicolor', 'multicolor': 'Multicolor', 'multi-color': 'Multicolor',
+  'multi colour': 'Multicolor', 'multicolour': 'Multicolor',
+  'printed': 'Multicolor', 'colourful': 'Multicolor', 'colorful': 'Multicolor',
+  'floral': 'Multicolor', 'patterned': 'Multicolor', 'geometric': 'Multicolor',
+  'abstract': 'Multicolor', 'tie dye': 'Multicolor', 'ombre': 'Multicolor'
 };
+
+function normalizeColor(color) {
+  if (!color) return null;
+  const lower = color.toLowerCase().trim();
+  if (COLOR_ALIASES[lower]) return COLOR_ALIASES[lower];
+  return color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+}
 
 // ─── Cosine similarity ────────────────────────────────────────────────────────
 function cosineSimilarity(a, b) {
@@ -37,41 +173,28 @@ function cosineSimilarity(a, b) {
 
 // ─── Set overlap score ────────────────────────────────────────────────────────
 function setOverlapScore(arr1 = [], arr2 = []) {
-  if (!arr1.length || !arr2.length) return 0.4; // Partial credit when unknown
+  if (!arr1.length || !arr2.length) return 0.4;
   const set1 = new Set(arr1.map((s) => s.toLowerCase()));
   const matches = arr2.filter((s) => set1.has(s.toLowerCase())).length;
   return Math.min(1, matches / Math.max(arr1.length, arr2.length) + 0.2);
 }
 
-// ─── Score a single candidate against a source product ───────────────────────
-
-/**
- * scoreProduct(source, candidate)
- * Returns 0-1 composite compatibility score.
- */
+// ─── Score a product vs. another product ─────────────────────────────────────
 export function scoreProduct(source, candidate) {
-  // Embedding similarity
   let embeddingScore = 0;
   if (source.embedding?.length && candidate.embedding?.length) {
     embeddingScore = cosineSimilarity(source.embedding, candidate.embedding);
   } else {
-    // Fallback: keyword-based text similarity
     embeddingScore = keywordSimilarity(source, candidate);
   }
 
-  // Color compatibility
   const colorScore = getColorArrayCompatibility(
     source.colors || [source.primaryColor],
     candidate.colors || [candidate.primaryColor]
   );
-
-  // Occasion match
   const occasionScore = setOverlapScore(source.occasion, candidate.occasion);
-
-  // Style match
   const styleScore = setOverlapScore(source.style, candidate.style);
 
-  // Weighted composite
   const finalScore =
     embeddingScore * WEIGHTS.embedding +
     colorScore * WEIGHTS.color +
@@ -87,8 +210,195 @@ export function scoreProduct(source, candidate) {
   };
 }
 
-// ─── Fallback keyword similarity (no embeddings) ─────────────────────────────
+// ─── subCategory match (piece intent) ────────────────────────────────────────
+// Returns null when piece is not in the query (factor is skipped from scoring).
+function getSubCategoryScore(product, pieceIntent) {
+  if (!pieceIntent) return null;
+  const sub   = (product.subCategory || '').toLowerCase();
+  const piece = pieceIntent.toLowerCase().trim();
+  if (!sub) return 0.3;
 
+  // Exact or dash-normalised match ("2-piece" === "2 piece")
+  if (sub === piece || sub.replace(/-/g, ' ') === piece.replace(/-/g, ' ')) return 1.0;
+
+  // Unstitched intent — only unstitched sub-categories match well
+  if (piece.includes('unstitched')) {
+    return sub.startsWith('unstitched') ? 1.0 : 0.15;
+  }
+
+  // Shalwar kameez family — "shalwar kameez", "shalwar kamez", "suit", "kameez", "salwar"
+  const suitTerms = ['shalwar kameez', 'shalwar kamez', 'salwar kameez', 'suit', 'kameez', 'salwar'];
+  if (suitTerms.some((t) => piece.includes(t))) {
+    if (['2-piece', '3-piece', 'kurta', 'shalwar'].includes(sub)) return 0.9;
+    if (sub.includes('piece')) return 0.7;
+    if (sub.startsWith('unstitched')) return 0.4;
+  }
+
+  // Kurta intent
+  if (piece === 'kurta') {
+    if (sub === 'kurta') return 1.0;
+    if (sub.includes('piece')) return 0.5;
+  }
+
+  // 2-piece / 3-piece explicit
+  if (piece.includes('2') && piece.includes('piece')) {
+    if (sub === '2-piece') return 1.0;
+    if (sub === 'unstitched-2-piece') return 0.6;
+    if (sub === '3-piece') return 0.5;
+    if (sub === 'kurta') return 0.4;
+  }
+  if (piece.includes('3') && piece.includes('piece')) {
+    if (sub === '3-piece') return 1.0;
+    if (sub === 'unstitched-3-piece') return 0.6;
+    if (sub === '2-piece') return 0.5;
+    if (sub === 'kurta') return 0.4;
+  }
+
+  return 0.2;
+}
+
+// ─── Fabric match ─────────────────────────────────────────────────────────────
+// Returns null when fabric is not mentioned in the query.
+function getFabricScore(product, fabricIntent) {
+  if (!fabricIntent) return null;
+  const productFabric = (product.fabric || product.type || '').toLowerCase();
+  const fabric = fabricIntent.toLowerCase().trim();
+  if (!productFabric) return 0.3;
+  if (productFabric.includes(fabric) || fabric.includes(productFabric)) return 1.0;
+  return 0.2;
+}
+
+// ─── Stitching match ──────────────────────────────────────────────────────────
+// Returns null when stitching preference was not stated.
+function getStitchingScore(product, stitchingIntent) {
+  if (!stitchingIntent) return null;
+  const sub         = (product.subCategory || '').toLowerCase();
+  const isUnstitched = sub.startsWith('unstitched');
+  if (stitchingIntent === 'stitched')   return isUnstitched ? 0.1 : 1.0;
+  if (stitchingIntent === 'unstitched') return isUnstitched ? 1.0 : 0.1;
+  return 0.5;
+}
+
+// ─── Score a product against a user intent ────────────────────────────────────
+// Priority: color > style > piece > fabric > stitching > occasion
+// Weights (base, normalised to 1.0 across active factors):
+//   color 60 · style 18 · piece 10 · fabric 4 · stitching 4 · occasion 4
+// piece/fabric/stitching are only active when explicitly present in the query.
+// Five-tier color scoring (primary vs secondary colour distinction):
+//   1.00 — primaryColor raw shade match
+//   0.93 — secondary color raw shade match
+//   0.85 — primaryColor canonical alias match
+//   0.78 — secondary canonical alias match
+//   0.08 — wrong color family (hard penalty)
+function scoreProductAgainstIntent(product, intent) {
+  const {
+    color, shade,
+    occasion = [], style = [],
+    fabric = null, piece = null, stitching = null
+  } = intent;
+
+  // ── Color (five-tier) ──────────────────────────────────────────────────────
+  let colorScore = 0.4;
+  const colorSpecified = color && color.toLowerCase() !== 'any';
+
+  if (colorSpecified) {
+    const primaryRaw   = (product.primaryColor || '').toLowerCase();
+    const primaryNorm  = normalizeColor(product.primaryColor || '');
+    const secondaryCols = (product.colors || []).filter(
+      (c) => c && c.toLowerCase() !== primaryRaw
+    );
+    const secondaryRaw   = secondaryCols.map((c) => c.toLowerCase());
+    const secondaryNorms = secondaryCols.map(normalizeColor).filter(Boolean);
+    const targetNorm     = normalizeColor(color);
+    const shadeToMatch   = shade || color.toLowerCase();
+
+    const primaryRawMatch   = primaryRaw.includes(shadeToMatch) || shadeToMatch.includes(primaryRaw);
+    const secondaryRawMatch = secondaryRaw.some((c) => c.includes(shadeToMatch) || shadeToMatch.includes(c));
+
+    if      (primaryRawMatch)                     colorScore = 1.0;
+    else if (secondaryRawMatch)                   colorScore = 0.93;
+    else if (primaryNorm === targetNorm)          colorScore = 0.85;
+    else if (secondaryNorms.includes(targetNorm)) colorScore = 0.78;
+    else                                          colorScore = 0.08;
+  }
+
+  // ── Style & occasion (always active — Gemini always extracts these) ────────
+  const styleScore   = setOverlapScore(style,   product.style   || []);
+  const occasionScore = setOverlapScore(occasion, product.occasion || []);
+
+  // ── Piece / fabric / stitching (active only when in query) ────────────────
+  const pieceScoreVal      = getSubCategoryScore(product, piece);
+  const fabricScoreVal     = getFabricScore(product, fabric);
+  const stitchingScoreVal  = getStitchingScore(product, stitching);
+
+  // ── Dynamic normalised weighting ──────────────────────────────────────────
+  const factors = [
+    { score: colorScore,        weight: 60, active: true },
+    { score: styleScore,        weight: 18, active: true },
+    { score: pieceScoreVal,     weight: 10, active: pieceScoreVal     !== null },
+    { score: fabricScoreVal,    weight:  4, active: fabricScoreVal    !== null },
+    { score: stitchingScoreVal, weight:  4, active: stitchingScoreVal !== null },
+    { score: occasionScore,     weight:  4, active: true }
+  ];
+
+  const active     = factors.filter((f) => f.active);
+  const totalW     = active.reduce((s, f) => s + f.weight, 0);
+  const finalScore = active.reduce((s, f) => s + f.score * (f.weight / totalW), 0);
+
+  return {
+    total:          parseFloat(finalScore.toFixed(3)),
+    colorMatch:     parseFloat(colorScore.toFixed(3)),
+    styleMatch:     parseFloat(styleScore.toFixed(3)),
+    occasionMatch:  parseFloat(occasionScore.toFixed(3)),
+    pieceMatch:     pieceScoreVal     !== null ? parseFloat(pieceScoreVal.toFixed(3))     : null,
+    fabricMatch:    fabricScoreVal    !== null ? parseFloat(fabricScoreVal.toFixed(3))    : null,
+    stitchingMatch: stitchingScoreVal !== null ? parseFloat(stitchingScoreVal.toFixed(3)) : null
+  };
+}
+
+// ─── Shoe match reason ────────────────────────────────────────────────────────
+// Generates a human-readable string explaining why a shoe pairs with a dress.
+function generateShoeMatchReason(shoe, heroDress) {
+  const parts = [];
+
+  const shoeColor  = normalizeColor(shoe.primaryColor  || '') || shoe.primaryColor  || 'Neutral';
+  const dressColor = normalizeColor(heroDress.primaryColor || '') || heroDress.primaryColor || 'this outfit';
+
+  const neutralDescriptions = {
+    Black:  'versatile black goes with everything',
+    White:  'crisp white creates a fresh contrast',
+    Brown:  'warm brown earthy complement',
+    Beige:  'neutral beige ties the look together',
+    Grey:   'cool grey adds sophisticated balance',
+    Gold:   'metallic gold elevates the ensemble'
+  };
+
+  if (shoeColor === dressColor) {
+    parts.push(`tonal ${shoeColor} match for a cohesive look`);
+  } else if (neutralDescriptions[shoeColor]) {
+    parts.push(neutralDescriptions[shoeColor]);
+  } else {
+    parts.push(`${shoeColor} pairs with ${dressColor}`);
+  }
+
+  // Shared occasions
+  const dressOccasions = (heroDress.occasion || []).map((o) => o.toLowerCase());
+  const sharedOccasions = (shoe.occasion || []).filter((o) => dressOccasions.includes(o.toLowerCase()));
+  if (sharedOccasions.length > 0) {
+    parts.push(`both ${sharedOccasions.slice(0, 2).join(' & ')} appropriate`);
+  }
+
+  // Shared style
+  const dressStyles  = (heroDress.style || []).map((s) => s.toLowerCase());
+  const sharedStyles = (shoe.style || []).filter((s) => dressStyles.includes(s.toLowerCase()));
+  if (sharedStyles.length > 0) {
+    parts.push(`${sharedStyles[0]} style alignment`);
+  }
+
+  return parts.join(' · ') || `complements the ${dressColor} outfit`;
+}
+
+// ─── Fallback keyword similarity (no embeddings) ─────────────────────────────
 function keywordSimilarity(p1, p2) {
   const words1 = extractKeywords(p1);
   const words2 = extractKeywords(p2);
@@ -100,20 +410,13 @@ function keywordSimilarity(p1, p2) {
 
 function extractKeywords(product) {
   const text = [
-    product.name || '',
-    product.description || '',
-    ...(product.tags || []),
-    ...(product.style || []),
-    ...(product.occasion || []),
-    product.brand || '',
-    product.subCategory || ''
+    product.name || '', product.description || '',
+    ...(product.tags || []), ...(product.style || []),
+    ...(product.occasion || []), product.brand || '', product.subCategory || ''
   ].join(' ').toLowerCase();
 
   return new Set(
-    text
-      .split(/[\s,.-]+/)
-      .filter((w) => w.length > 3)
-      .filter((w) => !STOP_WORDS.has(w))
+    text.split(/[\s,.-]+/).filter((w) => w.length > 3).filter((w) => !STOP_WORDS.has(w))
   );
 }
 
@@ -122,170 +425,85 @@ const STOP_WORDS = new Set([
   'more', 'than', 'they', 'their', 'what', 'when', 'where', 'which'
 ]);
 
-// ─── Main recommendation function ────────────────────────────────────────────
-
-// ─── Sister Color Fallback Map ──────────────────────────────────────────────
-const SISTER_COLORS = {
-  'Red': ['Maroon', 'Pink', 'Orange', 'Rust'],
-  'Blue': ['Navy', 'Cyan', 'Teal', 'Grey'],
-  'Green': ['Emerald', 'Mint', 'Olive', 'Lime'],
-  'Yellow': ['Gold', 'Mustard', 'Orange'],
-  'Pink': ['Peach', 'Maroon', 'Red'],
-  'Black': ['Grey', 'Navy', 'Charcoal'],
-  'White': ['Silver', 'Gold', 'Beige', 'Ivory'],
-  'Gold': ['Yellow', 'Silver', 'Beige']
-};
-
-/**
- * getRecommendations(productId, options)
- * Finds best-matching shoes and complementary clothing for a given product.
- */
+// ─── Product-to-product recommendations (product detail page) ─────────────────
 export async function getRecommendations(productId, options = {}) {
-  const { maxShoes = 6, maxClothing = 6, maxAccessories = 4 } = options;
+  const { maxShoes = 6, maxClothing = 6 } = options;
 
   const source = await Product.findById(productId).lean();
   if (!source) throw new Error('Product not found');
 
   const isClothing = source.category === 'clothing';
   const isShoe = source.category === 'shoes';
-
-  // ── Find candidates ──
-  const baseQuery = {
-    _id: { $ne: source._id }
-  };
+  const baseQuery = { _id: { $ne: source._id } };
 
   const [shoePool, clothingPool] = await Promise.all([
-    isClothing
-      ? Product.find({ ...baseQuery, category: 'shoes' }).limit(100).lean()
-      : [],
+    isClothing ? Product.find({ ...baseQuery, category: 'shoes' }).limit(100).lean() : [],
     isShoe
       ? Product.find({ ...baseQuery, category: 'clothing' }).limit(100).lean()
       : Product.find({ ...baseQuery, category: 'clothing' }).limit(50).lean()
   ]);
 
-  // ── Score and rank ──
   const scoredShoes = shoePool
-    .map((candidate) => ({ product: candidate, scores: scoreProduct(source, candidate) }))
+    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
     .sort((a, b) => b.scores.total - a.scores.total)
     .slice(0, maxShoes);
 
   const scoredClothing = clothingPool
-    .map((candidate) => ({ product: candidate, scores: scoreProduct(source, candidate) }))
+    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
     .sort((a, b) => b.scores.total - a.scores.total)
     .slice(0, maxClothing);
 
-  return {
-    source,
-    shoes: scoredShoes,
-    complementaryClothing: scoredClothing,
-    generatedAt: new Date()
-  };
+  return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
 }
 
-/**
- * getOutfitForQuery(intent, aiInstance)
- * Master Stylist Version: Uses AI to pick the best from a filtered pool.
- */
-export async function getOutfitForQuery(intent, aiInstance) {
-  const { color, occasion = [], style = [], maxBudget = 0 } = intent;
+// ─── Intent-based outfit builder (chat / "Style Me") ──────────────────────────
+// Fetches a large pool WITHOUT DB-level color filtering, then scores every
+// product so correct colors rank highest regardless of storage format.
+export async function getOutfitForQuery(intent) {
+  const { maxBudget = 0 } = intent;
 
-  // 1. Get a pool of 20 high-quality candidates
+  // Only apply budget at DB level (exact number, no fuzzy)
   const clothingQuery = { category: 'clothing' };
-  if (color && color.toLowerCase() !== 'any') {
-    clothingQuery.$or = [
-      { primaryColor: { $regex: color, $options: 'i' } },
-      { colors: { $regex: color, $options: 'i' } }
-    ];
-  }
-  if (occasion.length > 0) clothingQuery.occasion = { $in: occasion };
   if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget };
 
-  let pool = await Product.aggregate([{ $match: clothingQuery }, { $sample: { size: 20 } }]);
-  
-  // Fallback if empty
-  if (pool.length === 0) {
-    pool = await Product.aggregate([{ $match: { category: 'clothing' } }, { $sample: { size: 10 } }]);
+  const clothingPool = await Product.find(clothingQuery)
+    .select('name brand category subCategory fabric type price primaryColor colors occasion style tags imageUrl images productUrl description')
+    .limit(300)
+    .lean();
+
+  if (clothingPool.length === 0) {
+    return { heroDress: null, otherDresses: [], shoes: [], scores: [] };
   }
 
-  // 2. If we have AI, let it pick the best "Hero" and provide reasoning
-  if (aiInstance && pool.length > 0) {
-    try {
-      const model = aiInstance.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
-      });
+  // Score every clothing product against the parsed intent
+  const scored = clothingPool
+    .map((product) => ({ product, scores: scoreProductAgainstIntent(product, intent) }))
+    .sort((a, b) => b.scores.total - a.scores.total);
 
-      const prompt = `
-        You are a Master Fashion Stylist for a premium Pakistani brand.
-        User Intent: Color: ${color}, Occasion: ${occasion.join(', ')}, Style: ${style.join(', ')}.
-        
-        From this pool of products, select the absolute BEST single 'Hero' dress that matches the intent.
-        Explain your choice professionally.
-        
-        Pool:
-        ${pool.map((p, i) => `[ID:${i}] Name: ${p.name}, Brand: ${p.brand}, Style: ${p.style.join(', ')}, Color: ${p.primaryColor}`).join('\n')}
-        
-        Return JSON:
-        {
-          "selectedIndex": number,
-          "reasoning": "1 sentence expert stylist explanation"
-        }
-      `;
+  const top10 = scored.slice(0, 10);
+  const heroDress = top10[0]?.product || null;
 
-      const result = await model.generateContent(prompt);
-      const response = JSON.parse(result.response.text());
-      
-      const heroDress = pool[response.selectedIndex] || pool[0];
-      
-      // 3. Get matching shoes for the hero
-      const shoePool = await Product.find({ category: 'shoes' }).limit(40).lean();
-      const shoes = shoePool
-        .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
-        .sort((a, b) => b._score - a._score)
-        .slice(0, 6);
+  // Best-matching shoes for the hero dress
+  let shoes = [];
+  if (heroDress) {
+    const shoePool = await Product.find({ category: 'shoes' })
+      .select('name brand category subCategory price primaryColor colors occasion style tags imageUrl images productUrl')
+      .limit(150)
+      .lean();
 
-      return {
-        heroDress,
-        otherDresses: pool.filter((_, i) => i !== response.selectedIndex).slice(0, 6),
-        shoes,
-        reasoning: response.reasoning,
-        intent
-      };
-    } catch (err) {
-      console.error("Master Stylist AI failed, falling back to basic logic:", err);
-    }
+    shoes = shoePool
+      .map((s) => {
+        const shoeScores = scoreProduct(heroDress, s);
+        return { ...s, _score: shoeScores.total, matchReason: generateShoeMatchReason(s, heroDress) };
+      })
+      .sort((a, b) => b._score - a._score)
+      .slice(0, 6);
   }
 
-  // Fallback to basic logic if AI is unavailable
-  const heroDress = pool[0] || null;
   return {
     heroDress,
-    otherDresses: pool.slice(1, 7),
-    shoes: [],
-    reasoning: "A coordinated selection based on your preference.",
-    intent
+    otherDresses: top10.slice(1).map((d) => d.product),
+    shoes,
+    scores: top10.map((d) => ({ productId: d.product._id, ...d.scores }))
   };
-}
-
-/**
- * generateAIStylistReasoning(hero, pair)
- * Generates a short professional fashion justification.
- */
-export async function generateAIStylistReasoning(hero, pair, aiInstance) {
-  if (!aiInstance) return "These pieces complement each other in style and occasion.";
-  
-  try {
-    const model = aiInstance.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `
-      You are a luxury fashion stylist. Briefly explain (1 sentence) why this ${pair.category} item:
-      "${pair.name}" (${pair.primaryColor}, ${pair.style.join(', ')})
-      is a perfect match for this ${hero.category}:
-      "${hero.name}" (${hero.primaryColor}, ${hero.style.join(', ')})
-      Focus on color harmony, occasion, and aesthetics.
-    `;
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
-  } catch (err) {
-    return "A perfect match for a cohesive and elegant look.";
-  }
 }

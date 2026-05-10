@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://aurafit-8e3u.onrender.com/api';
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -44,7 +44,9 @@ export const searchApi = {
 export const authApi = {
   login: (email: string, password: string) => api.post('/auth/login', { email, password }),
   register: (name: string, email: string, password: string) => api.post('/auth/register', { name, email, password }),
-  me: () => api.get('/auth/me')
+  me: () => api.get('/auth/me'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.put('/auth/change-password', { currentPassword, newPassword })
 };
 
 // ─── Favorites ───────────────────────────────────────────────────────────────
@@ -69,4 +71,38 @@ export const adminApi = {
     if (onError) es.onerror = onError;
     return es;
   }
+};
+
+// ─── Wardrobe & Boards ───────────────────────────────────────────────────────
+export const wardrobeApi = {
+  list: () => api.get('/wardrobe'),
+  add: (formData: FormData) => api.post('/wardrobe', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+};
+
+export const outfitsApi = {
+  list: () => api.get('/outfits'),
+  save: (data: any) => api.post('/outfits', data),
+  remove: (id: string) => api.delete(`/outfits/${id}`)
+};
+
+// ─── Visual Search ───────────────────────────────────────────────────────────
+export const visualSearchApi = {
+  searchByImage: (formData: FormData) => api.post('/search/visual/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+};
+
+// ─── Virtual Try-On ──────────────────────────────────────────────────────────
+export const tryonApi = {
+  generate: (formData: FormData) => api.post('/tryon', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000 // VTON can take up to 2 minutes
+  })
+};
+
+// ─── Vector / Semantic Search ──────────────────────────────────────────────────
+export const vectorSearchApi = {
+  /** True semantic similarity search using HuggingFace embeddings */
+  semantic: (q: string, params?: Record<string, any>) =>
+    api.get('/search/semantic', { params: { q, ...params } }),
+  /** Batch-generate HF embeddings for products that don't have them */
+  embedAll: (limit = 50) => api.post('/search/embed-all', { limit }),
 };

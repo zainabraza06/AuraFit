@@ -24,6 +24,8 @@ import adminRoutes          from './routes/admin.js';
 import outfitRoutes         from './routes/outfits.js';
 import imageSearchRoutes    from './routes/imageSearch.js';
 import wardrobeRoutes       from './routes/wardrobe.js';
+import tryonRoutes          from './routes/tryon.js';
+import vectorSearchRoutes   from './routes/vectorSearch.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -38,8 +40,9 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
+const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:3000', 'http://localhost:5173'];
 app.use(cors({
-  origin: process.env.FRONTEND_URL || ['http://localhost:3000', 'http://localhost:5173'],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -67,8 +70,10 @@ app.use('/api/products',         productRoutes);
 app.use('/api/recommendations',  recommendationRoutes);
 app.use('/api/outfits',          outfitRoutes);
 app.use('/api/search/visual',    imageSearchRoutes);
+app.use('/api/search',           vectorSearchRoutes); // vector routes FIRST (/semantic, /embed-all)
 app.use('/api/wardrobe',         wardrobeRoutes);
-app.use('/api/search',           searchRoutes);
+app.use('/api/tryon',            tryonRoutes);
+app.use('/api/search',           searchRoutes);       // text/regex fallback
 app.use('/api/favorites',        favoriteRoutes);
 app.use('/api/admin',            adminRoutes);
 

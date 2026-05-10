@@ -45,18 +45,22 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 - **Full audit logs** — every scrape run logged with per-brand stats
 
 ### AI Recommendation Engine
-- **Weighted scoring formula**: `finalScore = (embedding × 0.5) + (color × 0.2) + (occasion × 0.2) + (style × 0.1)`
+- **Two scoring systems:**
+  - **Product-to-product** (product detail page): `embedding×0.5 + color×0.2 + occasion×0.2 + style×0.1`
+  - **Intent-to-product** (AI chat): `colorMatch×0.45 + occasion×0.25 + style×0.15 + keywords×0.15`
 - **Semantic embeddings** — cosine similarity between Gemini-generated product vectors
-- **Color theory matrix** — 14-color fashion compatibility lookup (e.g., Maroon + Gold = 1.0)
+- **Color theory matrix** — 15-color fashion compatibility lookup (e.g., Black + Gold = 1.0)
 - **Occasion matching** — Jaccard overlap between occasion arrays
 - **Style matching** — Jaccard overlap between style arrays
-- **Gemini intent parsing** — natural language chat queries parsed to structured filters
+- **Gemini intent parsing** — natural language chat queries parsed to structured JSON with canonical color + raw shade
 
 ### AI Style Chat
-- Type natural language: *"Need a pastel outfit for Eid"*
-- Gemini 2.5 Flash extracts intent: `{ occasion, colors, style, category }`
-- Engine queries DB, scores all clothing × shoes combinations, returns top 5 outfits
-- Each result includes product details, score breakdown, and AI-generated description
+- Type natural language: *"I want a ferozi lawn suit for Eid"*
+- Gemini 2.5 Flash extracts: `{ color: "Teal", shade: "ferozi", occasion, style, maxBudget, intentSummary, aiAnalysis }`
+- Three-tier color scoring: exact shade match (1.0) → canonical alias match (0.82) → wrong color (0.08)
+- Fetches 300 products, scores all without DB-level color filter — correct colors always rank first
+- Returns top 10 clothing (hero + 9 others) + top 6 matching shoes
+- Each result shows score breakdown bars, AI analysis card, and "Shop This Look" CTA
 
 ### Discovery & Search
 - **Advanced filters**: category, brand, color, occasion, price range
@@ -69,20 +73,27 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 - JWT authentication (30-day tokens)
 - Personal favorites — toggle-save any product
 - User preferences — occasions, styles, colors, budget
-- First registered user auto-promoted to admin
+- Public registration disabled for production security
+- Admin seeder script to initialize secure admin access
 
 ### Admin Dashboard
 - Real-time scraper status and live logs stream (via Server-Sent Events / SSE)
 - Manual scrape trigger (runs async, non-blocking)
 - Full scrape history with per-brand breakdown
 - Product stats by category, brand, and 7-day growth
+- Change Password modal for secure credentials management
 - Delete all products for a specific brand
 
 ### Premium UI
 - **Next.js 16** with App Router and TypeScript
-- **Glassmorphism design system** — dynamic dark luxury aesthetic with gold accents, custom select dropdowns, and animated orbs
-- Product image gallery with zoom and error fallback
-- Responsive — mobile-first CSS Grid, Flexbox, and mobile slide-out menu
+- **Editorial Fashion Design System** — refined charcoal and gold aesthetic, solid surfaces, no glassmorphism
+- **Floating AI ChatWidget** — side-panel messaging UI with RAG outfit recommendations, toast notifications, and compact product cards
+- **Virtual Try-On** — two-panel before/after with Replicate IDM-VTON integration and step progress
+- **Wardrobe Manager** — upload clothes, Gemini auto-tags category/color/style, filter by type
+- **Outfit Boards** — save and manage AI-generated outfit combinations
+- **Semantic Search** — Keyword/AI toggle; semantic mode uses HuggingFace cosine similarity with % match badges
+- **Visual Search** — upload inspiration photo, Gemini analyzes and finds similar products
+- Responsive — mobile-first with slide-out menu and AI Tools dropdown
 
 ---
 
@@ -91,12 +102,14 @@ The platform automatically scrapes **10 top Pakistani brands** on a weekly sched
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16, React 19, TypeScript |
-| Styling | Vanilla CSS — custom Glassmorphism design system |
+| Styling | Vanilla CSS — custom Editorial Fashion design system |
 | HTTP Client | Axios with interceptors |
 | Backend | Node.js, Express 4 (ES Modules) |
 | Database | MongoDB via Mongoose 8 |
 | Authentication | JWT (jsonwebtoken), bcryptjs |
 | AI / NLP | Google Gemini 2.5 Flash (`@google/generative-ai`) |
+| Vector Embeddings | HuggingFace `all-MiniLM-L6-v2` (free inference API) |
+| Virtual Try-On | Replicate `IDM-VTON` model |
 | Web Scraping | Axios (HTTP), Cheerio (HTML parsing) |
 | Scheduling | node-cron |
 | Logging | Winston |
@@ -207,11 +220,11 @@ AuraFit/
     │   │   ├── register/page.tsx    # Registration form
     │   │   ├── admin/page.tsx       # Admin dashboard
     │   │   ├── categories/page.tsx  # Category browser
-    │   │   └── globals.css          # Glassmorphism design system
+    │   │   └── globals.css          # Editorial Fashion design system
     │   ├── components/
     │   │   ├── Navbar.tsx           # Top navigation
     │   │   ├── ProductCard.tsx      # Reusable product card
-    │   │   ├── ChatBox.tsx          # AI chat input
+    │   │   ├── ChatWidget.tsx       # Floating AI chat side-panel
     │   │   └── RecommendationResult.tsx # Outfit result display
     │   ├── context/
     │   │   └── AuthContext.tsx      # Global auth state
@@ -319,7 +332,28 @@ Normalized join table — unique compound index on `{ user, product }`.
 
 **POST `/outfit` body:**
 ```json
-{ "message": "Need a pastel outfit for Eid" }
+{ "message": "Need a ferozi lawn suit for Eid under 8000" }
+```
+
+**POST `/outfit` response shape:**
+```json
+{
+  "intent": {
+    "color": "Teal",
+    "shade": "ferozi",
+    "occasion": ["eid"],
+    "style": ["elegant", "traditional"],
+    "maxBudget": 8000,
+    "intentSummary": "A teal lawn suit for Eid under PKR 8,000.",
+    "aiAnalysis": "Ferozi is one of the most beloved Eid colors in Pakistan..."
+  },
+  "outfit": {
+    "heroDress": { ...product },
+    "otherDresses": [ ...9 products ],
+    "shoes": [ ...6 products ],
+    "scores": [ { "productId": "...", "total": 0.91, "colorMatch": 1.0, ... } ]
+  }
+}
 ```
 
 ### Search — `/api/search`
@@ -347,6 +381,7 @@ Normalized join table — unique compound index on `{ user, product }`.
 | GET | `/scraper/status` | Admin | Is scraper currently running? |
 | POST | `/scraper/run` | Admin | Trigger async scrape |
 | DELETE | `/products/brand/:brand` | Admin | Delete all products for a brand |
+| PUT | `/auth/change-password` | Admin | Change admin password securely |
 
 ---
 
@@ -436,9 +471,9 @@ User query → Gemini parses intent → structured filters
 
 ## Color Theory Engine
 
-A handcrafted 14×14 fashion color compatibility matrix.
+A handcrafted 15×15 fashion color compatibility matrix (`colorTheory.js`).
 
-**Supported colors:** Black, White, Grey, Navy, Blue, Green, Red, Maroon, Pink, Purple, Yellow, Orange, Gold, Silver, Beige, Brown
+**15 canonical colors:** Black, White, Grey, Red, Pink, Purple, Blue, Green, Teal, Yellow, Orange, Gold, Beige, Brown, Multicolor
 
 **Selected compatibility scores:**
 
@@ -446,13 +481,20 @@ A handcrafted 14×14 fashion color compatibility matrix.
 |---------|---------|-------|------|
 | Black | Gold | 1.0 | Classic luxury |
 | Black | White | 1.0 | Timeless contrast |
-| Maroon | Gold | 1.0 | Pakistani bridal |
-| Navy | White | 0.95 | Crisp formal |
-| Pink | Gold | 0.9 | Feminine festive |
+| White | Blue | 0.95 | Fresh, clean |
+| Pink | White | 0.9 | Feminine |
 | Red | Orange | 0.2 | Clashing warm tones |
-| Purple | Orange | 0.2 | Low compatibility |
+| Purple | Orange | 0.3 | Low compatibility |
+| Pink | Red | 0.3 | Similar warm tones |
 
-Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 against virtually any color. Handles color aliases (`"Navy Blue"` → `"Navy"`, `"Cream"` → `"Beige"`) and multi-color products by taking the best pair score.
+**Neutral colors** (Black, White, Grey, Gold, Silver, Beige, Brown, Multicolor) score ≥ 0.7 against virtually any color.
+
+**Color alias resolution** — 180+ aliases mapped to canonical names before lookup, including Pakistani Urdu transliterations:
+- `ferozi/firozi` → Teal, `jamuni/baingan` → Purple, `gulabi` → Pink
+- `mehroon/surkh/laal` → Red, `nila` → Blue, `narangi` → Orange
+- `zard/peela` → Yellow, `safed` → White, `dhani/mehendi/sabz` → Green
+
+Multi-color products use best-pair scoring across all `colors[]` combinations.
 
 ---
 
@@ -468,17 +510,22 @@ Neutral colors (Black, White, Grey, Gold, Silver, Beige, Brown) score ≥ 0.7 ag
 | `NODE_ENV` | No | `development` | Environment mode |
 | `FRONTEND_URL` | Yes | — | CORS allowed origin (e.g., `http://localhost:3000`) |
 | `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
+| `REPLICATE_API_KEY` | No | — | Replicate API token for IDM-VTON virtual try-on (free at replicate.com) |
+| `HUGGINGFACE_API_KEY` | No | — | HuggingFace token for semantic vector search (free at huggingface.co/settings/tokens) |
 | `SCRAPER_DRY_RUN` | No | `false` | `true` = parse without writing to DB |
 | `SCRAPER_MAX_PER_BRAND` | No | `50` | Max products to scrape per brand per run |
 | `SCRAPER_DELAY_MS` | No | `1500` | Delay between HTTP requests (ms) |
 | `SCRAPER_RETRY_LIMIT` | No | `3` | Max retries on failed requests |
 | `SCRAPER_CRON_SCHEDULE` | No | `0 3 * * 0` | Cron expression (default: Sunday 3 AM) |
+| `ADMIN_NAME` | Yes | — | Name of the admin for seeder script |
+| `ADMIN_EMAIL` | Yes | — | Email of the admin for seeder script |
+| `ADMIN_PASSWORD` | Yes | — | Initial password of the admin for seeder script |
 
 ### Frontend (`frontend/.env.local`)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL (e.g., `http://localhost:5000/api`) |
+| `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL (e.g., `https://aurafit-8e3u.onrender.com/api`) |
 
 ---
 
@@ -509,12 +556,13 @@ npm install
 cd AuraFit/backend
 cp .env.example .env
 # Fill in MONGO_URI, JWT_SECRET, GEMINI_API_KEY, FRONTEND_URL
+# Fill in ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD
 ```
 
 ```bash
 # Frontend
 cd AuraFit/frontend
-echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
+echo "NEXT_PUBLIC_API_URL=https://aurafit-8e3u.onrender.com/api" > .env.local
 ```
 
 ### 3. Start the backend
@@ -522,7 +570,7 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
 ```bash
 cd AuraFit/backend
 npm run dev
-# Running at http://localhost:5000
+# Running at https://aurafit-8e3u.onrender.com
 ```
 
 ### 4. Start the frontend
@@ -533,15 +581,22 @@ npm run dev
 # Running at http://localhost:3000
 ```
 
-### 5. Populate the database
+### 5. Seed the Admin Account
+
+Since public registration is disabled for security, you must seed the initial admin account:
+
+```bash
+cd AuraFit/backend
+npm run seed:admin
+```
+
+### 6. Populate the database
 
 ```bash
 cd AuraFit/backend
 npm run scrape        # Live scrape — writes to DB
 npm run scrape:dry    # Dry run — no DB writes (testing)
 ```
-
-The first user to register via the UI or API will automatically be granted admin privileges.
 
 ---
 
@@ -567,6 +622,7 @@ Access at `/admin` after logging in with an admin account.
 | Start dev (watch) | `npm run dev` | `nodemon server.js` |
 | Run scraper | `npm run scrape` | Execute full scrape, write to DB |
 | Dry-run scraper | `npm run scrape:dry` | Execute scrape, no DB writes |
+| Seed Admin | `npm run seed:admin` | Create admin from .env credentials |
 | Run tests | `npm test` | `node --test` |
 
 ---

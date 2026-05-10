@@ -158,7 +158,7 @@ function DiscoverContent() {
                     <button
                       className="btn btn-ghost btn-sm"
                       disabled={pagination.page <= 1}
-                      onClick={() => setFilters(f => ({ ...f, page: String(f.page - 1) }))}
+                      onClick={() => setFilters(f => ({ ...f, page: String(Number(f.page) - 1) }))}
                     >← Prev</button>
                     {Array.from({ length: Math.min(pagination.totalPages, 10) }, (_, i) => i + 1).map((pg) => (
                       <button
