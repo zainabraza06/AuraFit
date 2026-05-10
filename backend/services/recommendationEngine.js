@@ -512,6 +512,14 @@ export async function getRecommendations(productId, options = {}) {
 //   - If color is specified and correct-color products exist → exclude wrong-color (score=0.08) products
 //   - If color is specified but NO correct-color products exist → return colorMessage, empty results
 //   - If no exact shade found but alias/canonical match found → return informational colorMessage
+// Occasions that have no dedicated product tag — map to DB-available equivalents
+const OCCASION_FALLBACKS = {
+  mehndi:  ['party', 'eid', 'festive'],
+  barat:   ['wedding', 'party'],
+  valima:  ['wedding', 'party'],
+  formal:  ['office', 'party'],
+};
+
 export async function getOutfitForQuery(intent) {
   const { maxBudget = 0, color, shade, dressType, occasion = [], gender, intentSummary, originalMessage } = intent;
 
@@ -531,7 +539,8 @@ export async function getOutfitForQuery(intent) {
   const clothingQuery = { category: 'clothing' };
   // Soft budget: load up to 20% over budget; price scoring handles the rest
   if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget * 1.2 };
-  if (gender && gender !== 'women') clothingQuery.gender = gender;
+  // Only hard-filter for men/kids — 'unisex' and 'women' use the full product pool
+  if (gender && gender !== 'women' && gender !== 'unisex') clothingQuery.gender = gender;
 
   // For bridal queries, narrow pool to festive/bridal subCategories only
   const isBridalQuery = dressType === 'bridal' ||
@@ -546,8 +555,11 @@ export async function getOutfitForQuery(intent) {
     .lean();
 
   if (clothingPool.length === 0) {
-    return { heroDress: null, otherDresses: [], shoes: [], scores: [],
-      colorMessage: isBridalQuery ? 'No bridal/festive products found in our catalog yet.' : null };
+    return {
+      heroDress: null, otherDresses: [], shoes: [], scores: [],
+      matchQuality: { tier: 'none', pct: 0, message: "This combination isn't available in our catalog right now. Here are a few products you might like." },
+      colorMessage: isBridalQuery ? 'No bridal/festive products found in our catalog yet.' : null
+    };
   }
 
   // Score every clothing product against the parsed intent + query embedding
@@ -575,20 +587,102 @@ export async function getOutfitForQuery(intent) {
       }
       finalScored = colorMatches;
     } else {
-      // No correct-color products at all
-      const displayShade = shade || color;
-      const shadeIsSpecific = shade && shade.toLowerCase() !== color.toLowerCase();
-      if (shadeIsSpecific) {
-        colorMessage = `No "${shade}" or ${color} products found in our catalog. Try a different color.`;
+      // No correct-color products — fall back to best overall matches with a message
+      const displayShade = shade && shade.toLowerCase() !== color.toLowerCase() ? shade : color;
+      colorMessage = `No ${displayShade} products found in our catalog. Showing best available matches instead.`;
+      finalScored = scored; // show all, ranked by semantic/occasion/style match
+    }
+  }
+
+  // ── Piece-count fallback: relax piece if top results don't satisfy it ──────
+  const intendedPieces = intent.pieces;
+  let pieceFallbackMessage = null;
+  if (intendedPieces) {
+    const top20 = finalScored.slice(0, 20);
+    const hasExactPiece = top20.some((d) => d.product.pieces === intendedPieces);
+    if (!hasExactPiece) {
+      // Check for adjacent piece count (3→2, 2→3, etc.)
+      const adjacent = intendedPieces === 3 ? 2 : 3;
+      const hasAdjacent = top20.some((d) => d.product.pieces === adjacent);
+      if (hasAdjacent) {
+        pieceFallbackMessage = `No ${intendedPieces}-piece options found for this style. Showing ${adjacent}-piece and similar sets instead.`;
       } else {
-        colorMessage = `Sorry, no ${color} products found in our catalog.`;
+        pieceFallbackMessage = `No ${intendedPieces}-piece options found. Showing closest available styles.`;
       }
-      return { heroDress: null, otherDresses: [], shoes: [], scores: [], colorMessage };
     }
   }
 
   const top10 = finalScored.slice(0, 10);
   const heroDress = top10[0]?.product || null;
+
+  // ── Occasion fallback message ─────────────────────────────────────────────
+  // When user asked for mehndi/barat/valima but products are tagged differently,
+  // detect this and add an informational message rather than returning nothing.
+  let occasionFallbackMessage = null;
+  if (top10.length > 0 && occasion.length > 0) {
+    const primaryOccasion = occasion[0];
+    const fallbackOccasions = OCCASION_FALLBACKS[primaryOccasion];
+    if (fallbackOccasions) {
+      const hasDirectMatch = top10.some((d) =>
+        (d.product.occasion || []).some((o) => occasion.includes(o))
+      );
+      if (!hasDirectMatch) {
+        const label = primaryOccasion.charAt(0).toUpperCase() + primaryOccasion.slice(1);
+        const altLabel = fallbackOccasions.slice(0, 2).join(' & ');
+        occasionFallbackMessage = `No ${label}-specific collections found. Showing ${altLabel} wear that works perfectly for ${label} functions.`;
+      }
+    }
+  }
+
+  // ── Universal match quality tier ─────────────────────────────────────────
+  // Tells the frontend exactly how well the results satisfy the query.
+  // Penalty approach: start from the top product's raw score, deduct for each
+  // constraint that fell back, then map the effective score to a tier label.
+  const topScore = top10[0]?.scores.total ?? 0;
+  const topColorMatch = top10[0]?.scores.colorMatch ?? 0;
+
+  // Was color truly unavailable (showing wrong-color products as last resort)?
+  const colorTrulyMissing = colorMessage !== null && topColorMatch <= 0.08;
+  // Shade alias used (e.g. maroon→Red, ferozi→Teal) — family is correct
+  const colorAliasUsed = colorMessage !== null && !colorTrulyMissing;
+
+  const penalty =
+    (colorTrulyMissing     ? 0.20 : 0) +
+    (colorAliasUsed        ? 0.05 : 0) +
+    (occasionFallbackMessage ? 0.07 : 0) +
+    (pieceFallbackMessage    ? 0.04 : 0);
+
+  const effectiveScore = topScore - penalty;
+
+  let matchQuality;
+  if (top10.length === 0) {
+    matchQuality = {
+      tier: 'none', pct: 0,
+      message: "This combination isn't available in our catalog right now. Here are a few products you might like."
+    };
+  } else if (effectiveScore >= 0.60) {
+    matchQuality = { tier: 'exact', pct: 100, message: null };
+  } else if (effectiveScore >= 0.48) {
+    matchQuality = {
+      tier: 'close', pct: 90,
+      message: 'Showing very close matches — almost exactly what you described.'
+    };
+  } else if (effectiveScore >= 0.35) {
+    matchQuality = {
+      tier: 'similar', pct: 80,
+      message: 'No exact match found. Showing the most similar products we have.'
+    };
+  } else if (effectiveScore >= 0.20) {
+    matchQuality = {
+      tier: 'loose', pct: 50,
+      message: 'No close match available. Showing loosely related products you might like.'
+    };
+  } else {
+    matchQuality = {
+      tier: 'none', pct: 0,
+      message: "This specific combination doesn't exist in our catalog. Here are a few products you might like."
+    };
+  }
 
   // Best-matching shoes for the hero dress
   let shoes = [];
@@ -612,7 +706,10 @@ export async function getOutfitForQuery(intent) {
     otherDresses: top10.slice(1).map((d) => d.product),
     shoes,
     scores: top10.map((d) => ({ productId: d.product._id, ...d.scores })),
-    colorMessage
+    matchQuality,
+    colorMessage,
+    ...(occasionFallbackMessage ? { occasionFallbackMessage } : {}),
+    ...(pieceFallbackMessage    ? { pieceFallbackMessage }    : {})
   };
 }
 

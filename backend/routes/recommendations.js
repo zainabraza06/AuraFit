@@ -118,7 +118,10 @@ Return ONLY a valid JSON object with these exact fields:
     res.json({
       intent: parsedIntent,
       outfit,
-      ...(outfit.colorMessage ? { colorMessage: outfit.colorMessage } : {})
+      matchQuality: outfit.matchQuality,
+      ...(outfit.colorMessage            ? { colorMessage: outfit.colorMessage }                       : {}),
+      ...(outfit.occasionFallbackMessage ? { occasionFallbackMessage: outfit.occasionFallbackMessage } : {}),
+      ...(outfit.pieceFallbackMessage    ? { pieceFallbackMessage: outfit.pieceFallbackMessage }       : {})
     });
   } catch (err) {
     console.error('Outfit generation error:', err);
