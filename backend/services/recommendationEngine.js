@@ -16,20 +16,88 @@ import { getColorArrayCompatibility } from './colorTheory.js';
 // ─── Scoring weights (product-to-product) ────────────────────────────────────
 const WEIGHTS = { embedding: 0.5, color: 0.2, occasion: 0.2, style: 0.1 };
 
-// ─── Color alias map (mirrors colorTheory.js normalize) ──────────────────────
+// ─── Color alias map ──────────────────────────────────────────────────────────
+// Covers English variants + Pakistani Urdu transliterations used by local brands.
+// Keep in sync with colorTheory.js normalize() — both must resolve to the same
+// canonical names so cross-function scoring stays consistent.
 const COLOR_ALIASES = {
-  'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue', 'royal blue': 'Blue',
-  'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green', 'forest green': 'Green',
-  'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red', 'rust': 'Red',
-  'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige', 'khaki': 'Beige', 'sand': 'Beige',
-  'silver': 'Grey', 'ash': 'Grey', 'charcoal': 'Black', 'graphite': 'Black',
-  'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White', 'snow': 'White',
-  'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink', 'hot pink': 'Pink', 'dusty pink': 'Pink',
-  'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple', 'violet': 'Purple', 'grape': 'Purple',
+  // ── Blue family ────────────────────────────────────────────────────────────
+  'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
+  'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue',
+  'steel blue': 'Blue', 'pastel blue': 'Blue', 'dark blue': 'Blue',
+  'denim': 'Blue', 'indigo': 'Blue',
+
+  // ── Green family ───────────────────────────────────────────────────────────
+  'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
+  'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
+  'dark green': 'Green', 'mehendi green': 'Green', 'mint green': 'Green',
+  'lime green': 'Green', 'pista': 'Green', 'pistachio': 'Green',
+  'dhani': 'Green',                   // Urdu: light grassy green
+
+  // ── Red / Maroon family ────────────────────────────────────────────────────
+  'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red',
+  'rust': 'Red', 'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red',
+  'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', // Urdu: maroon
+  'surkh': 'Red',                     // Urdu: bright red
+  'cherry': 'Red', 'cardinal': 'Red',
+
+  // ── Beige / Nude family ────────────────────────────────────────────────────
+  'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
+  'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
+  'linen': 'Beige', 'biscuit': 'Beige', 'wheat': 'Beige',
+
+  // ── White / Off-white family ───────────────────────────────────────────────
+  'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
+  'snow': 'White', 'pearl': 'White', 'chalk': 'White', 'milk white': 'White',
+
+  // ── Grey family ────────────────────────────────────────────────────────────
+  'silver': 'Grey', 'ash': 'Grey', 'steel grey': 'Grey', 'slate': 'Grey',
+  'stone': 'Grey', 'smoke': 'Grey', 'gray': 'Grey', 'grey': 'Grey',
+  'light grey': 'Grey', 'dark grey': 'Grey', 'charcoal': 'Black',
+  'graphite': 'Black',
+
+  // ── Pink family ────────────────────────────────────────────────────────────
+  'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
+  'hot pink': 'Pink', 'dusty pink': 'Pink', 'baby pink': 'Pink',
+  'nude pink': 'Pink', 'pastel pink': 'Pink', 'dusty rose': 'Pink',
+  'old rose': 'Pink', 'candy pink': 'Pink', 'shocking pink': 'Pink',
+  'light pink': 'Pink', 'deep pink': 'Pink', 'salmon': 'Pink',
+
+  // ── Purple / Violet family ─────────────────────────────────────────────────
+  'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
+  'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
+  'pastel purple': 'Purple', 'light purple': 'Purple', 'deep purple': 'Purple',
+  'dark purple': 'Purple', 'royal purple': 'Purple',
+  'jamuni': 'Purple',                 // Urdu: purple/violet
+  'baingan': 'Purple',                // Urdu: eggplant purple
+
+  // ── Orange family ──────────────────────────────────────────────────────────
   'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
-  'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow', 'golden': 'Gold', 'gold': 'Gold',
+  'burnt orange': 'Orange', 'peach orange': 'Orange', 'apricot': 'Orange',
+  'pumpkin': 'Orange',
+
+  // ── Yellow family ──────────────────────────────────────────────────────────
+  'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
+  'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
+  'canary': 'Yellow',
+
+  // ── Gold family ────────────────────────────────────────────────────────────
+  'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'dull gold': 'Gold',
+  'champagne': 'Gold', 'bronze': 'Gold',
+
+  // ── Teal / Turquoise family ────────────────────────────────────────────────
   'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
-  'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown', 'tan': 'Brown'
+  'teal green': 'Teal', 'dark teal': 'Teal',
+  'ferozi': 'Teal',                   // Urdu: turquoise/teal (extremely common in Pakistan)
+
+  // ── Brown family ───────────────────────────────────────────────────────────
+  'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
+  'tan': 'Brown', 'walnut': 'Brown', 'toffee': 'Brown', 'chestnut': 'Brown',
+  'dark brown': 'Brown', 'light brown': 'Brown',
+
+  // ── Multicolor ─────────────────────────────────────────────────────────────
+  'multi': 'Multicolor', 'multicolor': 'Multicolor', 'multi-color': 'Multicolor',
+  'printed': 'Multicolor', 'multi colour': 'Multicolor', 'colourful': 'Multicolor'
 };
 
 function normalizeColor(color) {

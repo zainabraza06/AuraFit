@@ -185,6 +185,23 @@ const COMPATIBILITY_MATRIX = {
     Teal: 0.7,
     Multicolor: 0.7
   },
+  Beige: {
+    Black: 0.8,
+    White: 0.85,
+    Brown: 0.9,   // Earth-tone harmony
+    Gold: 0.85,
+    Green: 0.8,
+    Blue: 0.75,
+    Pink: 0.75,
+    Grey: 0.8,
+    Red: 0.65,
+    Orange: 0.6,
+    Purple: 0.65,
+    Yellow: 0.6,
+    Teal: 0.7,
+    Beige: 0.7,   // Tonal layering
+    Multicolor: 0.7
+  },
   Multicolor: {
     Black: 0.7,
     White: 0.8,
@@ -195,7 +212,7 @@ const COMPATIBILITY_MATRIX = {
 };
 
 // ─── Neutral colors always compatible ────────────────────────────────────────
-const NEUTRAL_COLORS = new Set(['Black', 'White', 'Grey', 'Gold', 'Silver', 'Beige', 'Brown']);
+const NEUTRAL_COLORS = new Set(['Black', 'White', 'Grey', 'Gold', 'Silver', 'Beige', 'Brown', 'Multicolor']);
 
 /**
  * getColorCompatibilityScore(color1, color2)
@@ -241,20 +258,56 @@ export function getColorArrayCompatibility(colors1 = [], colors2 = []) {
 function normalize(color) {
   if (!color) return 'Multicolor';
   const s = color.trim();
-  // Map variations
+  // Keep in sync with COLOR_ALIASES in recommendationEngine.js
   const map = {
+    // Blue
     'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
+    'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue', 'dark blue': 'Blue',
+    'steel blue': 'Blue', 'pastel blue': 'Blue', 'denim': 'Blue', 'indigo': 'Blue',
+    // Green
     'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
+    'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
+    'mint green': 'Green', 'dark green': 'Green', 'mehendi green': 'Green',
+    'pista': 'Green', 'pistachio': 'Green', 'dhani': 'Green',
+    // Red / Maroon
     'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red', 'rust': 'Red',
-    'beige': 'Gold', 'nude': 'Gold', 'camel': 'Gold', 'fawn': 'Gold', 'khaki': 'Gold',
-    'silver': 'Grey', 'ash': 'Grey', 'charcoal': 'Black',
-    'ivory': 'White', 'cream': 'White', 'off white': 'White',
+    'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red', 'cherry': 'Red',
+    'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', 'surkh': 'Red',
+    // Beige (separate from Gold — they are different fashion colors)
+    'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
+    'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
+    'linen': 'Beige', 'wheat': 'Beige',
+    // White
+    'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
+    'snow': 'White', 'pearl': 'White', 'chalk': 'White',
+    // Grey
+    'silver': 'Grey', 'ash': 'Grey', 'charcoal': 'Black', 'graphite': 'Black',
+    'gray': 'Grey', 'grey': 'Grey', 'slate': 'Grey', 'smoke': 'Grey', 'stone': 'Grey',
+    // Pink
     'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
+    'hot pink': 'Pink', 'baby pink': 'Pink', 'nude pink': 'Pink', 'salmon': 'Pink',
+    'dusty pink': 'Pink', 'pastel pink': 'Pink', 'old rose': 'Pink',
+    // Purple
     'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
+    'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
+    'light purple': 'Purple', 'deep purple': 'Purple', 'dark purple': 'Purple',
+    'jamuni': 'Purple', 'baingan': 'Purple',
+    // Orange
     'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
+    'burnt orange': 'Orange', 'apricot': 'Orange', 'pumpkin': 'Orange',
+    // Yellow
     'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
-    'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal',
-    'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown'
+    'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
+    // Gold
+    'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'champagne': 'Gold',
+    // Teal
+    'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
+    'teal green': 'Teal', 'ferozi': 'Teal',
+    // Brown
+    'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
+    'tan': 'Brown', 'walnut': 'Brown', 'chestnut': 'Brown',
+    // Multicolor
+    'multi': 'Multicolor', 'printed': 'Multicolor', 'multi colour': 'Multicolor'
   };
   return map[s.toLowerCase()] || s;
 }
