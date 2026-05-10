@@ -27,7 +27,7 @@ const OCCASION_MAP = [
   { keywords: ['winter', 'khaddar', 'karandi', 'linen', 'tweed'], occasion: 'casual' }
 ];
 
-// ─── Style inference ──────────────────────────────────────────────────────────
+// ─── Style inference (adjective tags, not dress type) ────────────────────────
 const STYLE_MAP = [
   { keywords: ['embroidered', 'embellished', 'zardozi', 'gota', 'tilla', 'stone work'], style: 'embroidered' },
   { keywords: ['printed', 'digital print', 'screen print'], style: 'printed' },
@@ -38,6 +38,24 @@ const STYLE_MAP = [
   { keywords: ['western', 'jeans', 'denim', 'tshirt', 't-shirt', 'hoodie'], style: 'western' },
   { keywords: ['heavy', 'bridal', 'chikankari', 'handwork'], style: 'heavy' }
 ];
+
+// ─── Dress style (garment silhouette / type) ──────────────────────────────────
+const DRESS_STYLE_MAP = [
+  { keywords: ['saree', 'sari'],                                           dressStyle: 'saree' },
+  { keywords: ['lehenga', 'lehnga', 'lehenga choli', 'sharara', 'gharara'], dressStyle: 'lehenga' },
+  { keywords: ['frock', 'shirt frock', 'a-line frock'],                    dressStyle: 'frock' },
+  { keywords: ['maxi dress', 'maxi', 'floor length gown', 'gown'],        dressStyle: 'maxi' },
+  { keywords: ['co-ord', 'coord set', 'coordinate set', 'matching set'],  dressStyle: 'co-ord' },
+  { keywords: ['palazzo'],                                                  dressStyle: 'palazzo' },
+  { keywords: ['shalwar kameez', 'salwar kameez', 'shalwar kamiz'],        dressStyle: 'shalwar-kameez' },
+  { keywords: ['kurta', 'kurti', 'kameez'],                                dressStyle: 'kurta' },
+  { keywords: ['western wear', 'jeans', 'denim', 'hoodie', 'sweatshirt'], dressStyle: 'western' },
+];
+
+// ─── Print / embellishment type ───────────────────────────────────────────────
+const EMBROIDERY_KEYWORDS = ['embroidered', 'embellished', 'zardozi', 'gota', 'tilla', 'stone work', 'chikankari', 'handwork', 'sequin', 'cutwork', 'thread work'];
+const PRINT_KEYWORDS      = ['printed', 'digital print', 'screen print', 'block print', 'resist print'];
+const PLAIN_KEYWORDS      = ['solid', 'plain', 'self', 'minimal', 'basic'];
 
 // ─── SubCategory keyword overrides (only valid Product schema enum values) ────
 // Config-level subCategory takes priority; these only apply when text content
@@ -153,6 +171,11 @@ export function normalizeProduct(raw, brandConfig) {
   // ── Pieces count (derived from subCategory) ──
   const pieces = inferPieces(subCategory);
 
+  // ── New garment attributes ──
+  const stitching  = subCategory.startsWith('unstitched') ? 'unstitched' : 'stitched';
+  const print      = inferPrint(textBlob);
+  const dressStyle = inferDressStyle(textBlob, subCategory);
+
   // ── Metadata score (completeness 0-1) ──
   const metadataScore = computeMetadataScore({ name, price, images, colors, occasions, styles, description: raw.description });
 
@@ -172,6 +195,9 @@ export function normalizeProduct(raw, brandConfig) {
     primaryColor,
     exactColors,
     primaryExactColor,
+    stitching,
+    ...(print      ? { print }      : {}),
+    ...(dressStyle ? { dressStyle } : {}),
     sizes: Array.isArray(raw.sizes) ? raw.sizes.slice(0, 20) : [],
     images,
     imageUrl: images[0],
@@ -262,6 +288,28 @@ function inferPieces(subCategory) {
   if (subCategory.includes('3-piece') || subCategory === 'festive' || subCategory === 'bridal') return 3;
   if (subCategory.includes('2-piece')) return 2;
   if (['kurta', 'pants', 'shalwar', 'dupatta', 'western'].includes(subCategory)) return 1;
+  return undefined;
+}
+
+function inferPrint(textBlob) {
+  const hasEmbroidery = EMBROIDERY_KEYWORDS.some((k) => textBlob.includes(k));
+  const hasPrint      = PRINT_KEYWORDS.some((k) => textBlob.includes(k));
+  const isPlain       = PLAIN_KEYWORDS.some((k) => textBlob.includes(k));
+  if (hasEmbroidery && hasPrint) return 'mixed';
+  if (hasEmbroidery) return 'embroidered';
+  if (hasPrint)      return 'printed';
+  if (isPlain)       return 'plain';
+  return undefined; // unknown — don't force a value
+}
+
+function inferDressStyle(textBlob, subCategory) {
+  // Text-first: check explicit style keywords
+  for (const { keywords, dressStyle } of DRESS_STYLE_MAP) {
+    if (keywords.some((k) => textBlob.includes(k))) return dressStyle;
+  }
+  // Fall back to subCategory mapping
+  if (['2-piece', '3-piece', 'shalwar'].includes(subCategory)) return 'shalwar-kameez';
+  if (subCategory === 'kurta') return 'kurta';
   return undefined;
 }
 

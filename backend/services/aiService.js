@@ -5,6 +5,83 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
+ * rankProductsWithAI
+ * Sends up to 20 candidate products + the user's intent to Gemini.
+ * Gemini reads each description and returns a ranked list with a reason per product.
+ * Falls back to original order if AI call fails.
+ */
+export async function rankProductsWithAI(products, intent) {
+  if (!products.length) return [];
+
+  const productList = products
+    .map((p, i) =>
+      `[${i + 1}] "${p.name}" by ${p.brand}
+  Price: PKR ${p.price}
+  Color: ${p.primaryExactColor || p.primaryColor || 'N/A'}
+  Occasion: ${(p.occasion || []).join(', ') || 'N/A'}
+  Dress style: ${p.dressStyle || p.subCategory || 'N/A'}
+  Print/Work: ${p.print || 'N/A'}
+  Stitching: ${p.stitching || 'N/A'}
+  Fabric: ${p.fabric || 'N/A'}
+  Description: ${(p.description || '').slice(0, 300)}`
+    )
+    .join('\n\n');
+
+  const specifiedParts = [
+    intent.colorExact   ? `Color: ${intent.colorExact}`        : null,
+    intent.colorFamily && intent.colorFamily !== 'Any' ? `Color family: ${intent.colorFamily}` : null,
+    intent.occasion?.length ? `Occasion: ${intent.occasion.join(', ')}` : null,
+    intent.dressStyle   ? `Dress style: ${intent.dressStyle}`  : null,
+    intent.print        ? `Print/Work: ${intent.print}`        : null,
+    intent.stitching    ? `Stitching: ${intent.stitching}`     : null,
+    intent.fabric       ? `Fabric: ${intent.fabric}`           : null,
+    intent.maxBudget > 0 ? `Budget: PKR ${intent.maxBudget}`  : null,
+  ].filter(Boolean).join('\n  ');
+
+  const prompt = `You are AuraFit's AI fashion ranker for Pakistani women's fashion.
+
+User asked for: "${intent.originalMessage || intent.intentSummary}"
+
+What the user wants:
+  ${specifiedParts || 'General browsing — rank by overall quality and appeal'}
+
+Rank the ${products.length} products below from BEST (rank 1) to WORST match. Read each description carefully — the description often contains details not in the other fields. Give a concise, specific reason for each ranking (one sentence, mention what matched or what's slightly off).
+
+${productList}
+
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "rankings": [
+    { "productIndex": 0, "rank": 1, "reason": "Exact maroon embroidered lehenga, perfect for a wedding occasion and within budget" },
+    { "productIndex": 2, "rank": 2, "reason": "..." }
+  ]
+}
+
+productIndex is 0-based (0 = first product listed above). Include all ${products.length} products.`;
+
+  try {
+    if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+    });
+    const result = await model.generateContent(prompt);
+    let text = result.response.text();
+    if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(text);
+
+    return parsed.rankings
+      .sort((a, b) => a.rank - b.rank)
+      .map((r) => ({ product: products[r.productIndex], rank: r.rank, reason: r.reason }))
+      .filter((r) => r.product != null);
+  } catch (err) {
+    console.warn('[rankProductsWithAI] AI ranking failed, returning original order:', err.message);
+    return products.map((p, i) => ({ product: p, rank: i + 1, reason: null }));
+  }
+}
+
+/**
  * AuraFit Unified AI Service
  * Orchestrates multi-provider fallbacks for Intent Parsing.
  * Order: Gemini 2.5 -> Gemini 1.5 -> Groq (Llama 3) -> OpenRouter

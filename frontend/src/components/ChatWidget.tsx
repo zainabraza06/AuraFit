@@ -61,13 +61,15 @@ export default function ChatWidget() {
 
     try {
       const res = await recommendationsApi.outfit(q);
-      const { heroDress, otherDresses } = res.data || {};
-      const aiMsg: Msg = { id: msgId++, role: 'ai', ...(heroDress || otherDresses?.length ? { data: res.data } : { text: "I couldn't find a perfect match right now. Try a different style or occasion!" }) };
+      const results = res.data?.results;
+      const hasResults = Array.isArray(results) && results.length > 0;
+      const aiMsg: Msg = { id: msgId++, role: 'ai', ...(hasResults ? { data: res.data } : { text: "I couldn't find a perfect match right now. Try a different style or occasion!" }) };
       setMessages(p => [...p, aiMsg]);
 
       if (panel !== 'open') {
         setUnread(u => u + 1);
-        const preview = heroDress ? `Found: ${heroDress.name}` : "Outfit ready for you!";
+        const topProduct = results?.[0]?.product;
+        const preview = topProduct ? `Found: ${topProduct.name}` : "Outfit ready for you!";
         showToast(preview);
       }
     } catch {

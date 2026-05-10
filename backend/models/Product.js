@@ -56,6 +56,18 @@ const ProductSchema = new mongoose.Schema(
     exactColors: [{ type: String }],            // exact scraped shades e.g. ["maroon", "golden"]
     primaryExactColor: { type: String },        // exact primary shade e.g. "maroon"
 
+    // ─── Garment attributes ──────────────────────────────────────────
+    stitching: {
+      type: String,
+      enum: ['stitched', 'unstitched'],
+      default: 'stitched'
+    },
+    print: {
+      type: String,
+      enum: ['embroidered', 'printed', 'plain', 'embellished', 'mixed']
+    },
+    dressStyle: { type: String },               // saree, lehenga, frock, kurta, shalwar-kameez …
+
     // ─── Sizing ──────────────────────────────────────────────────────
     sizes: [{ type: String }],                  // e.g. ["XS", "S", "M", "L"]
 
@@ -96,6 +108,9 @@ const ProductSchema = new mongoose.Schema(
 ProductSchema.index({ brand: 1, category: 1 });
 ProductSchema.index({ category: 1, subCategory: 1 });
 ProductSchema.index({ primaryColor: 1, category: 1 });
+ProductSchema.index({ stitching: 1, category: 1 });
+ProductSchema.index({ print: 1, category: 1 });
+ProductSchema.index({ dressStyle: 1, category: 1 });
 ProductSchema.index({ occasion: 1 });
 ProductSchema.index({ gender: 1, category: 1 });
 ProductSchema.index({ price: 1 });
