@@ -13,37 +13,44 @@ dotenv.config();
 export const parseIntentWithFallback = async (message, prompt) => {
   // 1. Try Gemini 2.5 Flash (Primary)
   try {
-    return await callGemini(message, prompt, 'gemini-2.5-flash');
+    const result = await callGemini(message, prompt, 'gemini-2.5-flash');
+    console.log('🤖 Intent parsed by: Gemini 2.5 Flash');
+    return result;
   } catch (err) {
-    console.warn('⚠️ Gemini 2.5 failed, falling back to 1.5:', err.message);
+    console.warn('⚠️ Gemini 2.5 failed, falling back to Groq:', err.message);
   }
 
-  // 2. Try Gemini 1.5 Flash (Fallback 1)
-  try {
-    return await callGemini(message, prompt, 'gemini-1.5-flash');
-  } catch (err) {
-    console.warn('⚠️ Gemini 1.5 failed, falling back to Groq:', err.message);
-  }
-
-  // 3. Try Groq (Fallback 2)
-  if (process.env.GROQ_API_KEY) {
+  // 2. Try Groq (Fallback 1)
+  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here') {
     try {
-      return await callGroq(message, prompt);
+      const result = await callGroq(message, prompt);
+      console.log('🤖 Intent parsed by: Groq (Llama 3)');
+      return result;
     } catch (err) {
       console.warn('⚠️ Groq failed, falling back to OpenRouter:', err.message);
     }
   }
 
-  // 4. Try OpenRouter (Fallback 3)
-  if (process.env.OPENROUTER_API_KEY) {
+  // 3. Try OpenRouter (Fallback 2)
+  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'your_openrouter_api_key_here') {
     try {
-      return await callOpenRouter(message, prompt);
+      const result = await callOpenRouter(message, prompt);
+      console.log('🤖 Intent parsed by: OpenRouter (Mistral Free)');
+      return result;
     } catch (err) {
-      console.error('❌ OpenRouter failed:', err.message);
+      console.warn('⚠️ OpenRouter failed, falling back to Gemini 1.5:', err.message);
     }
   }
 
-  throw new Error('All AI providers exhausted or failed.');
+  // 4. Try Gemini 1.5 Flash (Final Fallback)
+  try {
+    const result = await callGemini(message, prompt, 'gemini-1.5-flash');
+    console.log('🤖 Intent parsed by: Gemini 1.5 Flash');
+    return result;
+  } catch (err) {
+    console.error('❌ All AI providers exhausted or failed:', err.message);
+    throw new Error('All AI providers exhausted or failed.');
+  }
 };
 
 /**
@@ -69,49 +76,69 @@ async function callGemini(message, prompt, modelName) {
  * Helper: Groq Call (Llama 3 70B)
  */
 async function callGroq(message, prompt) {
-  const response = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    {
-      model: 'llama3-70b-8192',
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: message }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        'Content-Type': 'application/json'
+  try {
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: prompt + " Return ONLY a valid JSON object." },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
       }
-    }
-  );
-  return JSON.parse(response.data.choices[0].message.content);
+    );
+    const content = response.data.choices[0].message.content;
+    return JSON.parse(extractJson(content));
+  } catch (err) {
+    throw new Error(`Groq API Error: ${err.response?.data?.error?.message || err.message}`);
+  }
 }
 
 /**
- * Helper: OpenRouter Call (Mistral / Llama 3)
+ * Helper: OpenRouter Call
  */
 async function callOpenRouter(message, prompt) {
-  const response = await axios.post(
-    'https://openrouter.ai/api/v1/chat/completions',
-    {
-      model: 'mistralai/mistral-7b-instruct:free',
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: message }
-      ],
-      temperature: 0.1
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://aurafit.com',
-        'X-Title': 'AuraFit'
+  try {
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'google/gemma-2-9b-it:free',
+        messages: [
+          { role: 'system', content: prompt + " Return ONLY a valid JSON object." },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.1
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://aurafit.com',
+          'X-Title': 'AuraFit'
+        }
       }
-    }
-  );
-  return JSON.parse(response.data.choices[0].message.content);
+    );
+    const content = response.data.choices[0].message.content;
+    return JSON.parse(extractJson(content));
+  } catch (err) {
+    throw new Error(`OpenRouter API Error: ${err.response?.data?.error?.message || err.message}`);
+  }
+}
+
+/**
+ * Utility: Robust JSON extraction from LLM response
+ */
+function extractJson(text) {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1) return text;
+  return text.substring(start, end + 1);
 }
