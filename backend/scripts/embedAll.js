@@ -9,13 +9,10 @@ import { getTextEmbedding } from '../services/huggingface.js';
 
 dotenv.config();
 
-async function run() {
+export async function embedAllProducts() {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('✅ Connected to MongoDB');
-
     const products = await Product.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] }).lean();
-    console.log(`🔍 Found ${products.length} products needing embeddings.`);
+    console.log(`\n🔍 Found ${products.length} products needing embeddings.`);
 
     let updated = 0;
     for (const product of products) {
@@ -39,7 +36,6 @@ async function run() {
           process.stdout.write(`\r🚀 Embedded ${updated}/${products.length} products`);
         }
         
-        // Wait 300ms to respect Hugging Face free tier rate limits
         await new Promise(r => setTimeout(r, 300));
       } catch (e) {
         console.error(`\n❌ Failed for ${product._id}:`, e.message);
@@ -47,12 +43,20 @@ async function run() {
     }
     
     console.log(`\n✨ Finished! Successfully embedded ${updated} products.`);
+    return updated;
   } catch (err) {
-    console.error('Fatal Error:', err);
-  } finally {
-    mongoose.disconnect();
-    process.exit(0);
+    console.error('Fatal Error during embedding:', err);
+    throw err;
   }
 }
 
-run();
+// Allow running as a standalone script
+const isMain = process.argv[1] && process.argv[1].endsWith('embedAll.js');
+if (isMain) {
+  mongoose.connect(process.env.MONGO_URI).then(async () => {
+    console.log('✅ Connected to MongoDB for standalone embedding');
+    await embedAllProducts();
+    mongoose.disconnect();
+    process.exit(0);
+  });
+}
