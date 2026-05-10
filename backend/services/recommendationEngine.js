@@ -20,84 +20,133 @@ const WEIGHTS = { embedding: 0.5, color: 0.2, occasion: 0.2, style: 0.1 };
 // Covers English variants + Pakistani Urdu transliterations used by local brands.
 // Keep in sync with colorTheory.js normalize() — both must resolve to the same
 // canonical names so cross-function scoring stays consistent.
+// Canonical colors our system supports (must match CANONICAL_COLORS in recommendations.js)
+export const CANONICAL_COLORS = [
+  'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
+  'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
+  'Gold', 'Beige', 'Brown', 'Multicolor'
+];
+
+// Every shade/variant → canonical color.
+// Gemini now returns canonical colors directly; this map handles the DB side
+// (how brands store colors in scraped product records).
 const COLOR_ALIASES = {
-  // ── Blue family ────────────────────────────────────────────────────────────
+  // ── Blue ──────────────────────────────────────────────────────────────────
   'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
   'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue',
   'steel blue': 'Blue', 'pastel blue': 'Blue', 'dark blue': 'Blue',
-  'denim': 'Blue', 'indigo': 'Blue',
+  'deep blue': 'Blue', 'midnight blue': 'Blue', 'electric blue': 'Blue',
+  'baby blue': 'Blue', 'prussian blue': 'Blue', 'cerulean': 'Blue',
+  'azure': 'Blue', 'denim': 'Blue', 'indigo': 'Blue',
+  'nila': 'Blue',                       // Urdu: dark blue/indigo
 
-  // ── Green family ───────────────────────────────────────────────────────────
+  // ── Green ─────────────────────────────────────────────────────────────────
   'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
   'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
-  'dark green': 'Green', 'mehendi green': 'Green', 'mint green': 'Green',
-  'lime green': 'Green', 'pista': 'Green', 'pistachio': 'Green',
-  'dhani': 'Green',                   // Urdu: light grassy green
+  'dark green': 'Green', 'deep green': 'Green', 'mehendi green': 'Green',
+  'mint green': 'Green', 'lime green': 'Green', 'lime': 'Green',
+  'pista': 'Green', 'pistachio': 'Green', 'apple green': 'Green',
+  'jungle green': 'Green', 'hunter green': 'Green', 'kelly green': 'Green',
+  'army green': 'Green', 'military green': 'Green', 'forest': 'Green',
+  'neon green': 'Green', 'grass green': 'Green', 'parrot green': 'Green',
+  'dhani': 'Green',                     // Urdu: light grassy green
+  'mehendi': 'Green',                   // henna green
+  'sabz': 'Green',                      // Urdu: green
 
-  // ── Red / Maroon family ────────────────────────────────────────────────────
+  // ── Red / Maroon ──────────────────────────────────────────────────────────
   'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red',
   'rust': 'Red', 'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red',
+  'dark maroon': 'Red', 'deep maroon': 'Red', 'dark burgundy': 'Red',
+  'cherry': 'Red', 'cardinal': 'Red', 'scarlet': 'Red', 'ruby': 'Red',
+  'raspberry': 'Red', 'strawberry': 'Red', 'blood red': 'Red',
   'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', // Urdu: maroon
-  'surkh': 'Red',                     // Urdu: bright red
-  'cherry': 'Red', 'cardinal': 'Red',
+  'surkh': 'Red',                       // Urdu: bright red
+  'laal': 'Red',                        // Urdu: red
 
-  // ── Beige / Nude family ────────────────────────────────────────────────────
+  // ── Beige / Nude ──────────────────────────────────────────────────────────
   'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
   'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
-  'linen': 'Beige', 'biscuit': 'Beige', 'wheat': 'Beige',
+  'linen': 'Beige', 'biscuit': 'Beige', 'wheat': 'Beige', 'taupe': 'Beige',
+  'nude beige': 'Beige', 'warm beige': 'Beige', 'natural': 'Beige',
 
-  // ── White / Off-white family ───────────────────────────────────────────────
+  // ── White / Off-white ─────────────────────────────────────────────────────
   'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
   'snow': 'White', 'pearl': 'White', 'chalk': 'White', 'milk white': 'White',
+  'pure white': 'White', 'bright white': 'White', 'warm white': 'White',
+  'eggshell': 'White', 'antique white': 'White',
+  'safed': 'White',                     // Urdu: white
 
-  // ── Grey family ────────────────────────────────────────────────────────────
+  // ── Grey ──────────────────────────────────────────────────────────────────
   'silver': 'Grey', 'ash': 'Grey', 'steel grey': 'Grey', 'slate': 'Grey',
   'stone': 'Grey', 'smoke': 'Grey', 'gray': 'Grey', 'grey': 'Grey',
-  'light grey': 'Grey', 'dark grey': 'Grey', 'charcoal': 'Black',
-  'graphite': 'Black',
+  'light grey': 'Grey', 'dark grey': 'Grey', 'steel gray': 'Grey',
+  'platinum': 'Grey', 'gunmetal': 'Grey', 'charcoal grey': 'Grey',
+  'warm grey': 'Grey', 'cool grey': 'Grey', 'dove grey': 'Grey',
+  'charcoal': 'Black', 'graphite': 'Black', 'onyx': 'Black',
+  'ebony': 'Black', 'jet black': 'Black', 'pitch black': 'Black',
+  'off black': 'Black',
 
-  // ── Pink family ────────────────────────────────────────────────────────────
+  // ── Pink ──────────────────────────────────────────────────────────────────
   'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
   'hot pink': 'Pink', 'dusty pink': 'Pink', 'baby pink': 'Pink',
   'nude pink': 'Pink', 'pastel pink': 'Pink', 'dusty rose': 'Pink',
   'old rose': 'Pink', 'candy pink': 'Pink', 'shocking pink': 'Pink',
   'light pink': 'Pink', 'deep pink': 'Pink', 'salmon': 'Pink',
+  'magenta': 'Pink', 'cerise': 'Pink', 'flamingo': 'Pink',
+  'carnation': 'Pink', 'blush pink': 'Pink', 'rose pink': 'Pink',
+  'bubblegum': 'Pink', 'millennial pink': 'Pink', 'macaroon pink': 'Pink',
+  'gulabi': 'Pink',                     // Urdu: pink
 
-  // ── Purple / Violet family ─────────────────────────────────────────────────
+  // ── Purple / Violet ───────────────────────────────────────────────────────
   'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
   'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
   'pastel purple': 'Purple', 'light purple': 'Purple', 'deep purple': 'Purple',
-  'dark purple': 'Purple', 'royal purple': 'Purple',
-  'jamuni': 'Purple',                 // Urdu: purple/violet
-  'baingan': 'Purple',                // Urdu: eggplant purple
+  'dark purple': 'Purple', 'royal purple': 'Purple', 'dusty purple': 'Purple',
+  'pastel lavender': 'Purple', 'pastel lilac': 'Purple', 'amethyst': 'Purple',
+  'orchid': 'Purple', 'heather': 'Purple', 'periwinkle': 'Purple',
+  'jamuni': 'Purple',                   // Urdu: purple/violet
+  'baingan': 'Purple',                  // Urdu: eggplant purple
 
-  // ── Orange family ──────────────────────────────────────────────────────────
+  // ── Orange ────────────────────────────────────────────────────────────────
   'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
   'burnt orange': 'Orange', 'peach orange': 'Orange', 'apricot': 'Orange',
-  'pumpkin': 'Orange',
+  'pumpkin': 'Orange', 'tangerine': 'Orange', 'mango': 'Orange',
+  'deep orange': 'Orange', 'burnt sienna': 'Orange', 'copper': 'Orange',
+  'narangi': 'Orange',                  // Urdu: orange
 
-  // ── Yellow family ──────────────────────────────────────────────────────────
+  // ── Yellow ────────────────────────────────────────────────────────────────
   'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
   'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
-  'canary': 'Yellow',
+  'canary': 'Yellow', 'sunflower': 'Yellow', 'golden yellow': 'Yellow',
+  'bright yellow': 'Yellow', 'neon yellow': 'Yellow', 'chartreuse': 'Yellow',
+  'ochre': 'Yellow', 'corn': 'Yellow', 'honey': 'Yellow',
+  'zard': 'Yellow', 'peela': 'Yellow', // Urdu: yellow
 
-  // ── Gold family ────────────────────────────────────────────────────────────
+  // ── Gold ──────────────────────────────────────────────────────────────────
   'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'dull gold': 'Gold',
-  'champagne': 'Gold', 'bronze': 'Gold',
+  'champagne': 'Gold', 'bronze': 'Gold', 'brass': 'Gold', 'metallic gold': 'Gold',
+  'light gold': 'Gold', 'rose gold': 'Gold',
 
-  // ── Teal / Turquoise family ────────────────────────────────────────────────
+  // ── Teal / Turquoise ──────────────────────────────────────────────────────
   'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
-  'teal green': 'Teal', 'dark teal': 'Teal',
-  'ferozi': 'Teal',                   // Urdu: turquoise/teal (extremely common in Pakistan)
+  'teal green': 'Teal', 'dark teal': 'Teal', 'deep teal': 'Teal',
+  'teal blue': 'Teal', 'peacock': 'Teal', 'peacock blue': 'Teal',
+  'ferozi': 'Teal',                     // Urdu: turquoise/teal (very common in Pakistan)
+  'firozi': 'Teal',                     // alternate spelling
 
-  // ── Brown family ───────────────────────────────────────────────────────────
+  // ── Brown ─────────────────────────────────────────────────────────────────
   'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
   'tan': 'Brown', 'walnut': 'Brown', 'toffee': 'Brown', 'chestnut': 'Brown',
-  'dark brown': 'Brown', 'light brown': 'Brown',
+  'dark brown': 'Brown', 'light brown': 'Brown', 'mahogany': 'Brown',
+  'sienna': 'Brown', 'sepia': 'Brown', 'hazel': 'Brown', 'cocoa': 'Brown',
+  'saddle brown': 'Brown', 'raw umber': 'Brown',
 
-  // ── Multicolor ─────────────────────────────────────────────────────────────
+  // ── Multicolor / Printed ──────────────────────────────────────────────────
   'multi': 'Multicolor', 'multicolor': 'Multicolor', 'multi-color': 'Multicolor',
-  'printed': 'Multicolor', 'multi colour': 'Multicolor', 'colourful': 'Multicolor'
+  'multi colour': 'Multicolor', 'multicolour': 'Multicolor',
+  'printed': 'Multicolor', 'colourful': 'Multicolor', 'colorful': 'Multicolor',
+  'floral': 'Multicolor', 'patterned': 'Multicolor', 'geometric': 'Multicolor',
+  'abstract': 'Multicolor', 'tie dye': 'Multicolor', 'ombre': 'Multicolor'
 };
 
 function normalizeColor(color) {

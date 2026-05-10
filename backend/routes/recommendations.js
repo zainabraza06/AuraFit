@@ -37,6 +37,14 @@ router.post('/outfit', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
+    // These are the ONLY canonical colors in our system.
+    // Gemini must map any shade/variant to one of these — never invent new names.
+    const CANONICAL_COLORS = [
+      'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
+      'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
+      'Gold', 'Beige', 'Brown', 'Multicolor'
+    ];
+
     let parsedIntent = {
       color: 'Any',
       occasion: ['casual'],
@@ -51,16 +59,33 @@ router.post('/outfit', async (req, res) => {
         const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const prompt = `
 You are an expert AI fashion stylist for AuraFit, a Pakistani fashion discovery platform.
-Analyze the user request below and extract structured fashion intent as JSON.
+Analyze the user request and extract structured fashion intent as JSON.
 
 User Request: "${message}"
 
 Return ONLY a valid JSON object with these exact fields:
 
-- color: (string) The specific color requested, properly capitalized.
-  Examples: "Purple", "Navy Blue", "Pastel Pink", "Emerald Green".
-  IMPORTANT: Be precise. "purple" -> "Purple". "mauve" -> "Purple". "lavender" -> "Purple". "pastel" alone -> infer the most likely pastel color from context or use "Any".
-  If truly no color is mentioned, use "Any".
+- color: (string) MUST be exactly one of these canonical colors (or "Any"):
+  ${CANONICAL_COLORS.join(', ')}, Any
+
+  Map EVERY shade or variant the user mentions to the nearest canonical color:
+  • lavender, lilac, violet, mauve, plum, grape, wisteria, jamuni, baingan, purple → Purple
+  • navy, sky blue, cobalt, royal blue, indigo, denim, midnight blue, baby blue, nila → Blue
+  • bottle green, emerald, olive, mint, sage, pista, pistachio, dhani, sea green, forest green, army green, mehendi green → Green
+  • turquoise, aqua, cyan, seafoam, ferozi, teal green → Teal
+  • maroon, crimson, burgundy, wine, rust, brick red, cherry, mehroon, mehrun, surkh, dark red → Red
+  • blush, rose, peach, salmon, baby pink, fuchsia, hot pink, dusty pink, nude pink, old rose, magenta, gulabi → Pink
+  • ivory, cream, off-white, pearl, chalk, snow, milk white → White
+  • silver, ash, charcoal, slate, smoke, steel grey, graphite, gray → Grey
+  • mustard, lemon, saffron, butter, canary, pastel yellow, lemon yellow, zard, peela → Yellow
+  • coral, terracotta, amber, burnt orange, apricot, pumpkin, narangi → Orange
+  • golden, antique gold, champagne, bronze, dull gold → Gold
+  • beige, nude, camel, fawn, khaki, khaaki, sand, oat, linen, wheat, biscuit → Beige
+  • chocolate, mocha, coffee, caramel, tan, walnut, chestnut, dark brown → Brown
+  • printed, multicolor, multi-color, colourful, multi → Multicolor
+
+  For "pastel" alone: look at the rest of the message for clues; if unclear use "Any".
+  If no color is mentioned at all → "Any".
 
 - occasion: (array of strings) Pick all that apply from:
   ["casual", "wedding", "office", "party", "eid", "formal", "mehndi"]
@@ -68,29 +93,28 @@ Return ONLY a valid JSON object with these exact fields:
 - style: (array of strings) Pick all that apply from:
   ["elegant", "trendy", "minimal", "embroidered", "western", "traditional"]
 
-- maxBudget: (number) Budget limit in PKR. Use 0 if no budget is mentioned.
+- maxBudget: (number) Budget in PKR. 0 if not mentioned.
 
-- intentSummary: (string) One concise sentence capturing what the user wants.
+- intentSummary: (string) One concise sentence.
 
-- aiAnalysis: (string) 2-3 sentences explaining:
-  1. What the user is looking for and why those specific attributes were chosen.
-  2. What style of Pakistani outfit would work best for this request.
-  3. Any relevant fashion tips for this combination (color pairing, occasion appropriateness, etc.).
-  Be specific to Pakistani fashion context (lawn suits, shalwar kameez, formal wear, etc.).
+- aiAnalysis: (string) 2-3 sentences covering:
+  1. What the user wants and why those attributes were chosen.
+  2. What Pakistani outfit style fits best (lawn suit, chiffon 3-piece, kurta, etc.).
+  3. A fashion tip — color pairing, accessory suggestion, or occasion advice.
 
-Example for "purple dress for eid":
+Example — "I need a ferozi lawn suit for eid under 8000":
 {
-  "color": "Purple",
+  "color": "Teal",
   "occasion": ["eid"],
   "style": ["elegant", "traditional"],
-  "maxBudget": 0,
-  "intentSummary": "An elegant purple outfit perfect for Eid celebrations.",
-  "aiAnalysis": "Purple is a regal and festive color that pairs beautifully with Eid celebrations. A deep purple or lavender 3-piece suit with embroidered detailing would be ideal. For accessories, gold jewelry and nude or gold heels complement purple tones perfectly in Pakistani formal wear."
+  "maxBudget": 8000,
+  "intentSummary": "A teal lawn suit for Eid celebrations under PKR 8,000.",
+  "aiAnalysis": "Ferozi (teal) is one of the most beloved Eid colors in Pakistan, offering a cool, festive look. A printed or embroidered lawn 2-piece or 3-piece would suit this budget perfectly. Pair with silver or white khussa flats and minimal jewelry for a fresh, elegant Eid look."
 }
 `;
         const model = ai.getGenerativeModel({
           model: 'gemini-2.5-flash',
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.15 }
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
         });
 
         const result = await model.generateContent(prompt);
@@ -99,8 +123,14 @@ Example for "purple dress for eid":
         if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(text);
 
+        // Validate color is canonical — fallback to alias map if Gemini slips
+        const rawColor = (parsed.color || 'Any').trim();
+        const isCanonical = CANONICAL_COLORS.includes(rawColor) || rawColor === 'Any';
+
         parsedIntent = {
-          color: parsed.color || 'Any',
+          color: isCanonical ? rawColor : (CANONICAL_COLORS.find(
+            c => rawColor.toLowerCase().includes(c.toLowerCase())
+          ) || 'Any'),
           occasion: Array.isArray(parsed.occasion) ? parsed.occasion : ['casual'],
           style: Array.isArray(parsed.style) ? parsed.style : ['elegant'],
           maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,

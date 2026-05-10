@@ -263,51 +263,73 @@ function normalize(color) {
     // Blue
     'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
     'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue', 'dark blue': 'Blue',
+    'deep blue': 'Blue', 'midnight blue': 'Blue', 'electric blue': 'Blue',
+    'baby blue': 'Blue', 'prussian blue': 'Blue', 'cerulean': 'Blue', 'azure': 'Blue',
     'steel blue': 'Blue', 'pastel blue': 'Blue', 'denim': 'Blue', 'indigo': 'Blue',
+    'nila': 'Blue',
     // Green
     'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
     'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
-    'mint green': 'Green', 'dark green': 'Green', 'mehendi green': 'Green',
-    'pista': 'Green', 'pistachio': 'Green', 'dhani': 'Green',
+    'mint green': 'Green', 'dark green': 'Green', 'deep green': 'Green',
+    'mehendi green': 'Green', 'lime green': 'Green', 'lime': 'Green',
+    'pista': 'Green', 'pistachio': 'Green', 'apple green': 'Green',
+    'jungle green': 'Green', 'hunter green': 'Green', 'army green': 'Green',
+    'military green': 'Green', 'parrot green': 'Green', 'neon green': 'Green',
+    'dhani': 'Green', 'mehendi': 'Green', 'sabz': 'Green',
     // Red / Maroon
     'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red', 'rust': 'Red',
-    'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red', 'cherry': 'Red',
-    'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', 'surkh': 'Red',
-    // Beige (separate from Gold — they are different fashion colors)
+    'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red', 'dark maroon': 'Red',
+    'cherry': 'Red', 'scarlet': 'Red', 'ruby': 'Red', 'raspberry': 'Red',
+    'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', 'surkh': 'Red', 'laal': 'Red',
+    // Beige
     'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
     'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
-    'linen': 'Beige', 'wheat': 'Beige',
+    'linen': 'Beige', 'wheat': 'Beige', 'taupe': 'Beige', 'natural': 'Beige',
     // White
     'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
-    'snow': 'White', 'pearl': 'White', 'chalk': 'White',
+    'snow': 'White', 'pearl': 'White', 'chalk': 'White', 'milk white': 'White',
+    'eggshell': 'White', 'safed': 'White',
     // Grey
     'silver': 'Grey', 'ash': 'Grey', 'charcoal': 'Black', 'graphite': 'Black',
     'gray': 'Grey', 'grey': 'Grey', 'slate': 'Grey', 'smoke': 'Grey', 'stone': 'Grey',
+    'platinum': 'Grey', 'gunmetal': 'Grey', 'dove grey': 'Grey', 'onyx': 'Black',
+    'ebony': 'Black', 'jet black': 'Black',
     // Pink
     'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
     'hot pink': 'Pink', 'baby pink': 'Pink', 'nude pink': 'Pink', 'salmon': 'Pink',
     'dusty pink': 'Pink', 'pastel pink': 'Pink', 'old rose': 'Pink',
+    'magenta': 'Pink', 'cerise': 'Pink', 'flamingo': 'Pink', 'gulabi': 'Pink',
+    'blush pink': 'Pink', 'rose pink': 'Pink', 'shocking pink': 'Pink',
     // Purple
     'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
     'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
     'light purple': 'Purple', 'deep purple': 'Purple', 'dark purple': 'Purple',
-    'jamuni': 'Purple', 'baingan': 'Purple',
+    'royal purple': 'Purple', 'amethyst': 'Purple', 'orchid': 'Purple',
+    'periwinkle': 'Purple', 'jamuni': 'Purple', 'baingan': 'Purple',
     // Orange
     'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
     'burnt orange': 'Orange', 'apricot': 'Orange', 'pumpkin': 'Orange',
+    'tangerine': 'Orange', 'mango': 'Orange', 'copper': 'Orange', 'narangi': 'Orange',
     // Yellow
     'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
     'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
+    'canary': 'Yellow', 'sunflower': 'Yellow', 'ochre': 'Yellow',
+    'zard': 'Yellow', 'peela': 'Yellow',
     // Gold
     'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'champagne': 'Gold',
+    'bronze': 'Gold', 'dull gold': 'Gold', 'rose gold': 'Gold', 'brass': 'Gold',
     // Teal
     'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
-    'teal green': 'Teal', 'ferozi': 'Teal',
+    'teal green': 'Teal', 'dark teal': 'Teal', 'peacock': 'Teal', 'peacock blue': 'Teal',
+    'ferozi': 'Teal', 'firozi': 'Teal',
     // Brown
     'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
-    'tan': 'Brown', 'walnut': 'Brown', 'chestnut': 'Brown',
+    'tan': 'Brown', 'walnut': 'Brown', 'chestnut': 'Brown', 'mahogany': 'Brown',
+    'sienna': 'Brown', 'sepia': 'Brown', 'hazel': 'Brown', 'cocoa': 'Brown',
     // Multicolor
-    'multi': 'Multicolor', 'printed': 'Multicolor', 'multi colour': 'Multicolor'
+    'multi': 'Multicolor', 'printed': 'Multicolor', 'multi colour': 'Multicolor',
+    'multicolour': 'Multicolor', 'floral': 'Multicolor', 'patterned': 'Multicolor',
+    'colourful': 'Multicolor', 'colorful': 'Multicolor'
   };
   return map[s.toLowerCase()] || s;
 }
