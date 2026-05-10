@@ -141,11 +141,11 @@ export default function ProductDetailsPage() {
                 Matching Shoes 
                 <span className="tag" style={{ background: 'rgba(45, 212, 191, 0.1)', color: 'var(--accent-teal)', borderColor: 'rgba(45, 212, 191, 0.2)' }}>High Compatibility</span>
               </h3>
-              <div className="carousel">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
                 {recommendations.shoes?.map((rec: any) => (
-                  <div key={rec.product._id} style={{ width: '280px' }}>
+                  <div key={rec.product._id}>
                     <ProductCard product={rec.product} />
-                    <div style={{ marginTop: '1rem', padding: '0 0.5rem' }}>
+                    <div style={{ marginTop: '0.75rem', padding: '0 0.25rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
                         <span>Match Score</span>
                         <span>{Math.round(rec.scores.total * 100)}%</span>
@@ -165,11 +165,11 @@ export default function ProductDetailsPage() {
             {/* Complementary Products */}
             <div>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: '2rem' }}>Complementary Styles</h3>
-              <div className="carousel">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
                 {recommendations.complementaryClothing?.map((rec: any) => (
-                  <div key={rec.product._id} style={{ width: '280px' }}>
+                  <div key={rec.product._id}>
                     <ProductCard product={rec.product} />
-                    <div style={{ marginTop: '1rem', padding: '0 0.5rem' }}>
+                    <div style={{ marginTop: '0.75rem', padding: '0 0.25rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
                         <span>Style Synergy</span>
                         <span>{Math.round(rec.scores.total * 100)}%</span>
