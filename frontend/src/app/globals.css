@@ -16,6 +16,7 @@
   --accent-warm:   #d4956a;
   --accent-teal:   #6aada0;
   --accent-rose:   #c48585;
+  --accent-gold:   #c9a96e;
 
   /* Text */
   --text-primary:   #f0ece6;
@@ -461,6 +462,20 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; line-height
   background: linear-gradient(90deg, var(--accent-deep), var(--accent), var(--accent-light));
   border-radius: 100px;
   transition: width 1.2s var(--ease);
+}
+
+/* ─── Alias classes for backward compatibility ────────────────────────────────── */
+.title-gradient {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 50%, var(--accent-warm) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: var(--font-display);
+}
+.glass-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 /* ─── Spinner ─────────────────────────────────────────────────────────────────── */

@@ -151,25 +151,205 @@ export default function HomePage() {
       {chatResult && (
         <section id="ai-result" className="fade-in" style={{ padding: '5rem 0', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
           <div className="container">
+
+            {/* Section header */}
             <div style={{ marginBottom: '2.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ height: 1, width: 32, background: 'var(--accent)' }} />
                 <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--accent)' }}>AI Recommendation</span>
               </div>
               <h2 className="title">Your Curated Outfit</h2>
-              {chatResult.outfit?.reasoning && (
-                <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.95rem', fontFamily: 'var(--font-display)', maxWidth: 580 }}>
-                  "{chatResult.outfit.reasoning}"
-                </p>
-              )}
             </div>
 
-            {chatResult.outfit?.heroDress ? (
-              <div className="product-grid">
-                <ProductCard product={chatResult.outfit.heroDress} showBadge="Hero Look" />
-                {chatResult.outfit.otherDresses?.slice(0, 3).map((p: any) => <ProductCard key={p._id} product={p} />)}
-                {chatResult.outfit.shoes?.slice(0, 4).map((p: any) => <ProductCard key={p._id || p.name} product={p} showBadge="Matched Shoe" />)}
+            {/* ── AI Analysis Card ── */}
+            {chatResult.intent && (
+              <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-accent)',
+                borderRadius: 'var(--radius-lg)',
+                padding: '1.75rem 2rem',
+                marginBottom: '2.5rem',
+                position: 'relative', overflow: 'hidden'
+              }}>
+                {/* glow */}
+                <div style={{ position: 'absolute', top: -80, right: -80, width: 220, height: 220, background: 'radial-gradient(circle, rgba(201,169,110,0.08), transparent 70%)', pointerEvents: 'none' }} />
+
+                <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{
+                    width: 42, height: 42, flexShrink: 0,
+                    background: 'var(--accent)', borderRadius: '3px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.1rem', color: '#0c0b0a', fontWeight: 800
+                  }}>✦</div>
+
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.55rem' }}>Gemini AI Analysis</p>
+
+                    {/* Summary quote */}
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontStyle: 'italic', color: 'var(--text-primary)', lineHeight: 1.65, marginBottom: chatResult.intent.aiAnalysis ? '0.9rem' : '1rem' }}>
+                      "{chatResult.intent.intentSummary}"
+                    </p>
+
+                    {/* AI explanation paragraph */}
+                    {chatResult.intent.aiAnalysis && (
+                      <p style={{ fontSize: '0.85rem', lineHeight: 1.8, color: 'var(--text-secondary)', marginBottom: '1.2rem' }}>
+                        {chatResult.intent.aiAnalysis}
+                      </p>
+                    )}
+
+                    {/* Intent tags */}
+                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                      {chatResult.intent.color && chatResult.intent.color !== 'Any' && (
+                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: 2, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'rgba(201,169,110,0.12)', border: '1px solid var(--border-accent)', color: 'var(--accent)' }}>
+                          ● {chatResult.intent.color}
+                        </span>
+                      )}
+                      {chatResult.intent.occasion?.map((o: string) => (
+                        <span key={o} style={{ padding: '0.25rem 0.75rem', borderRadius: 2, fontSize: '0.68rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--bg-elevated)', border: '1px solid var(--border-mid)', color: 'var(--text-secondary)' }}>{o}</span>
+                      ))}
+                      {chatResult.intent.style?.map((s: string) => (
+                        <span key={s} style={{ padding: '0.25rem 0.75rem', borderRadius: 2, fontSize: '0.68rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'rgba(212,149,106,0.08)', border: '1px solid rgba(212,149,106,0.25)', color: 'var(--accent-warm)' }}>{s}</span>
+                      ))}
+                      {chatResult.intent.maxBudget > 0 && (
+                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: 2, fontSize: '0.68rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'rgba(114,168,132,0.08)', border: '1px solid rgba(114,168,132,0.25)', color: 'var(--success)' }}>
+                          Under PKR {chatResult.intent.maxBudget.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
+            )}
+
+            {chatResult.outfit?.heroDress ? (
+              <>
+                {/* ── #1 Hero Best Pick ── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <span style={{ background: 'var(--accent)', color: '#0c0b0a', padding: '0.22rem 0.65rem', borderRadius: 2, fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>✦ #1 Best Match</span>
+                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 400 }}>AI's Top Pick</h3>
+                  <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, var(--border-mid), transparent)' }} />
+                </div>
+
+                <div style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-accent)',
+                  borderRadius: 'var(--radius-lg)',
+                  overflow: 'hidden',
+                  display: 'grid',
+                  gridTemplateColumns: 'clamp(240px,32%,360px) 1fr',
+                  boxShadow: 'var(--shadow-lg), var(--shadow-gold)',
+                  marginBottom: '3.5rem'
+                }}>
+                  {/* Hero image */}
+                  <div style={{
+                    backgroundImage: `url(${chatResult.outfit.heroDress.imageUrl || chatResult.outfit.heroDress.images?.[0] || '/placeholder.jpg'})`,
+                    backgroundSize: 'cover', backgroundPosition: 'top center',
+                    minHeight: 420, position: 'relative'
+                  }}>
+                    <div style={{ position: 'absolute', top: 12, left: 12, background: 'var(--accent)', color: '#0c0b0a', padding: '0.22rem 0.65rem', borderRadius: 2, fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      ✦ AI Pick
+                    </div>
+                  </div>
+
+                  {/* Hero details */}
+                  <div style={{ padding: '2rem 2.25rem', display: 'flex', flexDirection: 'column', gap: '1.1rem', justifyContent: 'center' }}>
+                    <div>
+                      <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.4rem' }}>
+                        {chatResult.outfit.heroDress.brand}
+                      </p>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.25rem,2.5vw,1.8rem)', lineHeight: 1.22 }}>
+                        {chatResult.outfit.heroDress.name}
+                      </h3>
+                    </div>
+
+                    {/* Metadata tags */}
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {chatResult.outfit.heroDress.primaryColor && <span className="tag">{chatResult.outfit.heroDress.primaryColor}</span>}
+                      {chatResult.outfit.heroDress.subCategory && <span className="tag">{chatResult.outfit.heroDress.subCategory}</span>}
+                      {chatResult.outfit.heroDress.occasion?.slice(0, 2).map((o: string) => (
+                        <span key={o} className="tag" style={{ textTransform: 'capitalize' }}>{o}</span>
+                      ))}
+                    </div>
+
+                    {/* Score breakdown */}
+                    {chatResult.outfit.scores?.[0] && (
+                      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '1rem 1.25rem' }}>
+                        <p style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.9rem' }}>Match Breakdown</p>
+                        {[
+                          { label: 'Color Match', val: chatResult.outfit.scores[0].colorMatch },
+                          { label: 'Occasion Fit', val: chatResult.outfit.scores[0].occasionMatch },
+                          { label: 'Style Alignment', val: chatResult.outfit.scores[0].styleMatch },
+                          { label: 'Keyword Relevance', val: chatResult.outfit.scores[0].keywordMatch },
+                        ].map(({ label, val }) => {
+                          const pct = Math.round((val || 0) * 100);
+                          const clr = pct >= 75 ? 'var(--success)' : pct >= 45 ? 'var(--accent)' : 'var(--accent-rose)';
+                          return (
+                            <div key={label} style={{ marginBottom: '0.65rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{label}</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: clr }}>{pct}%</span>
+                              </div>
+                              <div className="score-bar">
+                                <div className="score-bar__fill" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Price + CTA */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '1.55rem', fontWeight: 700, color: 'var(--accent-light)', letterSpacing: '0.02em' }}>
+                        PKR {chatResult.outfit.heroDress.price?.toLocaleString()}
+                      </span>
+                      <a href={chatResult.outfit.heroDress.productUrl} target="_blank" rel="noreferrer" className="btn btn-primary">
+                        Shop This Look →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Top N More Matches ── */}
+                {chatResult.outfit.otherDresses?.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.75rem' }}>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 400, whiteSpace: 'nowrap' }}>
+                        Top {chatResult.outfit.otherDresses.length + 1} Results
+                      </h3>
+                      <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, var(--border-mid), transparent)' }} />
+                    </div>
+                    <div className="product-grid" style={{ marginBottom: '3.5rem' }}>
+                      {chatResult.outfit.otherDresses.map((p: any, i: number) => (
+                        <div key={p._id} style={{ position: 'relative' }}>
+                          <div style={{
+                            position: 'absolute', top: 10, left: 10, zIndex: 10,
+                            background: 'rgba(12,11,10,0.88)', border: '1px solid var(--border-mid)',
+                            borderRadius: 2, padding: '0.12rem 0.52rem',
+                            fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em'
+                          }}>#{i + 2}</div>
+                          <ProductCard product={p} />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* ── Matching Shoes ── */}
+                {chatResult.outfit.shoes?.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.75rem' }}>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 400, whiteSpace: 'nowrap' }}>Matching Shoes</h3>
+                      <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, var(--border-mid), transparent)' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: '1rem' }}>
+                      {chatResult.outfit.shoes.map((s: any) => (
+                        <ProductCard key={s._id} product={s} showBadge="Best Pair" />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             ) : (
               <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                 <p style={{ marginBottom: '1rem' }}>No products found yet — run the scraper to populate the database.</p>

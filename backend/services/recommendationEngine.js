@@ -1,26 +1,43 @@
 /**
  * recommendationEngine.js
- * AI outfit recommendation scoring system.
+ * Dynamic AI outfit recommendation scoring system.
  *
- * Final Score Formula:
- *   finalScore = embeddingSimilarity * 0.5
- *              + colorCompatibility  * 0.2
- *              + occasionMatch       * 0.2
- *              + styleMatch          * 0.1
+ * Score formulas:
+ *   Product-vs-Product: embeddingSimilarity×0.5 + color×0.2 + occasion×0.2 + style×0.1
+ *   Intent-vs-Product:  colorMatch×0.45 + occasion×0.25 + style×0.15 + keywords×0.15
  *
- * For products without embeddings, falls back to metadata-only scoring.
+ * The intent-based scorer does NOT rely on MongoDB-level color filtering, so it
+ * works even when colors are stored as aliases (Lavender→Purple, Cream→White, etc.).
  */
 
 import Product from '../models/Product.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
 
-// ─── Scoring weights ──────────────────────────────────────────────────────────
-const WEIGHTS = {
-  embedding: 0.5,
-  color: 0.2,
-  occasion: 0.2,
-  style: 0.1
+// ─── Scoring weights (product-to-product) ────────────────────────────────────
+const WEIGHTS = { embedding: 0.5, color: 0.2, occasion: 0.2, style: 0.1 };
+
+// ─── Color alias map (mirrors colorTheory.js normalize) ──────────────────────
+const COLOR_ALIASES = {
+  'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue', 'royal blue': 'Blue',
+  'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green', 'forest green': 'Green',
+  'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red', 'rust': 'Red',
+  'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige', 'khaki': 'Beige', 'sand': 'Beige',
+  'silver': 'Grey', 'ash': 'Grey', 'charcoal': 'Black', 'graphite': 'Black',
+  'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White', 'snow': 'White',
+  'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink', 'hot pink': 'Pink', 'dusty pink': 'Pink',
+  'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple', 'violet': 'Purple', 'grape': 'Purple',
+  'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
+  'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow', 'golden': 'Gold', 'gold': 'Gold',
+  'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
+  'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown', 'tan': 'Brown'
 };
+
+function normalizeColor(color) {
+  if (!color) return null;
+  const lower = color.toLowerCase().trim();
+  if (COLOR_ALIASES[lower]) return COLOR_ALIASES[lower];
+  return color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+}
 
 // ─── Cosine similarity ────────────────────────────────────────────────────────
 function cosineSimilarity(a, b) {
@@ -37,41 +54,28 @@ function cosineSimilarity(a, b) {
 
 // ─── Set overlap score ────────────────────────────────────────────────────────
 function setOverlapScore(arr1 = [], arr2 = []) {
-  if (!arr1.length || !arr2.length) return 0.4; // Partial credit when unknown
+  if (!arr1.length || !arr2.length) return 0.4;
   const set1 = new Set(arr1.map((s) => s.toLowerCase()));
   const matches = arr2.filter((s) => set1.has(s.toLowerCase())).length;
   return Math.min(1, matches / Math.max(arr1.length, arr2.length) + 0.2);
 }
 
-// ─── Score a single candidate against a source product ───────────────────────
-
-/**
- * scoreProduct(source, candidate)
- * Returns 0-1 composite compatibility score.
- */
+// ─── Score a product vs. another product ─────────────────────────────────────
 export function scoreProduct(source, candidate) {
-  // Embedding similarity
   let embeddingScore = 0;
   if (source.embedding?.length && candidate.embedding?.length) {
     embeddingScore = cosineSimilarity(source.embedding, candidate.embedding);
   } else {
-    // Fallback: keyword-based text similarity
     embeddingScore = keywordSimilarity(source, candidate);
   }
 
-  // Color compatibility
   const colorScore = getColorArrayCompatibility(
     source.colors || [source.primaryColor],
     candidate.colors || [candidate.primaryColor]
   );
-
-  // Occasion match
   const occasionScore = setOverlapScore(source.occasion, candidate.occasion);
-
-  // Style match
   const styleScore = setOverlapScore(source.style, candidate.style);
 
-  // Weighted composite
   const finalScore =
     embeddingScore * WEIGHTS.embedding +
     colorScore * WEIGHTS.color +
@@ -87,8 +91,66 @@ export function scoreProduct(source, candidate) {
   };
 }
 
-// ─── Fallback keyword similarity (no embeddings) ─────────────────────────────
+// ─── Score a product against a user intent ────────────────────────────────────
+// Fixes the "purple shows white" bug: no DB-level color filtering here.
+// Every product in the pool is scored; correct color ranks at the top.
+function scoreProductAgainstIntent(product, intent) {
+  const { color, occasion = [], style = [] } = intent;
 
+  // ── Color match ────────────────────────────────────────────────────────────
+  let colorScore = 0.4; // baseline when no color requested
+
+  if (color && color.toLowerCase() !== 'any') {
+    const targetNorm = normalizeColor(color);
+
+    const productColors = [product.primaryColor, ...(product.colors || [])].filter(Boolean);
+    const productNorms = productColors.map(normalizeColor).filter(Boolean);
+
+    if (productNorms.includes(targetNorm)) {
+      colorScore = 1.0; // canonical match (e.g. Lavender → Purple ✓)
+    } else {
+      const targetLower = (targetNorm || color).toLowerCase();
+      const rawLower = productColors.map((c) => (c || '').toLowerCase());
+      const substringMatch = rawLower.some(
+        (c) => c.includes(targetLower) || targetLower.includes(c)
+      );
+      colorScore = substringMatch ? 0.82 : 0.08; // hard penalty for wrong color
+    }
+  }
+
+  // ── Occasion & style ──────────────────────────────────────────────────────
+  const occasionScore = setOverlapScore(occasion, product.occasion || []);
+  const styleScore = setOverlapScore(style, product.style || []);
+
+  // ── Keyword / text match ──────────────────────────────────────────────────
+  const queryTerms = [
+    ...occasion, ...style,
+    color && color !== 'Any' ? color.toLowerCase() : ''
+  ].filter(Boolean);
+
+  const productText = [
+    product.name || '', product.description || '',
+    ...(product.tags || []), ...(product.occasion || []), ...(product.style || [])
+  ].join(' ').toLowerCase();
+
+  const keywordScore =
+    queryTerms.length > 0
+      ? queryTerms.filter((t) => productText.includes(t)).length / queryTerms.length
+      : 0.5;
+
+  const finalScore =
+    colorScore * 0.45 + occasionScore * 0.25 + styleScore * 0.15 + keywordScore * 0.15;
+
+  return {
+    total: parseFloat(finalScore.toFixed(3)),
+    colorMatch: parseFloat(colorScore.toFixed(3)),
+    occasionMatch: parseFloat(occasionScore.toFixed(3)),
+    styleMatch: parseFloat(styleScore.toFixed(3)),
+    keywordMatch: parseFloat(keywordScore.toFixed(3))
+  };
+}
+
+// ─── Fallback keyword similarity (no embeddings) ─────────────────────────────
 function keywordSimilarity(p1, p2) {
   const words1 = extractKeywords(p1);
   const words2 = extractKeywords(p2);
@@ -100,20 +162,13 @@ function keywordSimilarity(p1, p2) {
 
 function extractKeywords(product) {
   const text = [
-    product.name || '',
-    product.description || '',
-    ...(product.tags || []),
-    ...(product.style || []),
-    ...(product.occasion || []),
-    product.brand || '',
-    product.subCategory || ''
+    product.name || '', product.description || '',
+    ...(product.tags || []), ...(product.style || []),
+    ...(product.occasion || []), product.brand || '', product.subCategory || ''
   ].join(' ').toLowerCase();
 
   return new Set(
-    text
-      .split(/[\s,.-]+/)
-      .filter((w) => w.length > 3)
-      .filter((w) => !STOP_WORDS.has(w))
+    text.split(/[\s,.-]+/).filter((w) => w.length > 3).filter((w) => !STOP_WORDS.has(w))
   );
 }
 
@@ -122,170 +177,82 @@ const STOP_WORDS = new Set([
   'more', 'than', 'they', 'their', 'what', 'when', 'where', 'which'
 ]);
 
-// ─── Main recommendation function ────────────────────────────────────────────
-
-// ─── Sister Color Fallback Map ──────────────────────────────────────────────
-const SISTER_COLORS = {
-  'Red': ['Maroon', 'Pink', 'Orange', 'Rust'],
-  'Blue': ['Navy', 'Cyan', 'Teal', 'Grey'],
-  'Green': ['Emerald', 'Mint', 'Olive', 'Lime'],
-  'Yellow': ['Gold', 'Mustard', 'Orange'],
-  'Pink': ['Peach', 'Maroon', 'Red'],
-  'Black': ['Grey', 'Navy', 'Charcoal'],
-  'White': ['Silver', 'Gold', 'Beige', 'Ivory'],
-  'Gold': ['Yellow', 'Silver', 'Beige']
-};
-
-/**
- * getRecommendations(productId, options)
- * Finds best-matching shoes and complementary clothing for a given product.
- */
+// ─── Product-to-product recommendations (product detail page) ─────────────────
 export async function getRecommendations(productId, options = {}) {
-  const { maxShoes = 6, maxClothing = 6, maxAccessories = 4 } = options;
+  const { maxShoes = 6, maxClothing = 6 } = options;
 
   const source = await Product.findById(productId).lean();
   if (!source) throw new Error('Product not found');
 
   const isClothing = source.category === 'clothing';
   const isShoe = source.category === 'shoes';
-
-  // ── Find candidates ──
-  const baseQuery = {
-    _id: { $ne: source._id }
-  };
+  const baseQuery = { _id: { $ne: source._id } };
 
   const [shoePool, clothingPool] = await Promise.all([
-    isClothing
-      ? Product.find({ ...baseQuery, category: 'shoes' }).limit(100).lean()
-      : [],
+    isClothing ? Product.find({ ...baseQuery, category: 'shoes' }).limit(100).lean() : [],
     isShoe
       ? Product.find({ ...baseQuery, category: 'clothing' }).limit(100).lean()
       : Product.find({ ...baseQuery, category: 'clothing' }).limit(50).lean()
   ]);
 
-  // ── Score and rank ──
   const scoredShoes = shoePool
-    .map((candidate) => ({ product: candidate, scores: scoreProduct(source, candidate) }))
+    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
     .sort((a, b) => b.scores.total - a.scores.total)
     .slice(0, maxShoes);
 
   const scoredClothing = clothingPool
-    .map((candidate) => ({ product: candidate, scores: scoreProduct(source, candidate) }))
+    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
     .sort((a, b) => b.scores.total - a.scores.total)
     .slice(0, maxClothing);
 
-  return {
-    source,
-    shoes: scoredShoes,
-    complementaryClothing: scoredClothing,
-    generatedAt: new Date()
-  };
+  return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
 }
 
-/**
- * getOutfitForQuery(intent, aiInstance)
- * Master Stylist Version: Uses AI to pick the best from a filtered pool.
- */
-export async function getOutfitForQuery(intent, aiInstance) {
-  const { color, occasion = [], style = [], maxBudget = 0 } = intent;
+// ─── Intent-based outfit builder (chat / "Style Me") ──────────────────────────
+// Fetches a large pool WITHOUT DB-level color filtering, then scores every
+// product so correct colors rank highest regardless of storage format.
+export async function getOutfitForQuery(intent) {
+  const { maxBudget = 0 } = intent;
 
-  // 1. Get a pool of 20 high-quality candidates
+  // Only apply budget at DB level (exact number, no fuzzy)
   const clothingQuery = { category: 'clothing' };
-  if (color && color.toLowerCase() !== 'any') {
-    clothingQuery.$or = [
-      { primaryColor: { $regex: color, $options: 'i' } },
-      { colors: { $regex: color, $options: 'i' } }
-    ];
-  }
-  if (occasion.length > 0) clothingQuery.occasion = { $in: occasion };
   if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget };
 
-  let pool = await Product.aggregate([{ $match: clothingQuery }, { $sample: { size: 20 } }]);
-  
-  // Fallback if empty
-  if (pool.length === 0) {
-    pool = await Product.aggregate([{ $match: { category: 'clothing' } }, { $sample: { size: 10 } }]);
+  const clothingPool = await Product.find(clothingQuery)
+    .select('name brand category subCategory price primaryColor colors occasion style tags imageUrl images productUrl description')
+    .limit(300)
+    .lean();
+
+  if (clothingPool.length === 0) {
+    return { heroDress: null, otherDresses: [], shoes: [], scores: [] };
   }
 
-  // 2. If we have AI, let it pick the best "Hero" and provide reasoning
-  if (aiInstance && pool.length > 0) {
-    try {
-      const model = aiInstance.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
-      });
+  // Score every clothing product against the parsed intent
+  const scored = clothingPool
+    .map((product) => ({ product, scores: scoreProductAgainstIntent(product, intent) }))
+    .sort((a, b) => b.scores.total - a.scores.total);
 
-      const prompt = `
-        You are a Master Fashion Stylist for a premium Pakistani brand.
-        User Intent: Color: ${color}, Occasion: ${occasion.join(', ')}, Style: ${style.join(', ')}.
-        
-        From this pool of products, select the absolute BEST single 'Hero' dress that matches the intent.
-        Explain your choice professionally.
-        
-        Pool:
-        ${pool.map((p, i) => `[ID:${i}] Name: ${p.name}, Brand: ${p.brand}, Style: ${p.style.join(', ')}, Color: ${p.primaryColor}`).join('\n')}
-        
-        Return JSON:
-        {
-          "selectedIndex": number,
-          "reasoning": "1 sentence expert stylist explanation"
-        }
-      `;
+  const top10 = scored.slice(0, 10);
+  const heroDress = top10[0]?.product || null;
 
-      const result = await model.generateContent(prompt);
-      const response = JSON.parse(result.response.text());
-      
-      const heroDress = pool[response.selectedIndex] || pool[0];
-      
-      // 3. Get matching shoes for the hero
-      const shoePool = await Product.find({ category: 'shoes' }).limit(40).lean();
-      const shoes = shoePool
-        .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
-        .sort((a, b) => b._score - a._score)
-        .slice(0, 6);
+  // Best-matching shoes for the hero dress
+  let shoes = [];
+  if (heroDress) {
+    const shoePool = await Product.find({ category: 'shoes' })
+      .select('name brand category subCategory price primaryColor colors occasion style tags imageUrl images productUrl')
+      .limit(150)
+      .lean();
 
-      return {
-        heroDress,
-        otherDresses: pool.filter((_, i) => i !== response.selectedIndex).slice(0, 6),
-        shoes,
-        reasoning: response.reasoning,
-        intent
-      };
-    } catch (err) {
-      console.error("Master Stylist AI failed, falling back to basic logic:", err);
-    }
+    shoes = shoePool
+      .map((s) => ({ ...s, _score: scoreProduct(heroDress, s).total }))
+      .sort((a, b) => b._score - a._score)
+      .slice(0, 6);
   }
 
-  // Fallback to basic logic if AI is unavailable
-  const heroDress = pool[0] || null;
   return {
     heroDress,
-    otherDresses: pool.slice(1, 7),
-    shoes: [],
-    reasoning: "A coordinated selection based on your preference.",
-    intent
+    otherDresses: top10.slice(1).map((d) => d.product),
+    shoes,
+    scores: top10.map((d) => ({ productId: d.product._id, ...d.scores }))
   };
-}
-
-/**
- * generateAIStylistReasoning(hero, pair)
- * Generates a short professional fashion justification.
- */
-export async function generateAIStylistReasoning(hero, pair, aiInstance) {
-  if (!aiInstance) return "These pieces complement each other in style and occasion.";
-  
-  try {
-    const model = aiInstance.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `
-      You are a luxury fashion stylist. Briefly explain (1 sentence) why this ${pair.category} item:
-      "${pair.name}" (${pair.primaryColor}, ${pair.style.join(', ')})
-      is a perfect match for this ${hero.category}:
-      "${hero.name}" (${hero.primaryColor}, ${hero.style.join(', ')})
-      Focus on color harmony, occasion, and aesthetics.
-    `;
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
-  } catch (err) {
-    return "A perfect match for a cohesive and elegant look.";
-  }
 }
