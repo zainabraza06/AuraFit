@@ -521,7 +521,7 @@ const OCCASION_FALLBACKS = {
 };
 
 export async function getOutfitForQuery(intent) {
-  const { maxBudget = 0, color, shade, dressType, occasion = [], gender, intentSummary, originalMessage } = intent;
+  const { maxBudget = 0, color, shade, occasion = [], gender, intentSummary, originalMessage } = intent;
 
   // ── Generate query embedding (semantic matching for any input) ───────────
   let queryEmbedding = null;
@@ -542,11 +542,13 @@ export async function getOutfitForQuery(intent) {
   // Only hard-filter for men/kids — 'unisex' and 'women' use the full product pool
   if (gender && gender !== 'women' && gender !== 'unisex') clothingQuery.gender = gender;
 
-  // For bridal queries, narrow pool to festive/bridal subCategories only
-  const isBridalQuery = dressType === 'bridal' ||
-    occasion.includes('wedding') || occasion.includes('bridal');
-  if (isBridalQuery) {
-    clothingQuery.subCategory = { $in: ['bridal', 'festive', '3-piece', 'unstitched-3-piece'] };
+  // Stitching is a hard user preference — filter at DB level so stitched products
+  // never enter the pool when user explicitly asks for unstitched, and vice versa.
+  const { stitching } = intent;
+  if (stitching === 'unstitched') {
+    clothingQuery.subCategory = { $regex: /^unstitched/i };
+  } else if (stitching === 'stitched') {
+    clothingQuery.subCategory = { $not: /^unstitched/i };
   }
 
   const clothingPool = await Product.find(clothingQuery)
@@ -558,7 +560,7 @@ export async function getOutfitForQuery(intent) {
     return {
       heroDress: null, otherDresses: [], shoes: [], scores: [],
       matchQuality: { tier: 'none', pct: 0, message: "This combination isn't available in our catalog right now. Here are a few products you might like." },
-      colorMessage: isBridalQuery ? 'No bridal/festive products found in our catalog yet.' : null
+      colorMessage: null
     };
   }
 
