@@ -88,8 +88,9 @@ AI fashion stylist for the Pakistani market. It sits between three things:
 ### Key Conventions
 
 - **ES Modules** throughout (`"type": "module"` in `package.json`).
-- **No separate `controllers/` directory** — controller logic is colocated with
-  the route definitions inside each `routes/*.js` file.
+- **Separate `controllers/` directory** — all handler logic lives in
+  `controllers/*.js`. Route files are thin wiring only (import controller,
+  wire to `router.get/post/put/delete`).
 - **JWT auth** with the `protect` middleware; admin-only routes use
   `adminOnly` (auth is currently relaxed on `/api/admin/*` for development —
   see notes in section 10.6).
@@ -159,16 +160,28 @@ backend/
 │   ├── ScraperLog.js               # Per-run scrape audit trail
 │   ├── User.js                     # Account + preferences + role
 │   └── WardrobeItem.js             # User-uploaded clothing item
+├── controllers/
+│   ├── recommendationsController.js  # Intent parsing + outfit generation logic
+│   ├── productsController.js         # Product CRUD + featured + stats
+│   ├── authController.js             # Register / login / me
+│   ├── searchController.js           # Full-text + fallback + suggestions
+│   ├── favoritesController.js        # Toggle / list / check
+│   ├── adminController.js            # Dashboard stats + scraper control + SSE
+│   ├── vectorSearchController.js     # HuggingFace semantic search
+│   ├── imageSearchController.js      # Gemini visual search
+│   ├── tryonController.js            # Replicate IDM-VTON
+│   ├── wardrobeController.js         # User wardrobe CRUD + AI tagging
+│   └── outfitsController.js          # Saved outfit boards CRUD
 ├── routes/
-│   ├── admin.js                    # Admin dashboard (stats, scraper control, SSE)
-│   ├── auth.js                     # register / login / me
-│   ├── favorites.js                # CRUD + check
-│   ├── imageSearch.js              # POST image -> Gemini -> matched products
-│   ├── outfits.js                  # Saved outfits CRUD
-│   ├── products.js                 # Browse / featured / stats / detail
-│   ├── recommendations.js          # AI outfit recs (chat + product-based)
-│   ├── search.js                   # Text search + suggestions
-│   └── wardrobe.js                 # User wardrobe CRUD with AI tagging
+│   ├── admin.js                    # → adminController
+│   ├── auth.js                     # → authController
+│   ├── favorites.js                # → favoritesController
+│   ├── imageSearch.js              # → imageSearchController
+│   ├── outfits.js                  # → outfitsController
+│   ├── products.js                 # → productsController
+│   ├── recommendations.js          # → recommendationsController
+│   ├── search.js                   # → searchController
+│   └── wardrobe.js                 # → wardrobeController
 ├── scripts/
 │   ├── scrapers/
 │   │   ├── adapters/
@@ -202,8 +215,9 @@ backend/
 │   ├── testAIStylist.js            # End-to-end Master Stylist smoke test
 │   └── testGemini.js               # Verify GEMINI_API_KEY connectivity
 ├── services/
-│   ├── colorTheory.js              # Color compatibility matrix + scoring
-│   └── recommendationEngine.js     # Cosine sim + composite score + Master Stylist
+│   ├── colorTheory.js              # 15-color compatibility matrix + scoring
+│   ├── aiService.js                # rankProductsWithAI + multi-provider intent parsing
+│   └── recommendationEngine.js     # Progressive relaxation + shoe matching
 ├── package.json
 ├── package-lock.json
 ├── server.js                       # App entry point
@@ -225,7 +239,9 @@ Loaded from `backend/.env` by `dotenv`. The scraper additionally tries
 | `JWT_SECRET` | `routes/auth.js`, `middleware/auth.js` | — (required) | HMAC secret for tokens (30-day expiry) |
 | `FRONTEND_URL` | `server.js` (CORS) | `['http://localhost:3000', 'http://localhost:5173']` | Allowed origin |
 | `NODE_ENV` | `server.js` (error sanitization), banner | `development` | Hides error details in `production` |
-| `GEMINI_API_KEY` | `recommendations.js`, `imageSearch.js`, `wardrobe.js`, test scripts | — | Google AI Studio key |
+| `GEMINI_API_KEY` | `aiService.js`, `imageSearch.js`, `wardrobe.js`, test scripts | — | Google AI Studio key (primary AI) |
+| `GROQ_API_KEY` | `aiService.js` | — | Groq API key — intent parsing fallback 1 (Llama 3.1 8B) |
+| `OPENROUTER_API_KEY` | `aiService.js` | — | OpenRouter key — intent parsing fallback 2 (Gemma 2 9B) |
 | `SCRAPER_DRY_RUN` | `scripts/scrapers/index.js`, `scraper.js` | `false` | When `true`, no DB writes |
 | `SCRAPER_CRON_SCHEDULE` | `jobs/scraperJob.js` | `0 3 * * *` | cron expression (Asia/Karachi TZ) |
 | `SCRAPER_MAX_PER_BRAND` | `BaseAdapter.js`, legacy `scraper.js` | `50` (BaseAdapter) / `25` (legacy) | Max products per brand collection |
@@ -456,8 +472,14 @@ recommender can reason across categories.
 | `occasion` | `[String]` | e.g. `['wedding','eid']` |
 | `season` | `[String]` | e.g. `['summer']` or `['all-season']` |
 | `fabric` | `String` | "Lawn", "Chiffon", … |
-| `colors` | `[String]` | Multiple inferred colors |
-| `primaryColor` | `String` | Dominant filter color |
+| `dressStyle` | `String` enum | `saree\|lehenga\|frock\|maxi\|shalwar-kameez\|kurta\|co-ord\|palazzo\|western` |
+| `stitching` | `String` enum | `stitched \| unstitched`, default `'stitched'` |
+| `print` | `String` enum | `embroidered\|printed\|plain\|embellished\|mixed` |
+| `pieces` | `Number` | Piece count: 1, 2, or 3 |
+| `primaryExactColor` | `String` | Exact scraped shade, e.g. `"maroon"` (synced from `exactColors[0]` via pre-save) |
+| `exactColors` | `[String]` | All exact scraped shades, e.g. `["maroon","golden"]` |
+| `colors` | `[String]` | Canonical color families, e.g. `["Red","Gold"]` (unchanged) |
+| `primaryColor` | `String` | Dominant canonical family, e.g. `"Red"` (unchanged) |
 | `sizes` | `[String]` | Variant sizes from Shopify |
 | `images` | `[String]` | Absolute URLs |
 | `imageUrl` | `String` | Primary (also kept in sync via `pre('save')`) |
@@ -486,6 +508,9 @@ recommender can reason across categories.
 ProductSchema.index({ brand: 1, category: 1 });
 ProductSchema.index({ category: 1, subCategory: 1 });
 ProductSchema.index({ primaryColor: 1, category: 1 });
+ProductSchema.index({ stitching: 1, category: 1 });    // new
+ProductSchema.index({ print: 1, category: 1 });        // new
+ProductSchema.index({ dressStyle: 1, category: 1 });   // new
 ProductSchema.index({ occasion: 1 });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ tags: 1 });
@@ -493,6 +518,8 @@ ProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 't
 ```
 
 The text index powers `/api/search` (with regex fallback when zero hits).
+The three new compound indexes (`stitching+category`, `print+category`, `dressStyle+category`)
+support the progressive relaxation DB queries in the recommendation engine.
 
 #### Virtual
 
@@ -663,44 +690,86 @@ Single product by Mongo `_id`. Returns `404` if not found, `400` on
 
 ### 10.3 `routes/recommendations.js`  →  mounted at `/api/recommendations`
 
-#### `POST /api/recommendations/outfit`
+Routes are thin wiring only; all logic lives in `controllers/recommendationsController.js`.
+
+```js
+router.get('/:productId', getProductRecommendations);
+router.post('/outfit', generateOutfit);
+```
+
+> **Important**: POST `/outfit` must be defined **before** `/:productId` so
+> the string `"outfit"` is not caught by the param route.
+
+#### `POST /api/recommendations/outfit` — `generateOutfit`
 
 Chat-driven outfit recommendation.
 
-Body: `{ message: string }` — natural language request, e.g. *"I need a beautiful pink dress for a summer wedding under 15000 PKR."*
+Body: `{ message: string }` — natural language, e.g. *"maroon unstitched 3-piece for wedding"*
 
-1. Default intent: `{ color: 'Any', occasion: ['casual'], style: ['elegant'], maxBudget: 0 }`.
-2. If `GEMINI_API_KEY` is set:
-   - Builds a strict JSON-only prompt for Gemini 2.5 Flash with
-     `responseMimeType: 'application/json'`, `temperature: 0.1`.
-   - Strips ```` ```json ```` fences if present and `JSON.parse`s.
-   - Calls `getOutfitForQuery(parsedIntent, ai)` from the recommendation engine
-     (which itself uses Gemini for Master Stylist hero selection).
-   - Returns `{ intent, outfit }`.
-3. If parsing fails or Gemini is unavailable, falls back to the default intent
-   and basic logic.
+**Intent parsing** (`aiService.parseIntentWithFallback`):
 
-> **Important**: this route is defined **before** `/:productId` so `/outfit` is
-> not caught by the param route.
+Multi-provider fallback chain: Gemini 2.5 Flash → Groq Llama 3.1 → OpenRouter Gemma 2 → Gemini 1.5 Flash.
 
-#### `GET /api/recommendations/:productId`
+Extracted intent fields:
 
-Static "shop the look" recommendations for a product.
+| Field | Type | Notes |
+|-------|------|-------|
+| `colorExact` | string\|null | Exact word user said, e.g. "maroon" |
+| `colorFamily` | string | Canonical family, e.g. "Red". "Any" if not mentioned |
+| `occasion` | string[] | Empty `[]` if not mentioned |
+| `dressStyle` | string\|null | One of 9 styles or null |
+| `stitching` | string\|null | `"stitched"` \| `"unstitched"` \| null |
+| `pieces` | number\|null | 1/2/3 or null |
+| `print` | string\|null | embroidered/printed/plain/embellished or null |
+| `fabric` | string\|null | e.g. "lawn" or null |
+| `maxBudget` | number | 0 if not mentioned |
 
-1. Calls `getRecommendations(productId, { maxShoes: 6, maxClothing: 6 })` from
-   the engine.
+**Key principle**: only fields the user explicitly mentioned are used as DB filters.
+
+**Progressive relaxation** (`recommendationEngine.fetchCandidates`):
+
+Drops one constraint per level until ≥ 50 products found:
+`occasion → print → dressStyle → stitching → pieces → fabric → exact color → canonical family → none`
+
+**AI ranking** (`aiService.rankProductsWithAI`):
+
+Top 50 candidates sent to Gemini 2.5 Flash which ranks them and returns a one-sentence match reason per product. Top 10 returned.
+
+**Shoe matching**: one best shoe per dress via `scoreProduct(dress, shoe) = embedding×0.5 + color×0.2 + occasion×0.2 + style×0.1`.
+
+Response:
+```json
+{
+  "intent": { "colorExact": "maroon", "colorFamily": "Red", "stitching": "unstitched",
+              "pieces": 3, "occasion": ["wedding"], ... },
+  "results": [
+    { "product": {...}, "rank": 1, "matchReason": "...",
+      "shoe": { "product": {...}, "score": 0.87, "reason": "..." } }
+  ],
+  "matchQuality": { "tier": "exact", "totalFound": 12, "message": null },
+  "relaxationMessage": null
+}
+```
+
+Match quality tiers: `exact` (no drops) → `close` (≥8) → `similar` (≥4) → `loose`
+
+#### `GET /api/recommendations/:productId` — `getProductRecommendations`
+
+Product-page "shop the look" recommendations.
+
+1. Calls `getRecommendations(productId, { maxShoes: 6, maxClothing: 6 })` from the engine.
 2. Returns:
 
 ```json
 {
-  "source": <Product>,
-  "shoes": [{ product, scores }, ...],
-  "complementaryClothing": [{ product, scores }, ...],
+  "source": { ...product },
+  "shoes": [{ "product": {...}, "scores": { "total": 0.91, ... } }],
+  "complementaryClothing": [{ "product": {...}, "scores": {...} }],
   "generatedAt": "<Date>"
 }
 ```
 
-3. Errors: `404 Product not found` (engine throws) / `500` for anything else.
+3. Errors: `404 Product not found` / `500` for anything else.
 
 ### 10.4 `routes/search.js`  →  mounted at `/api/search`
 
@@ -975,91 +1044,117 @@ Maps brand/marketing terms to canonical names, e.g.:
 
 Returns `0.7` if either color is in `NEUTRAL_COLORS`, otherwise `0.5`.
 
-### 11.2 `services/recommendationEngine.js`
+### 11.2 `services/aiService.js`
 
-#### Scoring Formula
+Two exported functions used by the recommendation engine and controllers.
+
+#### `rankProductsWithAI(products, intent)`
+
+Sends up to 50 candidate products to **Gemini 2.5 Flash** for intelligent ranking.
+
+- Builds a prompt with each product's full metadata (name, brand, price, exact color, occasion, dress style, print, stitching, fabric, first 300 chars of description) plus the user's original message and parsed intent.
+- Asks Gemini to rank all products from best (rank 1) to worst and provide a one-sentence reason per product.
+- Returns `[{ product, rank, reason }]` sorted by rank ascending.
+- Falls back to original insertion order if Gemini fails.
+
+#### `parseIntentWithFallback(message, prompt)`
+
+Multi-provider intent parsing with automatic fallback:
 
 ```
-finalScore = embeddingSimilarity * 0.5
-           + colorCompatibility  * 0.2
-           + occasionMatch       * 0.2
-           + styleMatch          * 0.1
+Gemini 2.5 Flash (primary)
+    ✓ → return JSON
+    ✗ ↓
+Groq Llama 3.1 8B (if GROQ_API_KEY set)
+    ✓ → return JSON
+    ✗ ↓
+OpenRouter Gemma 2 9B (if OPENROUTER_API_KEY set)
+    ✓ → return JSON
+    ✗ ↓
+Gemini 1.5 Flash (final fallback)
+    ✓ → return JSON
+    ✗ → throw "All AI providers exhausted"
 ```
 
-Defined in `WEIGHTS`.
+All providers are called with `temperature: 0.1` and `responseMimeType: application/json` (where supported). The `extractJson` utility strips any markdown fences before `JSON.parse`.
+
+### 11.3 `services/recommendationEngine.js`
+
+The core recommendation logic. Three public exports:
+`getOutfitForQuery`, `getRecommendations`, `scoreProduct`.
 
 #### Helpers
 
-- **`cosineSimilarity(a, b)`** — classic cosine; returns 0 if either vector is
-  empty, mismatched, or zero-magnitude.
-- **`setOverlapScore(arr1, arr2)`** — Jaccard-ish: ratio of overlapping
-  lower-cased members over the larger set, plus a `+0.2` smoothing, capped at
-  1. Returns `0.4` (partial credit) when one side is empty.
-- **`extractKeywords(product)`** — lower-cases `name + description + tags +
-  style + occasion + brand + subCategory`, splits on whitespace/punct, drops
-  short tokens (`length <= 3`) and a small `STOP_WORDS` set.
-- **`keywordSimilarity(p1, p2)`** — set intersection over `sqrt(|s1|*|s2|)`,
-  smoothed with `+0.2`, capped at `0.9`. Used as a fallback when products
-  lack embeddings.
+- **`cosineSimilarity(a, b)`** — classic cosine; returns 0 if vectors are empty or mismatched.
+- **`setOverlapScore(arr1, arr2)`** — Jaccard-ish ratio with `+0.2` smoothing, returns `0.4` partial credit when one side is empty.
+- **`keywordSimilarity(p1, p2)`** — keyword overlap fallback when products lack embeddings.
+- **`normalizeColor(color)`** — maps 180+ shade aliases to canonical color families.
+- **`generateShoeMatchReason(shoe, dress)`** — produces a human-readable reason string.
 
 #### `scoreProduct(source, candidate)`
 
-The core composite scorer. Returns:
+Product-to-product scoring used for shoe matching and product-page recommendations:
 
-```json
-{
-  "total": 0.812,
-  "embeddingSimilarity": 0.74,
-  "colorCompatibility":  0.95,
-  "occasionCompatibility": 0.6,
-  "styleCompatibility":   0.4
-}
+```
+total = embedding × 0.50 + colorTheory × 0.20 + occasionOverlap × 0.20 + styleOverlap × 0.10
 ```
 
-#### `SISTER_COLORS` (defined but currently unused)
+Returns `{ total, embeddingSimilarity, colorCompatibility, occasionCompatibility, styleCompatibility }`.
 
-A fallback map (`Red → [Maroon, Pink, Orange, Rust]`, etc.) for future "if we
-have nothing in the exact color, try these adjacent ones" logic. Kept for
-forward compatibility.
+#### `getSpecifiedConstraints(intent)`
 
-#### `getRecommendations(productId, { maxShoes=6, maxClothing=6, maxAccessories=4 })`
+Returns a `Set` of field names the user explicitly mentioned. Only these become DB filters. Fields absent from the set are never filtered.
 
-Used by `GET /api/recommendations/:productId`.
+Detects: `occasion`, `print`, `dressStyle`, `stitching`, `pieces`, `fabric`, `colorExact`, `colorFamily`.
 
-1. `Product.findById(productId)` (lean). Throws `'Product not found'` if missing.
-2. Fetches candidate pools (capped):
-   - If source is **clothing**: `shoePool` = up to 100 shoes, `clothingPool` = 50 other clothing items.
-   - If source is **shoe**: `shoePool` = `[]`, `clothingPool` = up to 100 clothing items.
-3. Scores each candidate via `scoreProduct(source, c)`, sorts desc by `total`,
-   slices to the requested limit.
+#### `buildDBQuery(intent, dropped, colorMode)`
+
+Constructs a MongoDB query object:
+- Hard constraints always applied: `category: 'clothing'`, `gender`, `price: { $lte: maxBudget*1.2 }` (if set)
+- Soft constraints applied if not in `dropped` Set: `occasion`, `print`, `dressStyle`, `stitching`, `pieces`, `fabric`
+- Color modes: `'exact'` → `exactColors` elemMatch regex, `'family'` → `primaryColor` match, `'none'` → no color filter
+
+#### `fetchCandidates(intent)`
+
+Progressive relaxation engine. Builds a sequence of levels, each dropping one more constraint, and queries MongoDB at each level until ≥ 50 products are found (or all levels exhausted):
+
+```
+Level 0: all specified constraints + exact color
+Level 1: drop occasion
+Level 2: drop print
+Level 3: drop dressStyle
+Level 4: drop stitching
+Level 5: drop pieces
+Level 6: drop fabric
+Level 7: exact color → canonical family
+Level 8: drop color entirely
+```
+
+Each level queries with `limit(100)`. The level with the most results (up to 50 threshold) is used. Dropped fields are collected into `relaxationMessage`.
+
+Returns `{ products, relaxationMessage, specified }`.
+
+#### `matchShoesForProducts(dresses)`
+
+For each dress, scores all shoes in the DB (up to 150) via `scoreProduct` and picks the best. Returns `[{ product, score, reason }]` one per dress.
+
+#### `getOutfitForQuery(intent)` (public)
+
+Orchestrates the full "Style Me" flow:
+
+1. `fetchCandidates(intent)` — progressive relaxation until ≥50 results
+2. `rankProductsWithAI(products.slice(0, 50), intent)` — Gemini ranks and annotates
+3. `matchShoesForProducts(top10 dresses)` — one shoe per dress
+4. Returns `{ results[10], matchQuality, relaxationMessage }`
+
+#### `getRecommendations(productId, options)` (public)
+
+Product-detail-page recommendations.
+
+1. `Product.findById(productId)`.
+2. Fetches shoe pool (100 shoes) + clothing pool (50–100 items).
+3. Scores all candidates via `scoreProduct`, sorts, slices to `maxShoes`/`maxClothing`.
 4. Returns `{ source, shoes, complementaryClothing, generatedAt }`.
-
-#### `getOutfitForQuery(intent, aiInstance)`
-
-Used by `POST /api/recommendations/outfit`. Implements the **Master Stylist**
-flow:
-
-1. Builds a Mongo filter from the parsed intent
-   (`category: 'clothing'`, optional color regex, occasion `$in`, price `$lte`).
-2. Random-samples 20 candidates with `$sample`. If none, falls back to a 10-item
-   sample of any clothing.
-3. **If a Gemini instance is provided**:
-   - Uses `gemini-2.5-flash` with `responseMimeType: 'application/json'`.
-   - Sends a prompt listing the pool by index and asks Gemini to pick the
-     single best **Hero** dress and explain why in one sentence.
-   - Parses `{ selectedIndex, reasoning }`, picks the hero, and then scores up
-     to 40 candidate shoes against that hero with `scoreProduct`, returning
-     the top 6.
-   - Returns `{ heroDress, otherDresses (rest of pool, sliced 6), shoes,
-     reasoning, intent }`.
-4. **Fallback** (no AI or AI failure): returns the first sampled product as
-   the hero with a generic reasoning string and no shoes.
-
-#### `generateAIStylistReasoning(hero, pair, aiInstance)`
-
-Asks `gemini-1.5-flash` for a 1-sentence justification why a given accessory
-pairs with the hero. Currently exported but not invoked elsewhere — wired up
-for richer per-pair narratives in the future.
 
 ---
 
@@ -1346,14 +1441,22 @@ Returns a full Product object **or `null`** if validation fails. Fields:
 3. `images` — uses `raw.images` array; prepends `raw.imageUrl` if not already
    included. Rejects if the result is empty.
 4. `productUrl` — required; must start with `http`.
-5. `colors`, `primaryColor` — derived via `inferColors(name + description + tags)`.
-6. `occasion` — `dedupe([...configOccasion, ...inferOccasions(textBlob)])`.
-7. `style` — `dedupe([...configStyle, ...inferStyles(textBlob)])`.
-8. `subCategory` — config-level value wins unless it was `'other'`, in which
-   case keyword inference is attempted.
-9. `season` — array, defaults to `['all-season']` when no signal found.
-10. `fabric` — first match from `['lawn','chiffon','georgette','cotton','silk','velvet','khaddar','karandi','linen','organza','net','crepe','satin']` (capitalized).
-11. `metadataScore` — composite 0-1 score:
+5. `stitching` — `subCategory.startsWith('unstitched') ? 'unstitched' : 'stitched'`.
+6. `dressStyle` — `inferDressStyle(textBlob, subCategory)` using `DRESS_STYLE_MAP`
+   keyword lookup → `saree|lehenga|frock|maxi|shalwar-kameez|kurta|co-ord|palazzo|western`.
+7. `print` — `inferPrint(textBlob)` using keyword lists:
+   - `EMBROIDERY_KEYWORDS` → `'embroidered'`
+   - `PRINT_KEYWORDS` → `'printed'`
+   - `PLAIN_KEYWORDS` → `'plain'`
+   - else → `'embellished'`
+8. `pieces` — regex parse of name/description: `"2 piece/do piece/2-piece"` → 2, `"3 piece/teen piece"` → 3, `"kurta/shirt"` alone → 1.
+9. `primaryExactColor`, `exactColors` — from `inferColors().primaryExactColor / exactColors` (exact scraped shades).
+10. `primaryColor`, `colors` — from `inferColors().primaryColor / colors` (canonical families, unchanged).
+11. `occasion` — `dedupe([...configOccasion, ...inferOccasions(textBlob)])`.
+12. `style` — `dedupe([...configStyle, ...inferStyles(textBlob)])`.
+13. `subCategory` — config-level value wins unless `'other'`, then keyword inference.
+14. `fabric` — first match from fabric keyword list (capitalized).
+15. `metadataScore` — composite 0-1 score:
     - +0.20 for name
     - +0.20 for price > 0
     - +0.20 for images present
@@ -1385,15 +1488,25 @@ URL beginning with `http`. Returns `{ valid, reason }`.
 
 #### `colorInference.js`
 
-`COLOR_MAP` — array of `{ keywords, color }` covering Black, White, Red, Blue,
-Green, Yellow, Pink, Purple, Orange, Gold (incl. beige/khaki/camel/nude/skin/tan),
-Grey, Brown, Teal, Multicolor (catch-all for "multi/floral/printed/pattern/
-embroidered").
+`COLOR_MAP` — ordered array of `{ keywords[], family, exact }` entries covering
+Black, White, Red, Blue, Green, Yellow, Pink, Purple, Orange, Gold, Grey, Brown,
+Teal, Multicolor. Keywords are sorted **longest-first** within each family to
+prevent partial matches (e.g. "navy blue" matched before "blue").
 
-- `inferColors(text)` → `{ primaryColor, colors[] }`. Returns
-  `{ Multicolor, [Multicolor] }` if no match. Deduplicates the `colors` array.
-- `inferColor(text)` → legacy single-string helper that proxies to
-  `inferColors().primaryColor`.
+`inferColors(text)` now returns **four fields** — both exact shades AND canonical families:
+
+```js
+{
+  primaryColor:      "Red",              // canonical family (unchanged from old behaviour)
+  colors:            ["Red", "Gold"],    // all canonical families
+  primaryExactColor: "maroon",           // exact scraped shade (NEW)
+  exactColors:       ["maroon", "golden"] // all exact shades (NEW)
+}
+```
+
+Returns `{ Multicolor, [Multicolor], null, [] }` if no match. Deduplicates both arrays.
+
+- `inferColor(text)` → legacy single-string helper returning canonical `primaryColor`.
 
 #### `logger.js`
 
