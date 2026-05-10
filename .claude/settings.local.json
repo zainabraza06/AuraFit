@@ -6,7 +6,9 @@
       "Bash(node --experimental-vm-modules scripts/testRecommendations.js)",
       "Bash(node scripts/testRecommendations.js)",
       "Bash(Get-ChildItem -Path \"e:\\\\MERN\\\\PROJECTS\\\\Fashion\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"e:\\\\MERN\\\\PROJECTS\\\\Fashion\\\\backend\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }

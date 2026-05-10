@@ -50,15 +50,18 @@ Analyze the user request and extract structured fashion intent as JSON.
 
 Return ONLY a valid JSON object with these exact fields:
 - color: MUST be one of: ${CANONICAL_COLORS.join(', ')}, Any
-- shade: The EXACT color word(s) user mentioned.
-- occasion: Array from: ["casual", "wedding", "office", "party", "eid", "formal", "mehndi"]
-- style: Array from: ["elegant", "trendy", "minimal", "embroidered", "western", "traditional"]
-- maxBudget: Number (PKR). 0 if not mentioned.
-- fabric: String (e.g., lawn, chiffon) or null.
-- piece: String (e.g., 2-piece, kurta) or null.
+- shade: The EXACT color word(s) the user mentioned (e.g. "navy", "maroon", "ferozi"). null if none.
+- occasion: Array from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"]. Map "bridal" queries to ["wedding","bridal"]. Map fashion/fancy/festive to ["party","eid"].
+- style: Array from: ["elegant", "trendy", "minimal", "embroidered", "western", "traditional", "heavy"]
+- gender: "women", "men", "kids", or "unisex". Default "women" if not specified.
+- dressType: "bridal", "formal", "casual", "party", "western", "festive" or null.
+- piece: String describing piece count/type (e.g., "2-piece", "3-piece", "kurta", "bridal lehenga") or null.
+- pieces: Number — 1, 2, or 3. Infer from piece field. null if unknown.
+- fabric: String (e.g., "lawn", "chiffon", "silk", "velvet") or null.
 - stitching: "stitched", "unstitched", or null.
-- intentSummary: One concise sentence.
-- aiAnalysis: 2-3 sentences of fashion advice.
+- maxBudget: Number (PKR). 0 if not mentioned.
+- intentSummary: One concise sentence describing the request.
+- aiAnalysis: 2-3 sentences of fashion advice tailored to the request.
 `;
 
     let parsedIntent;
@@ -73,10 +76,13 @@ Return ONLY a valid JSON object with these exact fields:
         color: isCanonical ? rawColor : (CANONICAL_COLORS.find(
           c => rawColor.toLowerCase().includes(c.toLowerCase())
         ) || 'Any'),
-        shade: (parsed.shade && parsed.shade !== 'any') ? parsed.shade.toLowerCase().trim() : null,
+        shade: (parsed.shade && parsed.shade !== 'any' && parsed.shade !== 'null') ? parsed.shade.toLowerCase().trim() : null,
         fabric: (parsed.fabric && parsed.fabric !== 'null') ? parsed.fabric.toLowerCase().trim() : null,
         piece: (parsed.piece && parsed.piece !== 'null') ? parsed.piece.toLowerCase().trim() : null,
+        pieces: (typeof parsed.pieces === 'number' && parsed.pieces >= 1 && parsed.pieces <= 3) ? parsed.pieces : null,
         stitching: (parsed.stitching && parsed.stitching !== 'null') ? parsed.stitching.toLowerCase().trim() : null,
+        gender: ['women', 'men', 'kids', 'unisex'].includes(parsed.gender) ? parsed.gender : 'women',
+        dressType: (parsed.dressType && parsed.dressType !== 'null') ? parsed.dressType.toLowerCase().trim() : null,
         occasion: Array.isArray(parsed.occasion) ? parsed.occasion : ['casual'],
         style: Array.isArray(parsed.style) ? parsed.style : ['elegant'],
         maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
@@ -86,17 +92,23 @@ Return ONLY a valid JSON object with these exact fields:
     } catch (aiErr) {
       console.warn('All AI intent parsing failed, using default fallback:', aiErr.message);
       parsedIntent = {
-        color: 'Any',
-        occasion: ['casual'],
-        style: ['elegant'],
+        color: 'Any', shade: null,
+        gender: 'women', dressType: null,
+        occasion: ['casual'], style: ['elegant'],
+        piece: null, pieces: null, fabric: null, stitching: null,
         maxBudget: 0,
         intentSummary: message,
         aiAnalysis: 'Parsing failed, showing broad matches.'
       };
     }
 
+    parsedIntent.originalMessage = message;
     const outfit = await getOutfitForQuery(parsedIntent);
-    res.json({ intent: parsedIntent, outfit });
+    res.json({
+      intent: parsedIntent,
+      outfit,
+      ...(outfit.colorMessage ? { colorMessage: outfit.colorMessage } : {})
+    });
   } catch (err) {
     console.error('Outfit generation error:', err);
     res.status(500).json({ error: 'Failed to generate outfit' });

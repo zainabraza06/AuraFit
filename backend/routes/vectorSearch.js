@@ -100,6 +100,7 @@ router.post('/embed-all', async (req, res) => {
 
     const { limit = 50 } = req.body;
     const products = await Product.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] })
+      .select('name brand subCategory fabric primaryColor style occasion colors description')
       .limit(Number(limit))
       .lean();
 
@@ -110,7 +111,13 @@ router.post('/embed-all', async (req, res) => {
     let updated = 0, failed = 0;
     for (const product of products) {
       try {
-        const text = [product.name, product.brand, product.category, product.subCategory, ...(product.style || []), ...(product.occasion || []), ...(product.colors || [])].filter(Boolean).join(', ');
+        const descSnippet = (product.description || '').slice(0, 300);
+        const text = [
+          product.name, product.brand, product.subCategory,
+          product.fabric, product.primaryColor,
+          ...(product.style || []), ...(product.occasion || []), ...(product.colors || []),
+          descSnippet
+        ].filter(Boolean).join(', ');
         const embedding = await getEmbedding(text);
         if (embedding?.length) {
           await Product.findByIdAndUpdate(product._id, { embedding });

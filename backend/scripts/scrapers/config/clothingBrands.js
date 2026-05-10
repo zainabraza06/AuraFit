@@ -229,6 +229,109 @@ export const CLOTHING_BRANDS = [
   },
 
   // ════════════════════════════════════════════════════════════════════════════
+  // MARIA B — mariab.pk  (Shopify)
+  // Menu: PRET | LUXURY PRET | FORMAL WEAR | BRIDALS | D'PRINTS | UNSTITCHED
+  // Speciality: Bridal couture, luxury pret, formal wear
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    brand: 'Maria B',
+    baseUrl: 'https://mariab.pk',
+    adapter: 'MariaBAdapter',
+    category: 'clothing',
+    collections: [
+      // ── Pret ────────────────────────────────────────────────────────
+      { path: '/collections/pret',
+        subCategory: '2-piece',           occasion: ['casual', 'party', 'eid'],              style: ['embroidered', 'elegant'] },
+      { path: '/collections/pret-shirts',
+        subCategory: 'kurta',             occasion: ['casual', 'eid'],                       style: ['embroidered', 'elegant'] },
+      // ── Luxury Pret ──────────────────────────────────────────────────
+      { path: '/collections/luxury-pret',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'wedding'],             style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Formal Wear ──────────────────────────────────────────────────
+      { path: '/collections/formal-wear',
+        subCategory: 'festive',           occasion: ['wedding', 'party', 'formal'],          style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Bridals ──────────────────────────────────────────────────────
+      { path: '/collections/bridals',
+        subCategory: 'bridal',            occasion: ['wedding', 'party'],                    style: ['embroidered', 'elegant', 'heavy', 'traditional'] },
+      // ── D'Prints (Unstitched) ────────────────────────────────────────
+      { path: '/collections/d-prints',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'party'],                     style: ['printed', 'elegant'] },
+      { path: '/collections/unstitched',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'party', 'eid'],              style: ['embroidered', 'printed'] }
+    ]
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // SANA SAFINAZ — sanasafinaz.com  (Shopify)
+  // Menu: LUXURY PRET | MUZLIN PRET | FORMAL | BRIDAL | LAWN
+  // Speciality: Luxury pret, formal & bridal
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    brand: 'Sana Safinaz',
+    baseUrl: 'https://sanasafinaz.com',
+    adapter: 'SanaSafinazAdapter',
+    category: 'clothing',
+    collections: [
+      // ── Luxury Pret ──────────────────────────────────────────────────
+      { path: '/collections/luxury-pret',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'wedding'],             style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Muzlin Pret ──────────────────────────────────────────────────
+      { path: '/collections/muzlin-pret',
+        subCategory: '3-piece',           occasion: ['casual', 'party', 'eid'],              style: ['printed', 'elegant'] },
+      { path: '/collections/muzlin',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'party'],                     style: ['printed', 'minimal'] },
+      // ── Formal Wear ──────────────────────────────────────────────────
+      { path: '/collections/formal-wear',
+        subCategory: 'festive',           occasion: ['wedding', 'party', 'formal'],          style: ['embroidered', 'elegant', 'heavy'] },
+      { path: '/collections/formals',
+        subCategory: 'festive',           occasion: ['wedding', 'party', 'formal'],          style: ['embroidered', 'elegant'] },
+      // ── Bridal ───────────────────────────────────────────────────────
+      { path: '/collections/bridal',
+        subCategory: 'bridal',            occasion: ['wedding', 'party'],                    style: ['embroidered', 'elegant', 'heavy', 'traditional'] },
+      { path: '/collections/bridal-luxury-pret',
+        subCategory: 'bridal',            occasion: ['wedding', 'party'],                    style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Lawn ─────────────────────────────────────────────────────────
+      { path: '/collections/lawn',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'summer'],                    style: ['printed'] }
+    ]
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ELAN — elan.com.pk  (Shopify)
+  // Menu: PRET | LUXURY PRET | FESTIVE | BRIDAL | FORMAL
+  // Speciality: Luxury pret, festive & bridal couture
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    brand: 'Elan',
+    baseUrl: 'https://elan.com.pk',
+    adapter: 'ElanAdapter',
+    category: 'clothing',
+    collections: [
+      // ── Pret ────────────────────────────────────────────────────────
+      { path: '/collections/pret',
+        subCategory: '2-piece',           occasion: ['casual', 'party', 'eid'],              style: ['embroidered', 'elegant'] },
+      // ── Luxury Pret ──────────────────────────────────────────────────
+      { path: '/collections/luxury-pret',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'wedding'],             style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Festive ──────────────────────────────────────────────────────
+      { path: '/collections/festive',
+        subCategory: 'festive',           occasion: ['eid', 'wedding', 'party'],             style: ['embroidered', 'elegant', 'heavy'] },
+      { path: '/collections/festive-wear',
+        subCategory: 'festive',           occasion: ['eid', 'wedding', 'party'],             style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Bridal ───────────────────────────────────────────────────────
+      { path: '/collections/bridal',
+        subCategory: 'bridal',            occasion: ['wedding', 'party'],                    style: ['embroidered', 'elegant', 'heavy', 'traditional'] },
+      { path: '/collections/bridal-couture',
+        subCategory: 'bridal',            occasion: ['wedding', 'party'],                    style: ['embroidered', 'elegant', 'heavy'] },
+      // ── Formal ───────────────────────────────────────────────────────
+      { path: '/collections/formal',
+        subCategory: 'festive',           occasion: ['wedding', 'formal', 'party'],          style: ['embroidered', 'elegant'] },
+      { path: '/collections/all',
+        subCategory: 'festive',           occasion: ['party', 'eid'],                        style: ['embroidered', 'elegant'] }
+    ]
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
   // GUL AHMED (Ideas) — gulahmedshop.com  (Shopify)
   // Menu: UNSTITCHED (Lawn 2026 / Festive / Capsule)
   //        READY TO WEAR (Pret Signature / Pret Essential / Everyday Edit / 9to5 / Unstitched To Stitched)

@@ -20,7 +20,7 @@ const ProductSchema = new mongoose.Schema(
       type: String,
       enum: [
         // Clothing — stitched
-        '2-piece', '3-piece', 'kurta', 'pants', 'shalwar', 'dupatta', 'western', 'festive',
+        '2-piece', '3-piece', 'kurta', 'pants', 'shalwar', 'dupatta', 'western', 'festive', 'bridal',
         // Clothing — unstitched
         'unstitched-2-piece', 'unstitched-3-piece',
         // Shoes
@@ -33,6 +33,16 @@ const ProductSchema = new mongoose.Schema(
       default: 'other'
     },
     type: { type: String, trim: true },         // e.g. "lawn", "chiffon", "block heel"
+
+    // ─── Gender ──────────────────────────────────────────────────────
+    gender: {
+      type: String,
+      enum: ['women', 'men', 'kids', 'unisex'],
+      default: 'women'
+    },
+
+    // ─── Pieces count ─────────────────────────────────────────────────
+    pieces: { type: Number, min: 1, max: 3 },   // 1, 2, or 3
 
     // ─── Style Metadata ──────────────────────────────────────────────
     style: [{ type: String }],                  // e.g. ["elegant", "minimal", "trendy"]
@@ -85,6 +95,7 @@ ProductSchema.index({ brand: 1, category: 1 });
 ProductSchema.index({ category: 1, subCategory: 1 });
 ProductSchema.index({ primaryColor: 1, category: 1 });
 ProductSchema.index({ occasion: 1 });
+ProductSchema.index({ gender: 1, category: 1 });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ tags: 1 });
 ProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });

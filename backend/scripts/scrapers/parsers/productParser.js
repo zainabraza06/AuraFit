@@ -10,13 +10,19 @@ import { inferColors } from '../utils/colorInference.js';
 const REQUIRED_FIELDS = ['name', 'price', 'productUrl', 'images'];
 
 // ─── Occasion inference from tags / title ─────────────────────────────────────
+// Each entry maps keywords → one occasion string. Multiple entries with overlapping
+// keywords intentionally push products into multiple occasions (e.g. eid → eid + party).
 const OCCASION_MAP = [
-  { keywords: ['wedding', 'bridal', 'nikah', 'barat', 'valima'], occasion: 'wedding' },
-  { keywords: ['eid', 'festive', 'celebration', 'festive-wear'], occasion: 'eid' },
-  { keywords: ['party', 'evening', 'cocktail', 'reception'], occasion: 'party' },
-  { keywords: ['office', 'work', 'professional', 'formal', 'corporate'], occasion: 'office' },
-  { keywords: ['casual', 'everyday', 'daily', 'lounge'], occasion: 'casual' },
+  { keywords: ['wedding', 'bridal', 'nikah', 'barat', 'valima', 'shaadi', 'nikkah'], occasion: 'wedding' },
+  { keywords: ['eid', 'festive', 'celebration', 'festive-wear', 'eid-wear', 'eidwear'], occasion: 'eid' },
+  // Eid/festive/fashion/occasion dresses are also party/fancy wear
+  { keywords: ['eid', 'festive', 'celebration', 'luxury', 'couture', 'fashion', 'occasion wear', 'occasionwear'], occasion: 'party' },
+  { keywords: ['party', 'evening', 'cocktail', 'reception', 'gala', 'soiree'], occasion: 'party' },
+  { keywords: ['office', 'work', 'professional', 'formal', 'corporate', '9 to 5', '9to5'], occasion: 'office' },
+  { keywords: ['casual', 'everyday', 'daily', 'lounge', 'basics', 'essentials'], occasion: 'casual' },
   { keywords: ['mehndi', 'haldi', 'mayun'], occasion: 'mehndi' },
+  // Mehndi/barat/valima are also party occasions
+  { keywords: ['mehndi', 'haldi', 'barat', 'valima', 'reception'], occasion: 'party' },
   { keywords: ['lawn', 'summer', 'pret'], occasion: 'casual' },
   { keywords: ['winter', 'khaddar', 'karandi', 'linen', 'tweed'], occasion: 'casual' }
 ];
@@ -47,7 +53,8 @@ const SUBCATEGORY_KEYWORDS = {
   'unstitched-2-piece': ['unstitched 2-piece', 'un-stitched 2 piece'],
   'unstitched-3-piece': ['unstitched 3-piece', 'un-stitched 3 piece'],
   'western':            ['western wear', 'jeans', 'denim', 'hoodie', 'sweatshirt', 't-shirt'],
-  'festive':            ['bridal', 'wedding wear', 'shadi'],
+  'bridal':             ['bridal couture', 'bridal collection', 'bridal wear', 'wedding dress', 'bride'],
+  'festive':            ['wedding wear', 'shadi', 'luxury formal', 'heavy embroidered', 'chikankari formal'],
   'heels':              ['heels', 'stiletto', 'pump', 'block heel', 'court shoe'],
   'flats':              ['ballet flat', 'loafer', 'moccasin'],
   'sandals':            ['sandal', 'chappal', 'slides', 'slipper'],
@@ -62,6 +69,14 @@ const SEASON_MAP = [
   { keywords: ['summer', 'lawn', 'cotton', 'voile', 'chiffon', 'georgette'], season: 'summer' },
   { keywords: ['winter', 'khaddar', 'karandi', 'linen', 'tweed', 'wool', 'velvet', 'fleece'], season: 'winter' }
 ];
+
+// ─── Gender inference ─────────────────────────────────────────────────────────
+const GENDER_MAP = [
+  { keywords: ['men', 'gents', 'male', 'kurta pajama for men', 'boys'], gender: 'men' },
+  { keywords: ['kids', 'children', 'child', 'junior', 'toddler', 'baby girl', 'baby boy'], gender: 'kids' },
+  { keywords: ['unisex', 'gender neutral'], gender: 'unisex' }
+];
+// Default is 'women' — only override when explicit keyword found
 
 // ─── Main normalizer ──────────────────────────────────────────────────────────
 
@@ -128,6 +143,12 @@ export function normalizeProduct(raw, brandConfig) {
   // ── Season ──
   const season = inferSeason(textBlob);
 
+  // ── Gender ──
+  const gender = inferGender(textBlob);
+
+  // ── Pieces count (derived from subCategory) ──
+  const pieces = inferPieces(subCategory);
+
   // ── Metadata score (completeness 0-1) ──
   const metadataScore = computeMetadataScore({ name, price, images, colors, occasions, styles, description: raw.description });
 
@@ -137,6 +158,8 @@ export function normalizeProduct(raw, brandConfig) {
     category,
     subCategory,
     type: raw.productType || raw.type || undefined,
+    gender,
+    pieces,
     style: styles,
     occasion: occasions,
     season,
@@ -214,10 +237,25 @@ function inferSeason(textBlob) {
 }
 
 function inferFabric(textBlob) {
-  const fabrics = ['lawn', 'chiffon', 'georgette', 'cotton', 'silk', 'velvet', 'khaddar', 'karandi', 'linen', 'organza', 'net', 'crepe', 'satin'];
+  const fabrics = ['lawn', 'chiffon', 'georgette', 'cotton', 'silk', 'velvet', 'khaddar', 'karandi', 'linen', 'organza', 'net', 'crepe', 'satin', 'jacquard', 'raw silk', 'tissue', 'banarsi', 'zari'];
   for (const f of fabrics) {
     if (textBlob.includes(f)) return f.charAt(0).toUpperCase() + f.slice(1);
   }
+  return undefined;
+}
+
+function inferGender(textBlob) {
+  for (const { keywords, gender } of GENDER_MAP) {
+    if (keywords.some((k) => textBlob.includes(k))) return gender;
+  }
+  return 'women';
+}
+
+function inferPieces(subCategory) {
+  if (!subCategory) return undefined;
+  if (subCategory.includes('3-piece') || subCategory === 'festive' || subCategory === 'bridal') return 3;
+  if (subCategory.includes('2-piece')) return 2;
+  if (['kurta', 'pants', 'shalwar', 'dupatta', 'western'].includes(subCategory)) return 1;
   return undefined;
 }
 

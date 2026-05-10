@@ -1,19 +1,24 @@
 /**
  * recommendationEngine.js
- * Dynamic AI outfit recommendation scoring system.
+ * AI outfit recommendation scoring system — semantic-first, rule-assisted.
  *
  * Score formulas:
  *   Product-vs-Product: embeddingSimilarity×0.5 + color×0.2 + occasion×0.2 + style×0.1
- *   Intent-vs-Product (dynamic weights, normalised to 1.0):
- *     color(60) + style(18) + piece(10)* + fabric(4)* + stitching(4)* + occasion(4)
- *     (* only counted when the user explicitly mentioned that attribute)
  *
- * The intent-based scorer does NOT rely on MongoDB-level color filtering, so it
- * works even when colors are stored as aliases (Lavender→Purple, Cream→White, etc.).
+ *   Intent-vs-Product (dynamic, normalised weights):
+ *     semantic(45)* + color(55) + style(14) + piece(10)* + fabric(4)* + stitching(4)* + occasion(4) + price(8)*
+ *     (* only active when the factor is applicable / available)
+ *
+ *   Semantic score uses cosine similarity between the query embedding and the product
+ *   embedding. Falls back to keyword overlap of intentSummary vs product text when
+ *   no embeddings exist, so any input language/format works.
+ *
+ *   Price is scored softly — within-budget = 1.0, over-budget decays toward 0.
  */
 
 import Product from '../models/Product.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
+import { getTextEmbedding } from './huggingface.js';
 
 // ─── Scoring weights (product-to-product) ────────────────────────────────────
 const WEIGHTS = { embedding: 0.5, color: 0.2, occasion: 0.2, style: 0.1 };
@@ -279,22 +284,43 @@ function getStitchingScore(product, stitchingIntent) {
   return 0.5;
 }
 
+// ─── Textual match score (fallback when no embeddings) ───────────────────────
+// Scores how well a product's full text (name + description + tags) matches
+// the user's intentSummary. Works for any language/format since it's just
+// substring overlap — the real semantic lift comes from embeddings when available.
+function textualMatchScore(product, intentSummary) {
+  if (!intentSummary) return 0.3;
+  const queryWords = intentSummary.toLowerCase().split(/[\s,.\-/]+/).filter((w) => w.length > 2);
+  if (!queryWords.length) return 0.3;
+  const productText = [
+    product.name || '', product.description || '', product.brand || '',
+    product.subCategory || '', ...(product.tags || []), ...(product.style || []),
+    ...(product.occasion || []), product.fabric || ''
+  ].join(' ').toLowerCase();
+  const matches = queryWords.filter((w) => productText.includes(w)).length;
+  return Math.min(0.95, 0.1 + matches / queryWords.length);
+}
+
 // ─── Score a product against a user intent ────────────────────────────────────
-// Priority: color > style > piece > fabric > stitching > occasion
-// Weights (base, normalised to 1.0 across active factors):
-//   color 60 · style 18 · piece 10 · fabric 4 · stitching 4 · occasion 4
-// piece/fabric/stitching are only active when explicitly present in the query.
-// Five-tier color scoring (primary vs secondary colour distinction):
-//   1.00 — primaryColor raw shade match
-//   0.93 — secondary color raw shade match
-//   0.85 — primaryColor canonical alias match
-//   0.78 — secondary canonical alias match
-//   0.08 — wrong color family (hard penalty)
-function scoreProductAgainstIntent(product, intent) {
+// Semantic-first: uses embedding cosine similarity when available; falls back to
+// textual overlap so ANY input format (Urdu, prose, mixed) works correctly.
+//
+// Active factors and base weights (normalised to 1.0):
+//   semantic(45)*  — cosine sim between query embedding and product embedding
+//   color(55)      — five-tier exact→alias→canonical→wrong-family
+//   style(14)      — set overlap
+//   piece(10)*     — sub-category match
+//   fabric(4)*     — fabric string match
+//   stitching(4)*  — stitched vs unstitched
+//   occasion(4)    — set overlap
+//   price(8)*      — soft budget score (within-budget = 1.0, decays over budget)
+//   (* only active when applicable)
+function scoreProductAgainstIntent(product, intent, queryEmbedding = null) {
   const {
     color, shade,
     occasion = [], style = [],
-    fabric = null, piece = null, stitching = null
+    fabric = null, piece = null, stitching = null,
+    maxBudget = 0, intentSummary = ''
   } = intent;
 
   // ── Color (five-tier) ──────────────────────────────────────────────────────
@@ -302,15 +328,13 @@ function scoreProductAgainstIntent(product, intent) {
   const colorSpecified = color && color.toLowerCase() !== 'any';
 
   if (colorSpecified) {
-    const primaryRaw   = (product.primaryColor || '').toLowerCase();
-    const primaryNorm  = normalizeColor(product.primaryColor || '');
-    const secondaryCols = (product.colors || []).filter(
-      (c) => c && c.toLowerCase() !== primaryRaw
-    );
-    const secondaryRaw   = secondaryCols.map((c) => c.toLowerCase());
+    const primaryRaw    = (product.primaryColor || '').toLowerCase();
+    const primaryNorm   = normalizeColor(product.primaryColor || '');
+    const secondaryCols = (product.colors || []).filter((c) => c && c.toLowerCase() !== primaryRaw);
+    const secondaryRaw  = secondaryCols.map((c) => c.toLowerCase());
     const secondaryNorms = secondaryCols.map(normalizeColor).filter(Boolean);
-    const targetNorm     = normalizeColor(color);
-    const shadeToMatch   = shade || color.toLowerCase();
+    const targetNorm    = normalizeColor(color);
+    const shadeToMatch  = shade || color.toLowerCase();
 
     const primaryRawMatch   = primaryRaw.includes(shadeToMatch) || shadeToMatch.includes(primaryRaw);
     const secondaryRawMatch = secondaryRaw.some((c) => c.includes(shadeToMatch) || shadeToMatch.includes(c));
@@ -322,23 +346,46 @@ function scoreProductAgainstIntent(product, intent) {
     else                                          colorScore = 0.08;
   }
 
-  // ── Style & occasion (always active — Gemini always extracts these) ────────
+  // ── Style & occasion ───────────────────────────────────────────────────────
   const styleScore   = setOverlapScore(style,   product.style   || []);
   const occasionScore = setOverlapScore(occasion, product.occasion || []);
 
-  // ── Piece / fabric / stitching (active only when in query) ────────────────
+  // ── Piece / fabric / stitching ────────────────────────────────────────────
   const pieceScoreVal      = getSubCategoryScore(product, piece);
   const fabricScoreVal     = getFabricScore(product, fabric);
   const stitchingScoreVal  = getStitchingScore(product, stitching);
 
+  // ── Semantic score ─────────────────────────────────────────────────────────
+  // Use embedding cosine similarity when both query and product embeddings exist.
+  // Fall back to textual overlap (works for any input language/format).
+  let semanticScore = null;
+  if (queryEmbedding?.length && product.embedding?.length) {
+    semanticScore = cosineSimilarity(queryEmbedding, product.embedding);
+  } else if (intentSummary) {
+    semanticScore = textualMatchScore(product, intentSummary);
+  }
+
+  // ── Price score (soft — within-budget = 1.0, decays as price exceeds budget) ─
+  let priceScore = null;
+  if (maxBudget > 0 && product.price > 0) {
+    if (product.price <= maxBudget) {
+      priceScore = 1.0;
+    } else {
+      const overRatio = (product.price - maxBudget) / maxBudget;
+      priceScore = Math.max(0, 1.0 - overRatio * 2);
+    }
+  }
+
   // ── Dynamic normalised weighting ──────────────────────────────────────────
   const factors = [
-    { score: colorScore,        weight: 60, active: true },
-    { score: styleScore,        weight: 18, active: true },
+    { score: colorScore,        weight: 55, active: true },
+    { score: styleScore,        weight: 14, active: true },
     { score: pieceScoreVal,     weight: 10, active: pieceScoreVal     !== null },
     { score: fabricScoreVal,    weight:  4, active: fabricScoreVal    !== null },
     { score: stitchingScoreVal, weight:  4, active: stitchingScoreVal !== null },
-    { score: occasionScore,     weight:  4, active: true }
+    { score: occasionScore,     weight:  4, active: true },
+    { score: semanticScore,     weight: 45, active: semanticScore     !== null },
+    { score: priceScore,        weight:  8, active: priceScore        !== null }
   ];
 
   const active     = factors.filter((f) => f.active);
@@ -348,6 +395,8 @@ function scoreProductAgainstIntent(product, intent) {
   return {
     total:          parseFloat(finalScore.toFixed(3)),
     colorMatch:     parseFloat(colorScore.toFixed(3)),
+    semanticMatch:  semanticScore !== null ? parseFloat(semanticScore.toFixed(3)) : null,
+    priceMatch:     priceScore    !== null ? parseFloat(priceScore.toFixed(3))    : null,
     styleMatch:     parseFloat(styleScore.toFixed(3)),
     occasionMatch:  parseFloat(occasionScore.toFixed(3)),
     pieceMatch:     pieceScoreVal     !== null ? parseFloat(pieceScoreVal.toFixed(3))     : null,
@@ -459,28 +508,86 @@ export async function getRecommendations(productId, options = {}) {
 // ─── Intent-based outfit builder (chat / "Style Me") ──────────────────────────
 // Fetches a large pool WITHOUT DB-level color filtering, then scores every
 // product so correct colors rank highest regardless of storage format.
+// Color filtering rules:
+//   - If color is specified and correct-color products exist → exclude wrong-color (score=0.08) products
+//   - If color is specified but NO correct-color products exist → return colorMessage, empty results
+//   - If no exact shade found but alias/canonical match found → return informational colorMessage
 export async function getOutfitForQuery(intent) {
-  const { maxBudget = 0 } = intent;
+  const { maxBudget = 0, color, shade, dressType, occasion = [], gender, intentSummary, originalMessage } = intent;
 
-  // Only apply budget at DB level (exact number, no fuzzy)
+  // ── Generate query embedding (semantic matching for any input) ───────────
+  let queryEmbedding = null;
+  const queryText = intentSummary || originalMessage || '';
+  if (queryText && process.env.HUGGING_FACE_API_KEY) {
+    try {
+      const raw = await getTextEmbedding(queryText);
+      if (raw?.length) queryEmbedding = Array.isArray(raw[0]) ? raw[0] : raw;
+    } catch (e) {
+      console.warn('[Outfit] Query embedding failed (scoring falls back to text):', e.message);
+    }
+  }
+
+  // ── Build DB query — minimal hard filters only ────────────────────────────
   const clothingQuery = { category: 'clothing' };
-  if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget };
+  // Soft budget: load up to 20% over budget; price scoring handles the rest
+  if (maxBudget > 0) clothingQuery.price = { $lte: maxBudget * 1.2 };
+  if (gender && gender !== 'women') clothingQuery.gender = gender;
+
+  // For bridal queries, narrow pool to festive/bridal subCategories only
+  const isBridalQuery = dressType === 'bridal' ||
+    occasion.includes('wedding') || occasion.includes('bridal');
+  if (isBridalQuery) {
+    clothingQuery.subCategory = { $in: ['bridal', 'festive', '3-piece', 'unstitched-3-piece'] };
+  }
 
   const clothingPool = await Product.find(clothingQuery)
-    .select('name brand category subCategory fabric type price primaryColor colors occasion style tags imageUrl images productUrl description')
-    .limit(300)
+    .select('name brand category subCategory pieces fabric type price primaryColor colors occasion style tags imageUrl images productUrl description gender embedding')
+    .limit(400)
     .lean();
 
   if (clothingPool.length === 0) {
-    return { heroDress: null, otherDresses: [], shoes: [], scores: [] };
+    return { heroDress: null, otherDresses: [], shoes: [], scores: [],
+      colorMessage: isBridalQuery ? 'No bridal/festive products found in our catalog yet.' : null };
   }
 
-  // Score every clothing product against the parsed intent
+  // Score every clothing product against the parsed intent + query embedding
   const scored = clothingPool
-    .map((product) => ({ product, scores: scoreProductAgainstIntent(product, intent) }))
+    .map((product) => ({ product, scores: scoreProductAgainstIntent(product, intent, queryEmbedding) }))
     .sort((a, b) => b.scores.total - a.scores.total);
 
-  const top10 = scored.slice(0, 10);
+  // ── Color filtering ────────────────────────────────────────────────────────
+  let colorMessage = null;
+  let finalScored = scored;
+  const colorSpecified = color && color.toLowerCase() !== 'any';
+
+  if (colorSpecified) {
+    // Products with colorMatch > 0.08 are in the correct color family
+    const colorMatches = scored.filter((s) => s.scores.colorMatch > 0.08);
+
+    if (colorMatches.length > 0) {
+      // Check if any exact shade match exists (score ≥ 0.9)
+      const hasExactShadeMatch = colorMatches.some((s) => s.scores.colorMatch >= 0.9);
+      // Only add alias message when user said a specific shade different from the canonical
+      const shadeIsSpecific = shade && shade.toLowerCase() !== color.toLowerCase();
+
+      if (!hasExactShadeMatch && shadeIsSpecific) {
+        colorMessage = `No exact "${shade}" products found. Showing ${color} products — "${shade}" is a shade of ${color}.`;
+      }
+      finalScored = colorMatches;
+    } else {
+      // No correct-color products at all
+      const displayShade = shade || color;
+      const shadeIsSpecific = shade && shade.toLowerCase() !== color.toLowerCase();
+      if (shadeIsSpecific) {
+        colorMessage = `No "${shade}" or ${color} products found in our catalog. Try a different color.`;
+      } else {
+        colorMessage = `Sorry, no ${color} products found in our catalog.`;
+      }
+      return { heroDress: null, otherDresses: [], shoes: [], scores: [], colorMessage };
+    }
+  }
+
+  const top10 = finalScored.slice(0, 10);
   const heroDress = top10[0]?.product || null;
 
   // Best-matching shoes for the hero dress
@@ -504,6 +611,7 @@ export async function getOutfitForQuery(intent) {
     heroDress,
     otherDresses: top10.slice(1).map((d) => d.product),
     shoes,
-    scores: top10.map((d) => ({ productId: d.product._id, ...d.scores }))
+    scores: top10.map((d) => ({ productId: d.product._id, ...d.scores })),
+    colorMessage
   };
 }
