@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import { getRecommendations, getOutfitForQuery } from '../services/recommendationEngine.js';
+import { getRecommendations, getOutfitForQuery, normalizeColor } from '../services/recommendationEngine.js';
 import { parseIntentWithFallback } from '../services/aiService.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -100,6 +100,17 @@ Return ONLY a valid JSON object with these exact fields:
         intentSummary: message,
         aiAnalysis: 'Parsing failed, showing broad matches.'
       };
+    }
+
+    // Resolve Pakistani/Urdu color aliases the AI may have missed.
+    // e.g. Groq returns color='Any' shade='maroon' → we resolve maroon→Red
+    // or color='Multicolor' shade='ferozi' → we resolve ferozi→Teal
+    if (parsedIntent.shade) {
+      const resolved = normalizeColor(parsedIntent.shade);
+      const capitalizedShade = parsedIntent.shade.charAt(0).toUpperCase() + parsedIntent.shade.slice(1);
+      if (resolved !== capitalizedShade && CANONICAL_COLORS.includes(resolved)) {
+        parsedIntent.color = resolved;
+      }
     }
 
     parsedIntent.originalMessage = message;

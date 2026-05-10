@@ -8,7 +8,8 @@
       "Bash(Get-ChildItem -Path \"e:\\\\MERN\\\\PROJECTS\\\\Fashion\" -Directory)",
       "Bash(Select-Object Name)",
       "Bash(Get-ChildItem -Path \"e:\\\\MERN\\\\PROJECTS\\\\Fashion\\\\backend\" -Recurse -Directory)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(node --test tests/scoring.test.js tests/parser.test.js)"
     ]
   }
 }

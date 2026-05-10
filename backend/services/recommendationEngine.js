@@ -615,3 +615,6 @@ export async function getOutfitForQuery(intent) {
     colorMessage
   };
 }
+
+// ─── Exported test helpers ────────────────────────────────────────────────────
+export { scoreProductAgainstIntent, textualMatchScore, normalizeColor };
