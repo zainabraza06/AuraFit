@@ -28,8 +28,8 @@ export default function AdminDashboard() {
 
   // ─── Auth gate ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const token = localStorage.getItem('fashion_token');
-    const user  = localStorage.getItem('fashion_user');
+    const token = localStorage.getItem('token');
+    const user  = localStorage.getItem('user');
     if (!token || !user) { router.replace('/login'); return; }
     try {
       const u = JSON.parse(user);

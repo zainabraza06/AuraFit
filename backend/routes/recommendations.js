@@ -101,6 +101,16 @@ Return ONLY a valid JSON object with these exact fields:
 
 - maxBudget: (number) Budget in PKR. 0 if not mentioned.
 
+- fabric: (string or null) The fabric type explicitly mentioned by the user.
+  Examples: "lawn", "chiffon", "cotton", "karandi", "silk", "linen", "organza", "net", "georgette", "khaddar", "lace".
+  null if no fabric was mentioned.
+
+- piece: (string or null) The outfit type/cut explicitly mentioned by the user.
+  Examples: "shalwar kameez", "2-piece", "3-piece", "kurta", "unstitched", "gharara", "sharara".
+  null if no specific outfit type was mentioned.
+
+- stitching: (string or null) "stitched", "unstitched", or null if not mentioned.
+
 - intentSummary: (string) One concise sentence.
 
 - aiAnalysis: (string) 2-3 sentences covering:
@@ -112,11 +122,28 @@ Example — "I need a ferozi lawn suit for eid under 8000":
 {
   "color": "Teal",
   "shade": "ferozi",
+  "fabric": "lawn",
+  "piece": "shalwar kameez",
+  "stitching": null,
   "occasion": ["eid"],
   "style": ["elegant", "traditional"],
   "maxBudget": 8000,
   "intentSummary": "A teal lawn suit for Eid celebrations under PKR 8,000.",
   "aiAnalysis": "Ferozi (teal) is one of the most beloved Eid colors in Pakistan, offering a cool, festive look. A printed or embroidered lawn 2-piece or 3-piece would suit this budget perfectly. Pair with silver or white khussa flats and minimal jewelry for a fresh, elegant Eid look."
+}
+
+Example — "bottle green shalwar kameez":
+{
+  "color": "Green",
+  "shade": "bottle green",
+  "fabric": null,
+  "piece": "shalwar kameez",
+  "stitching": null,
+  "occasion": ["casual"],
+  "style": ["traditional"],
+  "maxBudget": 0,
+  "intentSummary": "A bottle green shalwar kameez.",
+  "aiAnalysis": "Bottle green is a rich, deep shade that suits both casual and formal wear in Pakistani fashion. A 2-piece or 3-piece lawn or cotton shalwar kameez in this color would be a perfect everyday choice. Pair with brown or gold khussa for a classic traditional look."
 }
 `;
         const model = ai.getGenerativeModel({
@@ -139,6 +166,9 @@ Example — "I need a ferozi lawn suit for eid under 8000":
             c => rawColor.toLowerCase().includes(c.toLowerCase())
           ) || 'Any'),
           shade: (parsed.shade && parsed.shade !== 'any') ? parsed.shade.toLowerCase().trim() : null,
+          fabric: (parsed.fabric && parsed.fabric !== 'null') ? parsed.fabric.toLowerCase().trim() : null,
+          piece: (parsed.piece && parsed.piece !== 'null') ? parsed.piece.toLowerCase().trim() : null,
+          stitching: (parsed.stitching && parsed.stitching !== 'null') ? parsed.stitching.toLowerCase().trim() : null,
           occasion: Array.isArray(parsed.occasion) ? parsed.occasion : ['casual'],
           style: Array.isArray(parsed.style) ? parsed.style : ['elegant'],
           maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
