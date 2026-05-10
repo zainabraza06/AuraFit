@@ -130,7 +130,7 @@ export function normalizeProduct(raw, brandConfig) {
 
   // ── Colors ──
   const textForColor = [name, raw.description || '', (raw.tags || []).join(' ')].join(' ');
-  const { primaryColor, colors } = inferColors(textForColor);
+  const { primaryColor, colors, primaryExactColor, exactColors } = inferColors(textForColor);
 
   // ── Occasion ──
   const textBlob = [name, (raw.tags || []).join(' '), raw.description || ''].join(' ').toLowerCase();
@@ -170,6 +170,8 @@ export function normalizeProduct(raw, brandConfig) {
     fabric: inferFabric(textBlob),
     colors,
     primaryColor,
+    exactColors,
+    primaryExactColor,
     sizes: Array.isArray(raw.sizes) ? raw.sizes.slice(0, 20) : [],
     images,
     imageUrl: images[0],

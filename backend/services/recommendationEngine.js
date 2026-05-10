@@ -328,22 +328,30 @@ function scoreProductAgainstIntent(product, intent, queryEmbedding = null) {
   const colorSpecified = color && color.toLowerCase() !== 'any';
 
   if (colorSpecified) {
-    const primaryRaw    = (product.primaryColor || '').toLowerCase();
-    const primaryNorm   = normalizeColor(product.primaryColor || '');
-    const secondaryCols = (product.colors || []).filter((c) => c && c.toLowerCase() !== primaryRaw);
-    const secondaryRaw  = secondaryCols.map((c) => c.toLowerCase());
-    const secondaryNorms = secondaryCols.map(normalizeColor).filter(Boolean);
-    const targetNorm    = normalizeColor(color);
-    const shadeToMatch  = shade || color.toLowerCase();
+    const shadeToMatch = (shade || color).toLowerCase();
 
-    const primaryRawMatch   = primaryRaw.includes(shadeToMatch) || shadeToMatch.includes(primaryRaw);
-    const secondaryRawMatch = secondaryRaw.some((c) => c.includes(shadeToMatch) || shadeToMatch.includes(c));
+    // Tier 1 & 2 — exact scraped shade match (new exactColors / primaryExactColor fields)
+    const primaryExact   = (product.primaryExactColor || '').toLowerCase();
+    const secondaryExact = (product.exactColors || [])
+      .filter((c) => c && c.toLowerCase() !== primaryExact)
+      .map((c) => c.toLowerCase());
 
-    if      (primaryRawMatch)                     colorScore = 1.0;
-    else if (secondaryRawMatch)                   colorScore = 0.93;
-    else if (primaryNorm === targetNorm)          colorScore = 0.85;
-    else if (secondaryNorms.includes(targetNorm)) colorScore = 0.78;
-    else                                          colorScore = 0.08;
+    const primaryExactMatch   = primaryExact && (primaryExact.includes(shadeToMatch) || shadeToMatch.includes(primaryExact));
+    const secondaryExactMatch = secondaryExact.some((c) => c.includes(shadeToMatch) || shadeToMatch.includes(c));
+
+    // Tier 3 & 4 — canonical family match (original colors / primaryColor fields, unchanged)
+    const targetFamily      = normalizeColor(color);
+    const primaryFamily     = product.primaryColor || '';   // already canonical
+    const secondaryFamilies = (product.colors || []).filter((c) => c !== primaryFamily);
+
+    const primaryFamilyMatch   = primaryFamily === targetFamily;
+    const secondaryFamilyMatch = secondaryFamilies.includes(targetFamily);
+
+    if      (primaryExactMatch)    colorScore = 1.0;
+    else if (secondaryExactMatch)  colorScore = 0.93;
+    else if (primaryFamilyMatch)   colorScore = 0.85;
+    else if (secondaryFamilyMatch) colorScore = 0.78;
+    else                           colorScore = 0.08;
   }
 
   // ── Style & occasion ───────────────────────────────────────────────────────
@@ -549,7 +557,7 @@ export async function getOutfitForQuery(intent) {
     clothingQuery.subCategory = { $not: /^unstitched/i };
   }
 
-  const selectFields = 'name brand category subCategory pieces fabric type price primaryColor colors occasion style tags imageUrl images productUrl description gender embedding';
+  const selectFields = 'name brand category subCategory pieces fabric type price primaryColor colors primaryExactColor exactColors occasion style tags imageUrl images productUrl description gender embedding';
 
   let clothingPool = [];
 
@@ -593,24 +601,30 @@ export async function getOutfitForQuery(intent) {
   const colorSpecified = color && color.toLowerCase() !== 'any';
 
   if (colorSpecified) {
-    // Products with colorMatch > 0.08 are in the correct color family
-    const colorMatches = scored.filter((s) => s.scores.colorMatch > 0.08);
+    const shadeToFind = shade || color.toLowerCase();
 
-    if (colorMatches.length > 0) {
-      // Check if any exact shade match exists (score ≥ 0.9)
-      const hasExactShadeMatch = colorMatches.some((s) => s.scores.colorMatch >= 0.9);
-      // Only add alias message when user said a specific shade different from the canonical
-      const shadeIsSpecific = shade && shade.toLowerCase() !== color.toLowerCase();
+    // Tier 1: exact shade match (colorMatch ≥ 0.9 means primaryColor or secondary exact match)
+    const exactMatches = scored.filter((s) => s.scores.colorMatch >= 0.9);
 
-      if (!hasExactShadeMatch && shadeIsSpecific) {
-        colorMessage = `No exact "${shade}" products found. Showing ${color} products — "${shade}" is a shade of ${color}.`;
-      }
-      finalScored = colorMatches;
+    if (exactMatches.length > 0) {
+      // Exact shade found — show them, no message needed
+      finalScored = exactMatches;
     } else {
-      // No correct-color products — fall back to best overall matches with a message
-      const displayShade = shade && shade.toLowerCase() !== color.toLowerCase() ? shade : color;
-      colorMessage = `No ${displayShade} products found in our catalog. Showing best available matches instead.`;
-      finalScored = scored; // show all, ranked by semantic/occasion/style match
+      // Tier 2: canonical family match (colorMatch 0.09–0.89 means family match)
+      const familyMatches = scored.filter((s) => s.scores.colorMatch > 0.08);
+
+      if (familyMatches.length > 0) {
+        // No exact shade but same color family exists — show family with message listing actual shades
+        const actualShades = [...new Set(
+          familyMatches.slice(0, 10).map((s) => s.product.primaryExactColor || s.product.primaryColor).filter(Boolean)
+        )].slice(0, 5).join(', ');
+        colorMessage = `No exact "${shadeToFind}" products found. Showing ${color} family products — available shades: ${actualShades}.`;
+        finalScored = familyMatches;
+      } else {
+        // No color match at all — show best overall matches
+        colorMessage = `No ${shadeToFind} products found in our catalog. Showing best available matches instead.`;
+        finalScored = scored;
+      }
     }
   }
 

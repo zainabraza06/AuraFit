@@ -1,54 +1,77 @@
 /**
  * colorInference.js
- * Infers one or more colors from a product title/description.
- * Returns a primaryColor and a colors array.
+ * Infers colors from a product title/description.
+ *
+ * Returns two parallel sets:
+ *   primaryColor / colors       — canonical family names (unchanged, used everywhere existing)
+ *   primaryExactColor / exactColors — the literal keyword matched from the product text
  */
 
-// ─── Color keyword map ────────────────────────────────────────────────────────
 const COLOR_MAP = [
   { keywords: ['black', 'onyx', 'jet black', 'charcoal black'], color: 'Black' },
   { keywords: ['white', 'ivory', 'off white', 'off-white', 'cream', 'milk'], color: 'White' },
-  { keywords: ['red', 'maroon', 'crimson', 'scarlet', 'rust', 'burgundy', 'wine'], color: 'Red' },
-  { keywords: ['blue', 'navy', 'cobalt', 'royal blue', 'sky blue', 'indigo', 'denim', 'teal blue'], color: 'Blue' },
-  { keywords: ['green', 'mint', 'olive', 'emerald', 'sage', 'bottle green', 'forest green', 'hunter green'], color: 'Green' },
-  { keywords: ['yellow', 'mustard', 'lemon', 'golden yellow', 'saffron'], color: 'Yellow' },
-  { keywords: ['pink', 'peach', 'blush', 'rose', 'fuchsia', 'hot pink', 'baby pink', 'tea pink', 'powder pink'], color: 'Pink' },
-  { keywords: ['purple', 'violet', 'lavender', 'plum', 'lilac', 'mauve'], color: 'Purple' },
-  { keywords: ['orange', 'coral', 'terracotta', 'apricot', 'burnt orange', 'amber'], color: 'Orange' },
-  { keywords: ['gold', 'golden', 'fawn', 'beige', 'khaki', 'camel', 'nude', 'skin', 'tan'], color: 'Gold' },
-  { keywords: ['grey', 'gray', 'silver', 'ash', 'steel', 'slate'], color: 'Grey' },
-  { keywords: ['brown', 'chocolate', 'mocha', 'coffee', 'caramel', 'toffee'], color: 'Brown' },
-  { keywords: ['teal', 'turquoise', 'aqua', 'sea green', 'cyan'], color: 'Teal' },
-  { keywords: ['multi', 'multicolor', 'floral', 'printed', 'pattern', 'embroidered'], color: 'Multicolor' }
+  { keywords: ['red', 'maroon', 'crimson', 'scarlet', 'rust', 'burgundy', 'wine', 'mehroon', 'mehrun', 'laal'], color: 'Red' },
+  { keywords: ['navy blue', 'royal blue', 'sky blue', 'teal blue', 'cobalt', 'indigo', 'denim', 'navy', 'blue'], color: 'Blue' },
+  { keywords: ['bottle green', 'forest green', 'sea green', 'mint green', 'hunter green', 'army green', 'parrot green', 'mehendi green', 'pista', 'pistachio', 'emerald', 'olive', 'mint', 'sage', 'lime', 'dhani', 'mehendi', 'sabz', 'green'], color: 'Green' },
+  { keywords: ['mustard', 'lemon yellow', 'golden yellow', 'saffron', 'lemon', 'yellow', 'zard', 'peela'], color: 'Yellow' },
+  { keywords: ['hot pink', 'baby pink', 'dusty pink', 'blush pink', 'rose pink', 'nude pink', 'fuchsia', 'magenta', 'blush', 'peach', 'rose', 'salmon', 'gulabi', 'pink'], color: 'Pink' },
+  { keywords: ['lavender', 'lilac', 'mauve', 'plum', 'violet', 'grape', 'jamuni', 'baingan', 'purple'], color: 'Purple' },
+  { keywords: ['burnt orange', 'terracotta', 'coral', 'apricot', 'amber', 'tangerine', 'mango', 'narangi', 'orange'], color: 'Orange' },
+  { keywords: ['antique gold', 'rose gold', 'dull gold', 'golden', 'champagne', 'bronze', 'fawn', 'camel', 'nude', 'khaki', 'sand', 'beige', 'gold'], color: 'Gold' },
+  { keywords: ['steel grey', 'charcoal grey', 'dove grey', 'light grey', 'dark grey', 'silver', 'slate', 'ash', 'gray', 'grey'], color: 'Grey' },
+  { keywords: ['dark brown', 'chocolate', 'mocha', 'coffee', 'caramel', 'toffee', 'walnut', 'chestnut', 'tan', 'brown'], color: 'Brown' },
+  { keywords: ['peacock blue', 'teal green', 'dark teal', 'turquoise', 'ferozi', 'firozi', 'aqua', 'cyan', 'teal'], color: 'Teal' },
+  { keywords: ['multi', 'multicolor', 'multi-color', 'multicolour', 'printed', 'floral', 'patterned', 'abstract', 'ombre', 'tie dye'], color: 'Multicolor' }
 ];
 
 /**
  * inferColors(text)
- * Returns { primaryColor, colors[] } from product title + description.
- * Matches all colors found; first match becomes primaryColor.
+ *
+ * Returns:
+ *   primaryColor      — canonical family, e.g. "Red"      (original field, unchanged)
+ *   colors            — canonical families, e.g. ["Red"]  (original field, unchanged)
+ *   primaryExactColor — exact scraped shade, e.g. "maroon" (new field)
+ *   exactColors       — all exact shades found, e.g. ["maroon"] (new field)
  */
 export function inferColors(text) {
-  if (!text) return { primaryColor: 'Multicolor', colors: ['Multicolor'] };
+  const fallback = {
+    primaryColor: 'Multicolor',
+    colors: ['Multicolor'],
+    primaryExactColor: 'multicolor',
+    exactColors: ['multicolor']
+  };
+
+  if (!text) return fallback;
   const lower = text.toLowerCase();
 
-  const found = [];
+  const found = []; // { exact: keyword, family: canonical }
+  const seenFamilies = new Set();
+
   for (const entry of COLOR_MAP) {
-    if (entry.keywords.some((kw) => {
-      // Use regex with word boundaries to prevent "embroidered" from matching "red"
-      const regex = new RegExp(`\\b${kw}\\b`);
-      return regex.test(lower);
-    })) {
-      found.push(entry.color);
+    for (const kw of entry.keywords) {
+      const escaped = kw.replace(/[-]/g, '[-\\s]?');
+      const regex = new RegExp(`\\b${escaped}\\b`);
+      if (regex.test(lower)) {
+        if (!seenFamilies.has(entry.color)) {
+          seenFamilies.add(entry.color);
+          found.push({ exact: kw, family: entry.color });
+        }
+        break;
+      }
     }
   }
 
-  if (found.length === 0) return { primaryColor: 'Multicolor', colors: ['Multicolor'] };
-  // Deduplicate
-  const unique = [...new Set(found)];
-  return { primaryColor: unique[0], colors: unique };
+  if (found.length === 0) return fallback;
+
+  return {
+    primaryColor: found[0].family,          // canonical — e.g. "Red"
+    colors: found.map((f) => f.family),     // canonical — e.g. ["Red", "Gold"]
+    primaryExactColor: found[0].exact,      // exact     — e.g. "maroon"
+    exactColors: found.map((f) => f.exact)  // exact     — e.g. ["maroon", "golden"]
+  };
 }
 
-/** Legacy single-color helper for backward compatibility */
+/** Legacy single-color helper */
 export function inferColor(text) {
   return inferColors(text).primaryColor;
 }

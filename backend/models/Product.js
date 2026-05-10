@@ -51,8 +51,10 @@ const ProductSchema = new mongoose.Schema(
     fabric: { type: String, trim: true },       // e.g. "Pure Lawn", "Chiffon"
 
     // ─── Colors ──────────────────────────────────────────────────────
-    colors: [{ type: String }],                 // e.g. ["Black", "Gold"]
-    primaryColor: { type: String },// dominant color for filtering
+    colors: [{ type: String }],                 // canonical families e.g. ["Red", "Gold"]
+    primaryColor: { type: String },             // canonical dominant color e.g. "Red"
+    exactColors: [{ type: String }],            // exact scraped shades e.g. ["maroon", "golden"]
+    primaryExactColor: { type: String },        // exact primary shade e.g. "maroon"
 
     // ─── Sizing ──────────────────────────────────────────────────────
     sizes: [{ type: String }],                  // e.g. ["XS", "S", "M", "L"]
@@ -114,6 +116,9 @@ ProductSchema.pre('save', function (next) {
   }
   if (!this.primaryColor && this.colors && this.colors.length > 0) {
     this.primaryColor = this.colors[0];
+  }
+  if (!this.primaryExactColor && this.exactColors && this.exactColors.length > 0) {
+    this.primaryExactColor = this.exactColors[0];
   }
   next();
 });
