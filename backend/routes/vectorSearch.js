@@ -14,7 +14,7 @@ const HF_API = 'https://api-inference.huggingface.co/pipeline/feature-extraction
 
 // ─── Generate embedding for a text query ─────────────────────────────────────
 async function getEmbedding(text) {
-  const token = process.env.HUGGINGFACE_API_KEY;
+  const token = process.env.HUGGING_FACE_API_KEY;
   if (!token) return null;
 
   const res = await fetch(HF_API, {
@@ -49,10 +49,10 @@ router.get('/semantic', async (req, res) => {
     if (!q.trim()) return res.status(400).json({ error: 'Query is required' });
 
     // Check if HuggingFace is configured
-    if (!process.env.HUGGINGFACE_API_KEY) {
+    if (!process.env.HUGGING_FACE_API_KEY) {
       return res.status(503).json({
         error: 'Vector search not configured',
-        hint: 'Add HUGGINGFACE_API_KEY to your .env file (free at huggingface.co/settings/tokens)',
+        hint: 'Add HUGGING_FACE_API_KEY to your .env file (free at huggingface.co/settings/tokens)',
         fallback: 'Use /api/search instead'
       });
     }
@@ -99,8 +99,8 @@ router.get('/semantic', async (req, res) => {
 // Batch-generate HuggingFace embeddings for all products without one
 router.post('/embed-all', async (req, res) => {
   try {
-    if (!process.env.HUGGINGFACE_API_KEY) {
-      return res.status(503).json({ error: 'HUGGINGFACE_API_KEY not set' });
+    if (!process.env.HUGGING_FACE_API_KEY) {
+      return res.status(503).json({ error: 'HUGGING_FACE_API_KEY not set' });
     }
 
     const { limit = 50 } = req.body;

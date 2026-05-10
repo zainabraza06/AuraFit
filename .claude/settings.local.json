@@ -4,7 +4,9 @@
       "PowerShell(\\(Get-Content \"e:\\\\Users\\\\hp\\\\Desktop\\\\aurafit\\\\AuraFit\\\\AURAFIT_DOCUMENTATION.md\"\\).Count)",
       "PowerShell(node --input-type=module -e \"import\\('./backend/services/recommendationEngine.js'\\).then\\(\\(\\) => console.log\\('OK'\\)\\).catch\\(e => console.error\\(e.message\\)\\)\" 2>&1)",
       "Bash(node --experimental-vm-modules scripts/testRecommendations.js)",
-      "Bash(node scripts/testRecommendations.js)"
+      "Bash(node scripts/testRecommendations.js)",
+      "Bash(Get-ChildItem -Path \"e:\\\\MERN\\\\PROJECTS\\\\Fashion\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }
