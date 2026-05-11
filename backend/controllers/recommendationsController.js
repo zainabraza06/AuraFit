@@ -69,7 +69,11 @@ export async function generateOutfit(req, res) {
         maxBudget:          typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
         intentSummary:      parsed.intentSummary || message,
         aiAnalysis:         parsed.aiAnalysis || '',
-        constraintPriority: Array.isArray(parsed.constraintPriority) ? parsed.constraintPriority : []
+        constraintPriority: Array.isArray(parsed.constraintPriority)
+          ? parsed.constraintPriority.filter((c) =>
+              ['color','pieces','stitching','dressStyle','occasion','print','fabric'].includes(c)
+            )
+          : []
       };
 
     } catch (aiErr) {
