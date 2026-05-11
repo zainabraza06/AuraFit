@@ -144,6 +144,48 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
   return products.map((p, i) => ({ product: p, rank: i + 1, reason: null }));
 }
 
+const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];
+
+/**
+ * mapDressStyleWithAI
+ * For unknown dressStyle terms not in the static alias map, ask the LLM
+ * to map them to a canonical value. Returns null if no mapping exists.
+ */
+export async function mapDressStyleWithAI(term) {
+  const prompt = `You are a Pakistani fashion expert. Map the garment term "${term}" to EXACTLY ONE value from this list: ${VALID_DRESS_STYLES.join(', ')}. Return ONLY a JSON object like {"dressStyle":"shalwar-kameez"} or {"dressStyle":null} if it does not fit any category.`;
+
+  if (process.env.GEMINI_API_KEY) {
+    for (const modelName of ['gemini-2.5-flash', 'gemini-1.5-flash']) {
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.0 }
+        });
+        const result = await model.generateContent(prompt);
+        const parsed = JSON.parse(result.response.text());
+        const mapped = parsed?.dressStyle?.toLowerCase?.().trim();
+        return VALID_DRESS_STYLES.includes(mapped) ? mapped : null;
+      } catch { /* try next */ }
+    }
+  }
+
+  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here') {
+    try {
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        { model: 'llama-3.1-8b-instant', messages: [{ role: 'user', content: prompt }], temperature: 0.0, response_format: { type: 'json_object' } },
+        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' } }
+      );
+      const parsed = JSON.parse(response.data.choices[0].message.content);
+      const mapped = parsed?.dressStyle?.toLowerCase?.().trim();
+      return VALID_DRESS_STYLES.includes(mapped) ? mapped : null;
+    } catch { /* fall through */ }
+  }
+
+  return null;
+}
+
 /**
  * AuraFit Unified AI Service
  * Orchestrates multi-provider fallbacks for Intent Parsing.
