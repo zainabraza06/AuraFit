@@ -30,8 +30,7 @@ export default function ChatPage() {
     setLoading(true);
     try {
       const res = await recommendationsApi.outfit(q);
-      const { heroDress, shoes, reasoning, otherDresses } = res.data || {};
-      if (heroDress || otherDresses?.length) {
+      if (res.data?.results?.length) {
         setMessages(p => [...p, { role: 'ai', data: res.data }]);
       } else {
         setMessages(p => [...p, { role: 'ai', text: "I couldn't find a perfect match right now. Try a different occasion or color!" }]);

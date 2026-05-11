@@ -2,7 +2,7 @@
 backend/node_modules/
 frontend/node_modules/
 jspm_packages/
-
+/.claude/
 # Optional npm cache directory
 .npm
 
