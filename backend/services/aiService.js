@@ -50,6 +50,7 @@ What the user wants:
   ${specifiedParts || 'General browsing — rank by overall quality and appeal'}${priorityNote}
 
 Rank the ${products.length} products below from BEST (rank 1) to WORST match. Read each description carefully — the description often contains details not in the other fields. Give a concise, specific reason for each ranking (one sentence, mention what matched or what's slightly off).
+IMPORTANT: If the user asked for a specific garment type (suit, lehenga, frock, maxi etc.), rank complete outfits of that type at the top. Rank dupattas, scarves, individual pieces, or accessories very low even if other attributes match.
 
 ${productList}
 
