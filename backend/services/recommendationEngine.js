@@ -271,13 +271,26 @@ function buildDBQuery(intent, dropped, colorMode) {
 
   // Soft constraints — removed one by one during relaxation
   if (!dropped.has('occasion') && intent.occasion?.length) {
-    query.occasion = { $in: intent.occasion };
+    // "bridal" and "wedding" are used interchangeably across brands — expand both
+    const expanded = new Set(intent.occasion);
+    if (expanded.has('bridal'))  expanded.add('wedding');
+    if (expanded.has('wedding')) expanded.add('bridal');
+    query.occasion = { $in: [...expanded] };
   }
   if (!dropped.has('print') && intent.print) {
     query.print = intent.print;
   }
   if (!dropped.has('dressStyle') && intent.dressStyle) {
-    query.dressStyle = intent.dressStyle;
+    const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
+    if (isBridalSearch) {
+      // Many bridal products have null dressStyle but correct subCategory — match either
+      query.$or = [
+        { dressStyle: intent.dressStyle },
+        { subCategory: { $in: ['bridal', 'festive'] } }
+      ];
+    } else {
+      query.dressStyle = intent.dressStyle;
+    }
   }
   if (!dropped.has('stitching') && intent.stitching) {
     query.stitching = intent.stitching;
