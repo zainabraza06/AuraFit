@@ -250,9 +250,16 @@ function getSpecifiedConstraints(intent) {
   return specified;
 }
 
+// Accessory/non-outfit terms that should never appear as main outfit results
+const NON_OUTFIT_PATTERN = /dupatta|stole|scarf|scarves|clutch|bag|jewelry|jewellery/i;
+
 // Build DB query for a given relaxation state
 function buildDBQuery(intent, dropped, colorMode) {
-  const query = { category: 'clothing' };
+  const query = {
+    category: 'clothing',
+    subCategory: { $nin: ['dupatta', 'scarves', 'jewelry', 'bags'] },
+    name: { $not: NON_OUTFIT_PATTERN }
+  };
 
   // Hard constraints — always applied (gender, budget)
   if (intent.gender && intent.gender !== 'women' && intent.gender !== 'unisex') {
@@ -372,11 +379,13 @@ function scoreAgainstIntent(product, intent) {
   else if (intent.colorFamily && intent.colorFamily !== 'Any' && product.primaryColor === intent.colorFamily) score += 2;
   if (intent.pieces    && product.pieces    === intent.pieces)    score += 2;
   if (intent.stitching && product.stitching === intent.stitching) score += 2;
-  if (intent.dressStyle && product.dressStyle === intent.dressStyle) score += 2;
+  if (intent.dressStyle && product.dressStyle === intent.dressStyle) score += 4; // strongest signal — correct type always wins
   if (intent.print     && product.print     === intent.print)     score += 1;
   if (intent.fabric    && product.fabric?.toLowerCase().includes(intent.fabric.toLowerCase())) score += 1;
   if (intent.occasion?.length && product.occasion?.some((o) => intent.occasion.includes(o))) score += 1;
   if (intent.maxBudget > 0 && product.price <= intent.maxBudget) score += 1;
+  // Penalise accessory-type products slipping through (mistagged in DB)
+  if (intent.dressStyle && NON_OUTFIT_PATTERN.test(product.name || '')) score -= 5;
   return score;
 }
 
