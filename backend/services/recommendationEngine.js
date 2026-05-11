@@ -283,10 +283,16 @@ function buildDBQuery(intent, dropped, colorMode) {
   if (!dropped.has('dressStyle') && intent.dressStyle) {
     const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
     if (isBridalSearch) {
-      // Many bridal products have null dressStyle but correct subCategory — match either
+      // Many bridal products store subCategory='bridal' rather than dressStyle — match either
       query.$or = [
         { dressStyle: intent.dressStyle },
         { subCategory: { $in: ['bridal', 'festive'] } }
+      ];
+    } else if (intent.dressStyle === 'shalwar-kameez') {
+      // Unstitched suits are often stored with empty dressStyle but correct subCategory
+      query.$or = [
+        { dressStyle: 'shalwar-kameez' },
+        { subCategory: { $regex: /suit|kameez|unstitched/i } }
       ];
     } else {
       query.dressStyle = intent.dressStyle;
@@ -369,7 +375,7 @@ async function fetchCandidates(intent) {
       }
     }
 
-    if (pool.length >= 50) break; // enough to send to AI
+    if (pool.length >= 20) break; // enough to rank — don't over-relax
   }
 
   // Build relaxation message for the frontend
