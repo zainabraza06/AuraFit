@@ -1,6 +1,32 @@
 import { getRecommendations, getOutfitForQuery, normalizeColor } from '../services/recommendationEngine.js';
 import { parseIntentWithFallback } from '../services/aiService.js';
 
+/**
+ * When the LLM returns no explicit priority, infer a sensible relaxation order
+ * from the parsed intent fields. Most defining constraint → first in array (relax last).
+ * Returns [] when only 0–1 constraints are specified (default pipeline is fine).
+ */
+function inferConstraintPriority(intent) {
+  const has = {
+    dressStyle: !!intent.dressStyle,
+    occasion:   !!(intent.occasion?.length),
+    fabric:     !!intent.fabric,
+    color:      !!(intent.colorExact || (intent.colorFamily && intent.colorFamily !== 'Any')),
+    print:      !!intent.print,
+    stitching:  !!intent.stitching,
+    pieces:     !!intent.pieces,
+  };
+
+  const specified = Object.keys(has).filter((k) => has[k]);
+  if (specified.length <= 1) return []; // too few — let default pipeline run
+
+  // Priority order (most defining → least defining for a typical fashion request):
+  // dressStyle > occasion > fabric > color > print > stitching > pieces
+  // Only include constraints that were actually specified.
+  const ORDER = ['dressStyle', 'occasion', 'fabric', 'color', 'print', 'stitching', 'pieces'];
+  return ORDER.filter((k) => has[k]);
+}
+
 const CANONICAL_COLORS = [
   'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
   'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
@@ -24,12 +50,7 @@ Return ONLY a valid JSON object with these exact fields:
 - maxBudget: number in PKR. 0 if not mentioned.
 - intentSummary: one concise sentence describing what the user wants.
 - aiAnalysis: 2-3 sentences of fashion advice tailored to this request.
-- constraintPriority: ordered array of constraint names from MOST important (last to relax) to LEAST important (first to relax). Use ONLY these names: "color", "pieces", "stitching", "dressStyle", "occasion", "print", "fabric". Extract this ONLY if the user explicitly states a preference order or says something like "X preferred", "X matters most", "then Y", "priority is X". Empty array [] if no explicit priority given.
-  Examples:
-  - "maroon preferred, then piece, then stitching" → ["color", "pieces", "stitching"]
-  - "stitching matters most" → ["stitching"]
-  - "color is most important, fabric second" → ["color", "fabric"]
-  - no priority stated → []
+- constraintPriority: ordered array from MOST important (relax last) to LEAST important (relax first). Only include constraints the user actually specified. Use ONLY: "color", "pieces", "stitching", "dressStyle", "occasion", "print", "fabric". Return [] if the user gave no explicit ranking signal ("preferred", "then", "matters most", "priority"). Examples: "maroon preferred, then piece, then stitching" → ["color","pieces","stitching"]. "eid look" (no ranking) → [].
 
 IMPORTANT: Only set a field if the user explicitly mentioned it. Do NOT infer occasion from dress type — if user says "lehenga" without mentioning occasion, occasion should be [].
 `;
@@ -75,6 +96,11 @@ export async function generateOutfit(req, res) {
         aiAnalysis:         parsed.aiAnalysis || '',
         constraintPriority: Array.isArray(parsed.constraintPriority) ? parsed.constraintPriority : []
       };
+
+      // If LLM gave no explicit priority, infer one from the parsed fields
+      if (!parsedIntent.constraintPriority.length) {
+        parsedIntent.constraintPriority = inferConstraintPriority(parsedIntent);
+      }
     } catch (aiErr) {
       console.warn('Intent parsing failed, using empty intent:', aiErr.message);
       parsedIntent = {
