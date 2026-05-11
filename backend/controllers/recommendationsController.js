@@ -4,6 +4,9 @@ import { parseIntentWithFallback, mapDressStyleWithAI } from '../services/aiServ
 
 const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];
 
+// Only trust LLM-inferred print when the user actually used a print-related word
+const PRINT_WORDS_RE = /\b(embroidered?|embroidery|printed?|plain|embellished|zardosi|thread\s*work|karchupi|gotta|sequin|mirror\s*work|patch\s*work|block\s*print)\b/i;
+
 const DRESS_STYLE_ALIASES = {
   'suit': 'shalwar-kameez', 'dress': 'shalwar-kameez',
   'salwar suit': 'shalwar-kameez', 'salwar kameez': 'shalwar-kameez',
@@ -39,7 +42,7 @@ Return ONLY a valid JSON object with these exact fields:
 - dressStyle: ONE of ["saree", "lehenga", "frock", "maxi", "shalwar-kameez", "kurta", "co-ord", "palazzo", "western"] or null if not mentioned. Pakistani aliases: "suit"/"dress"/"salwar suit"/"pret suit"/"lawn suit"/"3-piece suit"/"2-piece suit" → "shalwar-kameez". "anarkali" → "frock". Never return a value outside the canonical list.
 - stitching: "stitched" or "unstitched" or null if not mentioned.
 - pieces: number of pieces — 1, 2, or 3. Infer from: "kurta"/"top"/"shirt" alone → 1, "2-piece"/"2 piece"/"do piece" → 2, "3-piece"/"3 piece"/"teen piece" → 3, "shalwar kameez"/"suit"/"dress" (Pakistani context) → 2. null if not mentioned.
-- print: "embroidered" or "printed" or "plain" or "embellished" or null if not mentioned.
+- print: "embroidered" or "printed" or "plain" or "embellished" or null if not mentioned. CRITICAL: "stitched"/"unstitched" refers to stitching ONLY — do NOT use it to infer print. Only set print if the user says "embroidered", "plain", "printed", "embellished", etc. explicitly.
 - gender: "women", "men", "kids", or "unisex". Default "women" if not specified.
 - fabric: string (e.g. "lawn", "chiffon", "silk") or null if not mentioned.
 - maxBudget: number in PKR. 0 if not mentioned.
@@ -83,7 +86,7 @@ export async function generateOutfit(req, res) {
         dressStyle:    await normalizeDressStyle(parsed.dressStyle),
         stitching:     ['stitched', 'unstitched'].includes(parsed.stitching) ? parsed.stitching : null,
         pieces:        (typeof parsed.pieces === 'number' && [1, 2, 3].includes(parsed.pieces)) ? parsed.pieces : null,
-        print:         ['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) ? parsed.print : null,
+        print:         (['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) && PRINT_WORDS_RE.test(message)) ? parsed.print : null,
         gender:        ['women', 'men', 'kids', 'unisex'].includes(parsed.gender) ? parsed.gender : 'women',
         fabric:        (parsed.fabric && parsed.fabric !== 'null') ? parsed.fabric.toLowerCase().trim() : null,
         maxBudget:          typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
@@ -108,6 +111,11 @@ export async function generateOutfit(req, res) {
         aiAnalysis: 'Parsing failed — showing broad matches.',
         constraintPriority: []
       };
+    }
+
+    // Shalwar-kameez is always 2-piece — if LLM wrongly returned 1 (mistaking it for a western dress)
+    if (parsedIntent.dressStyle === 'shalwar-kameez' && parsedIntent.pieces === 1) {
+      parsedIntent.pieces = 2;
     }
 
     // Urdu/shade alias resolution for colorFamily
