@@ -365,22 +365,35 @@ async function fetchCandidates(intent) {
   return { products: bestProducts, relaxationMessage, specified };
 }
 
+// ─── Quick local intent-match score (used to pre-sort before AI) ─────────────
+function scoreAgainstIntent(product, intent) {
+  let score = 0;
+  if (intent.colorExact && product.exactColors?.some((c) => c.toLowerCase() === intent.colorExact.toLowerCase())) score += 3;
+  else if (intent.colorFamily && intent.colorFamily !== 'Any' && product.primaryColor === intent.colorFamily) score += 2;
+  if (intent.pieces    && product.pieces    === intent.pieces)    score += 2;
+  if (intent.stitching && product.stitching === intent.stitching) score += 2;
+  if (intent.dressStyle && product.dressStyle === intent.dressStyle) score += 2;
+  if (intent.print     && product.print     === intent.print)     score += 1;
+  if (intent.fabric    && product.fabric?.toLowerCase().includes(intent.fabric.toLowerCase())) score += 1;
+  if (intent.occasion?.length && product.occasion?.some((o) => intent.occasion.includes(o))) score += 1;
+  if (intent.maxBudget > 0 && product.price <= intent.maxBudget) score += 1;
+  return score;
+}
+
 // ─── Find one best shoe per dress ────────────────────────────────────────────
-async function matchShoesForProducts(dresses) {
-  if (!dresses.length) return [];
-
-  const shoePool = await Product.find({ category: 'shoes' })
+async function fetchShoePool() {
+  return Product.find({ category: 'shoes' })
     .select('name brand category subCategory price primaryColor colors occasion style tags imageUrl images productUrl')
-    .limit(150)
+    .limit(80)
     .lean();
+}
 
+function matchShoesFromPool(dresses, shoePool) {
   if (!shoePool.length) return dresses.map(() => null);
-
   return dresses.map((dress) => {
     const best = shoePool
       .map((shoe) => ({ shoe, score: scoreProduct(dress, shoe) }))
       .sort((a, b) => b.score.total - a.score.total)[0];
-
     return best
       ? { product: best.shoe, score: best.score.total, reason: generateShoeMatchReason(best.shoe, dress) }
       : null;
@@ -392,7 +405,7 @@ async function matchShoesForProducts(dresses) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function getOutfitForQuery(intent) {
   // 1. Fetch candidates via progressive relaxation
-  const { products, relaxationMessage, specified } = await fetchCandidates(intent);
+  const { products, relaxationMessage } = await fetchCandidates(intent);
 
   if (!products.length) {
     return {
@@ -402,14 +415,24 @@ export async function getOutfitForQuery(intent) {
     };
   }
 
-  // 2. AI ranking — send up to 50 candidates, get back ranked list with reasons
-  const ranked = await rankProductsWithAI(products.slice(0, 50), intent);
-  const top10  = ranked.slice(0, 10);
+  // 2. Local pre-sort — pick the best 20 to keep the AI prompt small and fast
+  const presorted = products
+    .map((p) => ({ p, s: scoreAgainstIntent(p, intent) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 20)
+    .map(({ p }) => p);
 
-  // 3. One shoe per dress (parallel)
-  const shoes = await matchShoesForProducts(top10.map((r) => r.product));
+  // 3. AI ranking + shoe pool fetch run in parallel
+  const [ranked, shoePool] = await Promise.all([
+    rankProductsWithAI(presorted, intent),
+    fetchShoePool()
+  ]);
+  const top10 = ranked.slice(0, 10);
 
-  // 4. Match quality tier
+  // 4. Match shoes from the already-fetched pool (no extra DB call)
+  const shoes = matchShoesFromPool(top10.map((r) => r.product), shoePool);
+
+  // 5. Match quality tier
   const tier = !relaxationMessage ? 'exact'
     : top10.length >= 8 ? 'close'
     : top10.length >= 4 ? 'similar'
