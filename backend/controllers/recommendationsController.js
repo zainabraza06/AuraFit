@@ -2,6 +2,25 @@ import { getRecommendations, getOutfitForQuery, normalizeColor } from '../servic
 import { parseIntentWithFallback } from '../services/aiService.js';
 
 
+const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];
+
+const DRESS_STYLE_ALIASES = {
+  'suit': 'shalwar-kameez', 'dress': 'shalwar-kameez',
+  'salwar suit': 'shalwar-kameez', 'salwar kameez': 'shalwar-kameez',
+  'pret suit': 'shalwar-kameez', 'lawn suit': 'shalwar-kameez',
+  '2-piece suit': 'shalwar-kameez', '3-piece suit': 'shalwar-kameez',
+  'shalwar kameez': 'shalwar-kameez', 'shalwaar kameez': 'shalwar-kameez',
+  'anarkali': 'frock', 'gown': 'maxi', 'shirt': 'kurta',
+};
+
+function normalizeDressStyle(raw) {
+  if (!raw || raw === 'null') return null;
+  const lower = raw.toLowerCase().trim();
+  if (DRESS_STYLE_ALIASES[lower]) return DRESS_STYLE_ALIASES[lower];
+  if (VALID_DRESS_STYLES.includes(lower)) return lower;
+  return null; // unknown value — don't apply a filter that returns nothing
+}
+
 const CANONICAL_COLORS = [
   'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
   'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
@@ -16,9 +35,9 @@ Return ONLY a valid JSON object with these exact fields:
 - colorExact: the EXACT color word(s) the user mentioned (e.g. "maroon", "ferozi", "navy blue"). null if no color mentioned.
 - colorFamily: map colorExact to ONE canonical family from: ${CANONICAL_COLORS.join(', ')}, Any. "Any" if no color mentioned.
 - occasion: array — pick all that apply from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"]. Empty array [] if not mentioned.
-- dressStyle: ONE of ["saree", "lehenga", "frock", "maxi", "shalwar-kameez", "kurta", "co-ord", "palazzo", "western"] or null if not mentioned.
+- dressStyle: ONE of ["saree", "lehenga", "frock", "maxi", "shalwar-kameez", "kurta", "co-ord", "palazzo", "western"] or null if not mentioned. Pakistani aliases: "suit"/"dress"/"salwar suit"/"pret suit"/"lawn suit"/"3-piece suit"/"2-piece suit" → "shalwar-kameez". "anarkali" → "frock". Never return a value outside the canonical list.
 - stitching: "stitched" or "unstitched" or null if not mentioned.
-- pieces: number of pieces — 1, 2, or 3. Infer from: "kurta"/"top"/"shirt" alone → 1, "2-piece"/"2 piece"/"do piece" → 2, "3-piece"/"3 piece"/"teen piece" → 3, "shalwar kameez" → 2. null if not mentioned.
+- pieces: number of pieces — 1, 2, or 3. Infer from: "kurta"/"top"/"shirt" alone → 1, "2-piece"/"2 piece"/"do piece" → 2, "3-piece"/"3 piece"/"teen piece" → 3, "shalwar kameez"/"suit"/"dress" (Pakistani context) → 2. null if not mentioned.
 - print: "embroidered" or "printed" or "plain" or "embellished" or null if not mentioned.
 - gender: "women", "men", "kids", or "unisex". Default "women" if not specified.
 - fabric: string (e.g. "lawn", "chiffon", "silk") or null if not mentioned.
@@ -60,7 +79,7 @@ export async function generateOutfit(req, res) {
         colorExact:    (parsed.colorExact && parsed.colorExact !== 'null') ? parsed.colorExact.toLowerCase().trim() : null,
         colorFamily:   CANONICAL_COLORS.includes(rawColorFamily) ? rawColorFamily : (normalizeColor(rawColorFamily) || 'Any'),
         occasion:      Array.isArray(parsed.occasion) ? parsed.occasion : [],
-        dressStyle:    (parsed.dressStyle && parsed.dressStyle !== 'null') ? parsed.dressStyle.toLowerCase().trim() : null,
+        dressStyle:    normalizeDressStyle(parsed.dressStyle),
         stitching:     ['stitched', 'unstitched'].includes(parsed.stitching) ? parsed.stitching : null,
         pieces:        (typeof parsed.pieces === 'number' && [1, 2, 3].includes(parsed.pieces)) ? parsed.pieces : null,
         print:         ['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) ? parsed.print : null,
