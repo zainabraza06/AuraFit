@@ -21,7 +21,9 @@ const COLOR_MAP = [
   { keywords: ['steel grey', 'charcoal grey', 'dove grey', 'light grey', 'dark grey', 'silver', 'slate', 'ash', 'gray', 'grey'], color: 'Grey' },
   { keywords: ['dark brown', 'chocolate', 'mocha', 'coffee', 'caramel', 'toffee', 'walnut', 'chestnut', 'tan', 'brown'], color: 'Brown' },
   { keywords: ['peacock blue', 'teal green', 'dark teal', 'turquoise', 'ferozi', 'firozi', 'aqua', 'cyan', 'teal'], color: 'Teal' },
-  { keywords: ['multi', 'multicolor', 'multi-color', 'multicolour', 'printed', 'floral', 'patterned', 'abstract', 'ombre', 'tie dye'], color: 'Multicolor' }
+  { keywords: ['multi', 'multicolor', 'multi-color', 'multicolour'], color: 'Multicolor' }
+  // Note: 'printed'/'floral'/'patterned' etc. describe print style, NOT color.
+  // Products with no color word found fall back to Multicolor via the default.
 ];
 
 /**

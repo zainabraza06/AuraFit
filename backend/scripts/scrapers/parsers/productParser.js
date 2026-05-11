@@ -147,7 +147,8 @@ export function normalizeProduct(raw, brandConfig) {
   if (!productUrl || !productUrl.startsWith('http')) return null;
 
   // ── Colors ──
-  const textForColor = [name, raw.description || '', (raw.tags || []).join(' ')].join(' ');
+  // Include Shopify variant option values (option2/option3 often carry color info)
+  const textForColor = [name, raw.description || '', (raw.tags || []).join(' '), (raw.variantOptions || []).join(' ')].join(' ');
   const { primaryColor, colors, primaryExactColor, exactColors } = inferColors(textForColor);
 
   // ── Occasion ──
@@ -169,12 +170,24 @@ export function normalizeProduct(raw, brandConfig) {
   const gender = inferGender(textBlob);
 
   // ── Pieces count (derived from subCategory) ──
-  const pieces = inferPieces(subCategory);
+  let pieces = inferPieces(subCategory);
 
   // ── New garment attributes ──
   const stitching  = subCategory.startsWith('unstitched') ? 'unstitched' : 'stitched';
   const print      = inferPrint(textBlob);
-  const dressStyle = inferDressStyle(textBlob, subCategory);
+  let dressStyle = inferDressStyle(textBlob, subCategory);
+
+  // Post-correction: a product named just "TROUSER" inside a 2/3-piece collection
+  // should be 'pants' (1-piece), not shalwar-kameez — e.g. Alkaram "RTW | TROUSER"
+  if (['2-piece', '3-piece'].includes(subCategory)) {
+    const nameLower = name.toLowerCase();
+    const isTrouser = /\btrouser\b/.test(nameLower);
+    const isSet = /&|shirt.*trouser|trouser.*shirt|\bset\b/.test(nameLower);
+    if (isTrouser && !isSet) {
+      pieces    = 1;
+      dressStyle = undefined;
+    }
+  }
 
   // ── Metadata score (completeness 0-1) ──
   const metadataScore = computeMetadataScore({ name, price, images, colors, occasions, styles, description: raw.description });
