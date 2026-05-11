@@ -1,5 +1,5 @@
 import { getRecommendations, getOutfitForQuery, normalizeColor } from '../services/recommendationEngine.js';
-import { parseIntentWithFallback } from '../services/aiService.js';
+import { parseIntentWithFallback, mapDressStyleWithAI } from '../services/aiService.js';
 
 
 const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];
@@ -13,12 +13,13 @@ const DRESS_STYLE_ALIASES = {
   'anarkali': 'frock', 'gown': 'maxi', 'shirt': 'kurta',
 };
 
-function normalizeDressStyle(raw) {
+async function normalizeDressStyle(raw) {
   if (!raw || raw === 'null') return null;
   const lower = raw.toLowerCase().trim();
   if (DRESS_STYLE_ALIASES[lower]) return DRESS_STYLE_ALIASES[lower];
   if (VALID_DRESS_STYLES.includes(lower)) return lower;
-  return null; // unknown value — don't apply a filter that returns nothing
+  // Unknown term — ask the LLM to map it
+  return await mapDressStyleWithAI(lower);
 }
 
 const CANONICAL_COLORS = [
@@ -79,7 +80,7 @@ export async function generateOutfit(req, res) {
         colorExact:    (parsed.colorExact && parsed.colorExact !== 'null') ? parsed.colorExact.toLowerCase().trim() : null,
         colorFamily:   CANONICAL_COLORS.includes(rawColorFamily) ? rawColorFamily : (normalizeColor(rawColorFamily) || 'Any'),
         occasion:      Array.isArray(parsed.occasion) ? parsed.occasion : [],
-        dressStyle:    normalizeDressStyle(parsed.dressStyle),
+        dressStyle:    await normalizeDressStyle(parsed.dressStyle),
         stitching:     ['stitched', 'unstitched'].includes(parsed.stitching) ? parsed.stitching : null,
         pieces:        (typeof parsed.pieces === 'number' && [1, 2, 3].includes(parsed.pieces)) ? parsed.pieces : null,
         print:         ['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) ? parsed.print : null,
