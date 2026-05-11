@@ -24,6 +24,12 @@ Return ONLY a valid JSON object with these exact fields:
 - maxBudget: number in PKR. 0 if not mentioned.
 - intentSummary: one concise sentence describing what the user wants.
 - aiAnalysis: 2-3 sentences of fashion advice tailored to this request.
+- constraintPriority: ordered array of constraint names from MOST important (last to relax) to LEAST important (first to relax). Use ONLY these names: "color", "pieces", "stitching", "dressStyle", "occasion", "print", "fabric". Extract this ONLY if the user explicitly states a preference order or says something like "X preferred", "X matters most", "then Y", "priority is X". Empty array [] if no explicit priority given.
+  Examples:
+  - "maroon preferred, then piece, then stitching" → ["color", "pieces", "stitching"]
+  - "stitching matters most" → ["stitching"]
+  - "color is most important, fabric second" → ["color", "fabric"]
+  - no priority stated → []
 
 IMPORTANT: Only set a field if the user explicitly mentioned it. Do NOT infer occasion from dress type — if user says "lehenga" without mentioning occasion, occasion should be [].
 `;
@@ -64,9 +70,10 @@ export async function generateOutfit(req, res) {
         print:         ['embroidered', 'printed', 'plain', 'embellished', 'mixed'].includes(parsed.print) ? parsed.print : null,
         gender:        ['women', 'men', 'kids', 'unisex'].includes(parsed.gender) ? parsed.gender : 'women',
         fabric:        (parsed.fabric && parsed.fabric !== 'null') ? parsed.fabric.toLowerCase().trim() : null,
-        maxBudget:     typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
-        intentSummary: parsed.intentSummary || message,
-        aiAnalysis:    parsed.aiAnalysis || ''
+        maxBudget:          typeof parsed.maxBudget === 'number' ? parsed.maxBudget : 0,
+        intentSummary:      parsed.intentSummary || message,
+        aiAnalysis:         parsed.aiAnalysis || '',
+        constraintPriority: Array.isArray(parsed.constraintPriority) ? parsed.constraintPriority : []
       };
     } catch (aiErr) {
       console.warn('Intent parsing failed, using empty intent:', aiErr.message);
@@ -77,7 +84,8 @@ export async function generateOutfit(req, res) {
         gender: 'women', fabric: null,
         maxBudget: 0,
         intentSummary: message,
-        aiAnalysis: 'Parsing failed — showing broad matches.'
+        aiAnalysis: 'Parsing failed — showing broad matches.',
+        constraintPriority: []
       };
     }
 

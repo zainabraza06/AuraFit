@@ -210,6 +210,32 @@ export function generateShoeMatchReason(shoe, dress) {
 // PROGRESSIVE RELAXATION ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Default relaxation order: first entry = dropped first = least important by default.
+// "color" is a unified placeholder covering exact shade → family → none.
+const DEFAULT_RELAX_ORDER = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'color'];
+
+/**
+ * Build the unified relaxation order respecting the user's stated priority.
+ * Most important (last in constraintPriority array = drops last) overrides default.
+ * Constraints not in constraintPriority keep their default relative order and drop first.
+ */
+function buildUnifiedRelaxOrder(constraintPriority = []) {
+  if (!constraintPriority.length) return DEFAULT_RELAX_ORDER;
+
+  const priority = constraintPriority
+    .map((c) => c.toLowerCase().trim())
+    .filter((c) => DEFAULT_RELAX_ORDER.includes(c));
+
+  if (!priority.length) return DEFAULT_RELAX_ORDER;
+
+  // Non-prioritized: keep default relative order, placed first (dropped first)
+  const notPrioritized = DEFAULT_RELAX_ORDER.filter((c) => !priority.includes(c));
+  // Prioritized reversed: least important of the group drops first
+  const prioritizedReversed = [...priority].reverse();
+
+  return [...notPrioritized, ...prioritizedReversed];
+}
+
 // Which constraints the user actually specified (only filter on these)
 function getSpecifiedConstraints(intent) {
   const specified = new Set();
@@ -271,33 +297,38 @@ const SELECT_FIELDS = 'name brand category subCategory dressStyle stitching prin
 
 async function fetchCandidates(intent) {
   const specified = getSpecifiedConstraints(intent);
+  const relaxOrder = buildUnifiedRelaxOrder(intent.constraintPriority || []);
 
-  // Build the ordered relaxation sequence based on what the user actually specified
-  // Each step drops one more constraint from the DB query
-  const relaxOrder = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric'];
+  const hasColor = specified.has('colorExact') || specified.has('colorFamily');
+  let currentColorMode = specified.has('colorExact') ? 'exact'
+    : specified.has('colorFamily') ? 'family'
+    : 'none';
 
   const levels = [];
   const dropped = new Set();
 
-  // Level 0: all specified constraints, exact color
-  const initialColorMode = specified.has('colorExact') ? 'exact' : (specified.has('colorFamily') ? 'family' : 'none');
-  levels.push({ dropped: new Set(), colorMode: initialColorMode, label: null });
+  // Level 0: all specified constraints active
+  levels.push({ dropped: new Set(), colorMode: currentColorMode, label: null });
 
-  // Drop soft constraints one by one (only if they were specified)
+  // Walk the relaxation order, executing only specified constraints
   for (const constraint of relaxOrder) {
-    if (specified.has(constraint)) {
+    if (constraint === 'color') {
+      if (!hasColor) continue;
+      // Exact → family transition
+      if (currentColorMode === 'exact') {
+        if (specified.has('colorFamily')) {
+          levels.push({ dropped: new Set(dropped), colorMode: 'family', label: 'colorExact' });
+        }
+        currentColorMode = 'family';
+      }
+      // Family → none
+      levels.push({ dropped: new Set(dropped), colorMode: 'none', label: 'color' });
+      currentColorMode = 'none';
+    } else {
+      if (!specified.has(constraint)) continue;
       dropped.add(constraint);
-      levels.push({ dropped: new Set(dropped), colorMode: initialColorMode, label: constraint });
+      levels.push({ dropped: new Set(dropped), colorMode: currentColorMode, label: constraint });
     }
-  }
-
-  // If exact color was specified, add a family-fallback level
-  if (specified.has('colorExact') && specified.has('colorFamily')) {
-    levels.push({ dropped: new Set(dropped), colorMode: 'family', label: 'colorExact' });
-  }
-  // Finally, drop color entirely
-  if (specified.has('colorExact') || specified.has('colorFamily')) {
-    levels.push({ dropped: new Set(dropped), colorMode: 'none', label: 'color' });
   }
 
   let bestProducts = [];
@@ -323,11 +354,11 @@ async function fetchCandidates(intent) {
 
   // Build relaxation message for the frontend
   if (relaxedFields.length > 0) {
-    const dropped = relaxedFields.filter((f) => !f.includes('→'));
+    const droppedFields = relaxedFields.filter((f) => !f.includes('→'));
     const colorNote = relaxedFields.find((f) => f.includes('→'));
     const parts = [];
-    if (dropped.length) parts.push(`relaxed ${dropped.join(', ')}`);
-    if (colorNote)      parts.push(colorNote);
+    if (droppedFields.length) parts.push(`relaxed ${droppedFields.join(', ')}`);
+    if (colorNote)            parts.push(colorNote);
     relaxationMessage = `No exact match found — ${parts.join('; ')}.`;
   }
 
