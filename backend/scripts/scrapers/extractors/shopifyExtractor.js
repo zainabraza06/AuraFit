@@ -160,11 +160,18 @@ export function mapShopifyProduct(rawProduct, baseOrigin) {
 
   const productUrl = `${baseOrigin}/products/${handle}`;
 
-  // Sizes from variants
+  // Sizes from variants (option1 is usually size)
   const sizes = (rawProduct?.variants || [])
     .map((v) => v?.option1 || v?.title)
     .filter((s) => s && s.toLowerCase() !== 'default title')
     .slice(0, 20);
+
+  // Variant option values — Shopify stores often put color in option2/option3
+  const variantOptions = [...new Set(
+    (rawProduct?.variants || [])
+      .flatMap((v) => [v?.option2, v?.option3])
+      .filter((s) => s && !/^(default title|one size|os|free size)$/i.test(s))
+  )];
 
   // Tags
   const tags = Array.isArray(rawProduct?.tags)
@@ -185,6 +192,7 @@ export function mapShopifyProduct(rawProduct, baseOrigin) {
     productUrl,
     sizes,
     tags,
+    variantOptions,
     description: stripHtml(rawProduct?.body_html || ''),
     vendor: rawProduct?.vendor,
     productType: rawProduct?.product_type,
