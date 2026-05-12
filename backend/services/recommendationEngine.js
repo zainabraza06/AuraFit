@@ -6,26 +6,37 @@
  *   getOutfitForQuery(intent)       — "Style Me" chat-based outfit builder
  *
  * "Style Me" flow:
- *   1. Build DB query from ONLY the fields the user specified.
- *   2. Progressive constraint relaxation (one-by-one) until ≥50 candidates found.
- *      Relaxation order: occasion → print → dressStyle → stitching → pieces → fabric → exact color → color family
- *   3. Top 50 candidates sent to Gemini for AI ranking with per-product reasons.
- *   4. Top 10 ranked results returned; one best-matching shoe found per product.
+ *   0. If intent.searchCatalog is shoes / jewelry / watches, return only that catalog (no outfits).
+ *   1. Build DB query from ONLY the fields the user specified (incl. optional season).
+ *   2. Progressive constraint relaxation (respecting AI constraintPriority order).
+ *   3. Top 20 candidates → LLM ranker → top 10 dresses with match reasons.
+ *   4. Accessory plan uses the same hero as rank #1 (post-rank), then narrowed Mongo pools
+ *      with row-count fallback; contrast-aware shoe; jewelry respects completionFocus;
+ *      outfit completions respect completionFocus for top 3.
+ *   5. Fast lexical catalog health on returned dresses (no per-request Hugging Face).
  */
 
 import ClothingProduct from '../models/ClothingProduct.js';
+import ShoeProduct from '../models/ShoeProduct.js';
+import JewelryProduct from '../models/JewelryProduct.js';
+import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi, intentPrintToPatterns } from './productCompat.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
 import { rankProductsWithAI } from './aiService.js';
+import {
+  planAccessorySearchFromContext,
+  stripAccessoryPlanForClient
+} from './accessorySearchPlanner.js';
+import { escapeRegex } from '../utils/regexEscape.js';
+import { bumpMetric, logRecommendationEvent } from './recommendationMetrics.js';
 import { normalizeColor } from './colorNormalize.js';
+import { pickBestShoe, pickJewelrySet, pickWatch } from './accessoryMatcher.js';
+import { suggestOutfitCompletions } from './outfitCompletion.js';
+import { summarizeCatalogHealth } from './catalogTaxonomyAudit.js';
 
-// ─── Canonical color list ────────────────────────────────────────────────────
-export const CANONICAL_COLORS = [
-  'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
-  'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
-  'Gold', 'Beige', 'Brown', 'Multicolor'
-];
+import { CANONICAL_COLORS } from '../constants/catalogConstants.js';
 
+export { CANONICAL_COLORS };
 export { normalizeColor };
 
 // ─── Cosine similarity ────────────────────────────────────────────────────────
@@ -130,7 +141,7 @@ export function generateShoeMatchReason(shoe, dress) {
 
 // Default relaxation order: first entry = dropped first = least important by default.
 // "color" is a unified placeholder covering exact shade → family → none.
-const DEFAULT_RELAX_ORDER = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'color'];
+const DEFAULT_RELAX_ORDER = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season', 'color'];
 
 /**
  * Build the unified relaxation order respecting the user's stated priority.
@@ -165,6 +176,7 @@ function getSpecifiedConstraints(intent) {
   if (intent.fabric)                                        specified.add('fabric');
   if (intent.colorExact)                                    specified.add('colorExact');
   if (intent.colorFamily && intent.colorFamily !== 'Any')   specified.add('colorFamily');
+  if (intent.season)                                        specified.add('season');
   return specified;
 }
 
@@ -225,12 +237,26 @@ function buildDBQuery(intent, dropped, colorMode) {
     query['pieceDetails.totalCount'] = intent.pieces;
   }
   if (!dropped.has('fabric') && intent.fabric) {
-    query.fabric = { $regex: new RegExp(intent.fabric, 'i') };
+    const safe = escapeRegex(String(intent.fabric).trim());
+    if (safe) query.fabric = { $regex: new RegExp(safe, 'i') };
+  }
+
+  if (!dropped.has('season') && intent.season) {
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { season: intent.season },
+        { season: 'all-season' },
+        { season: { $exists: false } },
+        { season: { $size: 0 } }
+      ]
+    });
   }
 
   // Color — exact shade → canonical family → none
   if (colorMode === 'exact' && intent.colorExact) {
-    query.exactColors = { $elemMatch: { $regex: new RegExp(`^${intent.colorExact}$`, 'i') } };
+    const safe = escapeRegex(String(intent.colorExact).trim());
+    if (safe) query.exactColors = { $elemMatch: { $regex: new RegExp(`^${safe}$`, 'i') } };
   } else if (colorMode === 'family' && intent.colorFamily && intent.colorFamily !== 'Any') {
     query.primaryColor = intent.colorFamily;
   }
@@ -240,7 +266,182 @@ function buildDBQuery(intent, dropped, colorMode) {
 }
 
 const SELECT_CLOTHING =
-  'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion style tags imageUrl images productUrl description gender metadataScore embedding';
+  'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion season style tags imageUrl images productUrl description gender metadataScore embedding';
+
+const SELECT_SHOE =
+  'name brand price images primaryColor colors occasion shoeType subCategory gender productUrl style embedding';
+const SELECT_JEWELRY =
+  'name brand price images primaryColor colors occasion jewelryType jewelryCategory metalFinish stoneWork gender productUrl description tags';
+const SELECT_WATCH =
+  'name brand price images primaryColor colors occasion watchType dialColor strapType gender productUrl description tags';
+
+async function fetchAccessoryPools(intent, plan = null) {
+  const genderFilter =
+    intent.gender && intent.gender !== 'unisex'
+      ? { gender: { $in: [intent.gender, 'unisex'] } }
+      : {};
+  const budget =
+    intent.maxBudget > 0 ? { price: { $lte: Math.round(intent.maxBudget * 1.35) } } : {};
+  const base = { ...genderFilter, ...budget };
+
+  const shoeNarrow = plan?.shoeTypes?.length ? { ...base, shoeType: { $in: plan.shoeTypes } } : null;
+  const jewelryNarrow = plan?.jewelryTypes?.length ? { ...base, jewelryType: { $in: plan.jewelryTypes } } : null;
+  const watchNarrow = plan?.watchTypes?.length ? { ...base, watchType: { $in: plan.watchTypes } } : null;
+
+  let shoes = await ShoeProduct.find(shoeNarrow || base).select(SELECT_SHOE).limit(100).lean();
+  if (shoeNarrow && shoes.length < 10) {
+    bumpMetric('accessory_pool_shoe_fallback');
+    logRecommendationEvent({
+      event: 'accessory_pool_fallback',
+      category: 'shoe',
+      narrowedCount: shoes.length
+    });
+    shoes = await ShoeProduct.find(base).select(SELECT_SHOE).limit(100).lean();
+  }
+
+  let jewelry = await JewelryProduct.find(jewelryNarrow || base).select(SELECT_JEWELRY).limit(90).lean();
+  if (jewelryNarrow && jewelry.length < 8) {
+    bumpMetric('accessory_pool_jewelry_fallback');
+    logRecommendationEvent({
+      event: 'accessory_pool_fallback',
+      category: 'jewelry',
+      narrowedCount: jewelry.length
+    });
+    jewelry = await JewelryProduct.find(base).select(SELECT_JEWELRY).limit(90).lean();
+  }
+
+  let watches = await WatchProduct.find(watchNarrow || base).select(SELECT_WATCH).limit(70).lean();
+  if (watchNarrow && watches.length < 5) {
+    bumpMetric('accessory_pool_watch_fallback');
+    logRecommendationEvent({
+      event: 'accessory_pool_fallback',
+      category: 'watch',
+      narrowedCount: watches.length
+    });
+    watches = await WatchProduct.find(base).select(SELECT_WATCH).limit(70).lean();
+  }
+
+  return { shoes, jewelry, watches };
+}
+
+/** Mongo filter for dedicated shoe / jewelry / watch catalog search (no clothing). */
+function buildAccessoryOnlyDbQuery(intent) {
+  const genderFilter =
+    intent.gender && intent.gender !== 'unisex'
+      ? { gender: { $in: [intent.gender, 'unisex'] } }
+      : {};
+  const budget =
+    intent.maxBudget > 0 ? { price: { $lte: Math.round(intent.maxBudget * 1.35) } } : {};
+  const q = { ...genderFilter, ...budget };
+
+  if (intent.colorFamily && intent.colorFamily !== 'Any') {
+    q.primaryColor = intent.colorFamily;
+  }
+
+  if (intent.occasion?.length) {
+    q.$or = [
+      { occasion: { $in: intent.occasion } },
+      { occasion: { $exists: false } },
+      { occasion: { $size: 0 } }
+    ];
+  }
+
+  return q;
+}
+
+function scoreAccessoryAgainstIntent(p, intent) {
+  let s = 0;
+  if (intent.colorFamily && intent.colorFamily !== 'Any' && p.primaryColor === intent.colorFamily) {
+    s += 3;
+  }
+  const occI = (intent.occasion || []).map((o) => String(o).toLowerCase());
+  const occP = (p.occasion || []).map((o) => String(o).toLowerCase());
+  if (occI.length && occP.some((o) => occI.includes(o))) s += 2;
+  if (intent.maxBudget > 0 && typeof p.price === 'number' && p.price <= intent.maxBudget) s += 1;
+  return s;
+}
+
+function accessoryMatchReason(p, intent) {
+  const bits = [];
+  if (intent.colorFamily && intent.colorFamily !== 'Any' && p.primaryColor === intent.colorFamily) {
+    bits.push('color');
+  }
+  const occI = (intent.occasion || []).map((o) => String(o).toLowerCase());
+  if (occI.length && (p.occasion || []).some((o) => occI.includes(String(o).toLowerCase()))) {
+    bits.push('occasion');
+  }
+  if (!bits.length) return 'From our catalog matching your filters.';
+  return `Strong ${bits.join(' & ')} match for your search.`;
+}
+
+/**
+ * User asked for shoes / jewelry / watches only — no outfit or cross-category recommendations.
+ * @param {'shoes'|'jewelry'|'watches'} catalog
+ */
+async function getAccessoryOnlyOutfitResponse(intent, catalog) {
+  bumpMetric('accessory_only_query');
+  logRecommendationEvent({ event: 'accessory_only_flow', searchCatalog: catalog });
+
+  const baseQuery = buildAccessoryOnlyDbQuery(intent);
+  const limitFetch = 100;
+  const limitOut = 30;
+
+  const Model =
+    catalog === 'shoes' ? ShoeProduct : catalog === 'jewelry' ? JewelryProduct : WatchProduct;
+  const select =
+    catalog === 'shoes' ? SELECT_SHOE : catalog === 'jewelry' ? SELECT_JEWELRY : SELECT_WATCH;
+
+  let raw = await Model.find(baseQuery).select(select).limit(limitFetch).lean();
+
+  if (raw.length < 12 && baseQuery.primaryColor) {
+    const relaxed = { ...baseQuery };
+    delete relaxed.primaryColor;
+    raw = await Model.find(relaxed).select(select).limit(limitFetch).lean();
+  }
+  if (raw.length < 8 && baseQuery.$or) {
+    const relaxed = { ...baseQuery };
+    delete relaxed.$or;
+    raw = await Model.find(relaxed).select(select).limit(limitFetch).lean();
+  }
+
+  const scored = raw
+    .map((p) => ({ p, s: scoreAccessoryAgainstIntent(p, intent) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limitOut);
+
+  const results = scored.map(({ p }, idx) => ({
+    product: p,
+    rank: idx + 1,
+    matchReason: accessoryMatchReason(p, intent),
+    shoe: null,
+    jewelry: [],
+    watch: null,
+    outfitCompletions: []
+  }));
+
+  const tier = results.length >= 20 ? 'exact' : results.length >= 8 ? 'close' : results.length ? 'similar' : 'none';
+
+  return {
+    accessoryOnly: true,
+    searchCatalog: catalog,
+    results,
+    matchQuality: {
+      tier,
+      totalFound: results.length,
+      message: results.length
+        ? null
+        : "We couldn't find any matching items in our catalog for this search."
+    },
+    relaxationMessage: null,
+    catalogExtractionHealth: { avgLexicalAlignment: 1, perItem: [] },
+    intentEcho: {
+      constraintPriority: intent.constraintPriority || [],
+      season: intent.season || null,
+      searchCatalog: catalog
+    },
+    accessoryRetrievalPlan: null
+  };
+}
 
 async function fetchCandidates(intent) {
   const specified = getSpecifiedConstraints(intent);
@@ -324,42 +525,39 @@ function scoreAgainstIntent(product, intent) {
   if (intent.print     && product.print     === intent.print)     score += 1;
   if (intent.fabric    && product.fabric?.toLowerCase().includes(intent.fabric.toLowerCase())) score += 1;
   if (intent.occasion?.length && product.occasion?.some((o) => intent.occasion.includes(o))) score += 1;
+  if (intent.season && (product.season || []).some((s) => s === intent.season || s === 'all-season')) score += 1;
   if (intent.maxBudget > 0 && product.price <= intent.maxBudget) score += 1;
   // Penalise accessory-type products slipping through (mistagged in DB)
   if (intent.dressStyle && NON_OUTFIT_PATTERN.test(product.name || '')) score -= 5;
   return score;
 }
 
-// ─── Find one best shoe per dress ────────────────────────────────────────────
-async function fetchShoePool() {
-  // Catalog is clothing-only (single ClothingProduct collection for recommendations).
-  return [];
-}
-
-function matchShoesFromPool(dresses, shoePool) {
-  if (!shoePool.length) return dresses.map(() => null);
-  return dresses.map((dress) => {
-    const best = shoePool
-      .map((shoe) => ({ shoe, score: scoreProduct(dress, shoe) }))
-      .sort((a, b) => b.score.total - a.score.total)[0];
-    return best
-      ? { product: best.shoe, score: best.score.total, reason: generateShoeMatchReason(best.shoe, dress) }
-      : null;
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC: Chat-based "Style Me" outfit builder
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function getOutfitForQuery(intent) {
+  const catalog = intent.searchCatalog || 'clothing';
+  if (catalog === 'shoes' || catalog === 'jewelry' || catalog === 'watches') {
+    return getAccessoryOnlyOutfitResponse(intent, catalog);
+  }
+
   // 1. Fetch candidates via progressive relaxation
   const { products, relaxationMessage } = await fetchCandidates(intent);
 
   if (!products.length) {
     return {
       results: [],
+      accessoryOnly: false,
+      searchCatalog: 'clothing',
       matchQuality: { tier: 'none', message: "We couldn't find any products matching your request in our catalog." },
-      relaxationMessage: null
+      relaxationMessage: null,
+      catalogExtractionHealth: { avgLexicalAlignment: 1, perItem: [] },
+      intentEcho: {
+        constraintPriority: intent.constraintPriority || [],
+        season: intent.season || null,
+        searchCatalog: 'clothing'
+      },
+      accessoryRetrievalPlan: null
     };
   }
 
@@ -370,35 +568,87 @@ export async function getOutfitForQuery(intent) {
     .slice(0, 20)
     .map(({ p }) => p);
 
-  // 3. AI ranking + shoe pool fetch run in parallel
-  const [ranked, shoePool] = await Promise.all([
-    rankProductsWithAI(presorted, intent),
-    fetchShoePool()
-  ]);
+  // 3. AI dress rank first so accessory plan uses the same hero the user sees at #1
+  const tRank = Date.now();
+  const ranked = await rankProductsWithAI(presorted, intent);
+  logRecommendationEvent({
+    event: 'style_me_rank_ms',
+    ms: Date.now() - tRank,
+    candidateCount: presorted.length
+  });
+
+  const heroDress = ranked[0]?.product || presorted[0] || null;
+  const tPlan = Date.now();
+  const accessoryPlan = await planAccessorySearchFromContext(intent, heroDress);
+  logRecommendationEvent({
+    event: 'style_me_accessory_plan_ms',
+    ms: Date.now() - tPlan,
+    planNull: !accessoryPlan
+  });
+
+  const pools = await fetchAccessoryPools(intent, accessoryPlan);
   const top10 = ranked.slice(0, 10);
+  const dressRows = top10.map((r) => r.product);
 
-  // 4. Match shoes from the already-fetched pool (no extra DB call)
-  const shoes = matchShoesFromPool(top10.map((r) => r.product), shoePool);
+  const catalogExtractionHealth = summarizeCatalogHealth(dressRows);
 
-  // 5. Match quality tier
+  const usedShoeIds = new Set();
+  const heavyJewel = (intent.occasion || []).some((o) =>
+    ['wedding', 'bridal', 'mehndi', 'eid', 'party'].includes(String(o).toLowerCase())
+  );
+
+  const results = [];
+  for (let i = 0; i < top10.length; i++) {
+    const r = top10[i];
+    const dress = r.product;
+    const shoePick = pickBestShoe(dress, pools.shoes, usedShoeIds);
+    const jewelry = pickJewelrySet(dress, intent.occasion, pools.jewelry, {
+      maxItems: heavyJewel ? 6 : 3,
+      completionFocus: accessoryPlan?.completionFocus || []
+    });
+    const watch = pickWatch(dress, intent.occasion, pools.watches);
+    const outfitCompletions =
+      i < 3 ? await suggestOutfitCompletions(dress, intent, accessoryPlan) : [];
+
+    results.push({
+      product: dress,
+      rank: r.rank,
+      matchReason: r.reason,
+      shoe: shoePick
+        ? {
+            product: shoePick.product,
+            score: shoePick.score,
+            reason: shoePick.reason
+          }
+        : null,
+      jewelry,
+      watch,
+      outfitCompletions
+    });
+  }
+
   const tier = !relaxationMessage ? 'exact'
     : top10.length >= 8 ? 'close'
     : top10.length >= 4 ? 'similar'
     : 'loose';
 
   return {
-    results: top10.map((r, i) => ({
-      product:     r.product,
-      rank:        r.rank,
-      matchReason: r.reason,
-      shoe:        shoes[i] || null
-    })),
+    accessoryOnly: false,
+    searchCatalog: 'clothing',
+    results,
     matchQuality: {
       tier,
       totalFound: products.length,
       message: relaxationMessage
     },
-    relaxationMessage
+    relaxationMessage,
+    catalogExtractionHealth,
+    intentEcho: {
+      constraintPriority: intent.constraintPriority || [],
+      season: intent.season || null,
+      searchCatalog: 'clothing'
+    },
+    accessoryRetrievalPlan: stripAccessoryPlanForClient(accessoryPlan)
   };
 }
 
@@ -413,10 +663,10 @@ export async function getRecommendations(productId, options = {}) {
 
   const baseQuery = { _id: { $ne: source._id } };
 
-  const [shoePool, clothingPoolRaw] = await Promise.all([
-    Promise.resolve([]),
-    ClothingProduct.find(baseQuery).limit(100).lean()
-  ]);
+  const pools = await fetchAccessoryPools({ gender: source.gender, maxBudget: 0 });
+  const shoePool = pools.shoes;
+
+  const clothingPoolRaw = await ClothingProduct.find(baseQuery).limit(100).lean();
   const clothingPool = clothingPoolRaw.map(formatClothingForApi);
 
   const scoredShoes    = shoePool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxShoes);

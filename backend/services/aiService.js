@@ -30,6 +30,7 @@ export async function rankProductsWithAI(products, intent) {
     intent.colorExact   ? `Color: ${intent.colorExact}`        : null,
     intent.colorFamily && intent.colorFamily !== 'Any' ? `Color family: ${intent.colorFamily}` : null,
     intent.occasion?.length ? `Occasion: ${intent.occasion.join(', ')}` : null,
+    intent.season ? `Season: ${intent.season}` : null,
     intent.dressStyle   ? `Dress style: ${intent.dressStyle}`  : null,
     intent.print        ? `Print/Work: ${intent.print}`        : null,
     intent.stitching    ? `Stitching: ${intent.stitching}`     : null,

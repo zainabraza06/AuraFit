@@ -50,6 +50,9 @@ export const getImageEmbedding = async (imageUrl) => {
 
 /**
  * Generates a multimodal embedding (vector) for text.
+ * Uses sentence-transformers/all-MiniLM-L6-v2: a compact sentence-embedding model (often called
+ * "sentence-BERT" in the literature). BERT-family encoders are appropriate for catalog text similarity;
+ * HuBERT is unrelated — it is a speech/audio representation model and is not used here.
  */
 export const getTextEmbedding = async (text) => {
   try {

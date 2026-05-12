@@ -332,13 +332,15 @@ async function runTests() {
       continue;
     }
 
-    const products = [outfit.heroDress, ...outfit.otherDresses].filter(Boolean);
+    const products = (outfit.results || []).map((r) => r.product).filter(Boolean);
 
     // 3. Handle color/occasion/piece messages — show them but only skip if truly no products
     if (outfit.matchQuality) {
       const mq = outfit.matchQuality;
-      const tierColor = mq.pct === 100 ? G : mq.pct >= 80 ? Y : R;
-      console.log(tierColor(`    ★ Match tier: ${mq.tier.toUpperCase()} (${mq.pct}%)`) + (mq.message ? DIM(` — ${mq.message}`) : ''));
+      const tierColor = mq.tier === 'exact' ? G : mq.tier === 'close' ? Y : R;
+      console.log(
+        tierColor(`    ★ Match tier: ${mq.tier.toUpperCase()}`) + (mq.message ? DIM(` — ${mq.message}`) : '')
+      );
     }
     if (outfit.colorMessage)            console.log(Y(`    ⚠  colorMessage: "${outfit.colorMessage}"`));
     if (outfit.occasionFallbackMessage) console.log(Y(`    ⚠  occasionFallback: "${outfit.occasionFallbackMessage}"`));
@@ -361,9 +363,8 @@ async function runTests() {
     // 4. Show top 3 returned products
     console.log(DIM(`    Top ${Math.min(3, products.length)} products returned:`));
     products.slice(0, 3).forEach((p, idx) => {
-      const score = outfit.scores[idx];
       const colorBadge = p.primaryColor ? `[${p.primaryColor}]` : '';
-      console.log(DIM(`      ${idx+1}. ${p.name?.slice(0,55)?.padEnd(55)} ${colorBadge?.padEnd(12)} ${p.subCategory?.padEnd(20)} PKR ${p.price}  score=${score?.total ?? '?'}`));
+      console.log(DIM(`      ${idx+1}. ${p.name?.slice(0,55)?.padEnd(55)} ${colorBadge?.padEnd(12)} ${p.subCategory?.padEnd(20)} PKR ${p.price}`));
     });
 
     // 5. Run checks

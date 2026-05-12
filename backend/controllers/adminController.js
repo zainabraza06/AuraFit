@@ -1,5 +1,6 @@
 import ClothingProduct from '../models/ClothingProduct.js';
 import ScraperLog from '../models/ScraperLog.js';
+import { lexicalTaxonomyAlignment } from '../services/catalogTaxonomyAudit.js';
 
 let activeScrapePromise = null;
 const sseClients = new Set();
@@ -122,5 +123,44 @@ export async function deleteProductsByBrand(req, res) {
     res.json({ deleted: c.deletedCount, brand, clothingDeleted: c.deletedCount });
   } catch {
     res.status(500).json({ error: 'Failed to delete brand products' });
+  }
+}
+
+/**
+ * Offline-style catalog check: lexical alignment of taxonomy vs title/description.
+ * Does not call Hugging Face (safe for cron / admin only).
+ */
+export async function postCatalogLexicalAudit(req, res) {
+  try {
+    const limit = Math.min(80, Math.max(5, parseInt(req.body?.limit ?? req.query?.limit ?? '25', 10)));
+    const rows = await ClothingProduct.aggregate([
+      { $sample: { size: limit } },
+      {
+        $project: {
+          name: 1,
+          description: 1,
+          tags: 1,
+          subCategory: 1,
+          dressStyle: 1
+        }
+      }
+    ]);
+
+    const items = rows.map((p) => {
+      const { score, flags } = lexicalTaxonomyAlignment(p);
+      return { id: p._id, name: p.name, subCategory: p.subCategory, dressStyle: p.dressStyle, score, flags };
+    });
+    const avg = items.length ? items.reduce((s, x) => s + x.score, 0) / items.length : 1;
+
+    res.json({
+      method: 'lexical-taxonomy-alignment',
+      note: 'No Hugging Face calls. For embedding-based audit, run a separate offline script with rate limits.',
+      sampleSize: items.length,
+      avgLexicalAlignment: parseFloat(avg.toFixed(3)),
+      items
+    });
+  } catch (err) {
+    console.error('[postCatalogLexicalAudit]', err);
+    res.status(500).json({ error: 'Catalog audit failed' });
   }
 }

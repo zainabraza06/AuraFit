@@ -6,7 +6,8 @@ import {
   getScraperStatus,
   streamScraperEvents,
   runScraper,
-  deleteProductsByBrand
+  deleteProductsByBrand,
+  postCatalogLexicalAudit
 } from '../controllers/adminController.js';
 
 export { broadcastScraperEvent } from '../controllers/adminController.js';
@@ -21,5 +22,6 @@ router.get('/scraper/status', getScraperStatus);
 router.get('/scraper/stream', streamScraperEvents);
 router.post('/scraper/run', runScraper);
 router.delete('/products/brand/:brand', deleteProductsByBrand);
+router.post('/catalog/lexical-audit', postCatalogLexicalAudit);
 
 export default router;
