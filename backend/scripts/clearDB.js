@@ -20,7 +20,7 @@ const clearDB = async () => {
     await mongoose.connect(MONGO_URI);
     console.log('✅ Connected.');
 
-    const collections = ['products', 'scraperlogs', 'favorites', 'outfits'];
+    const collections = ['clothingproducts', 'shoeproducts', 'watchproducts', 'jewelryproducts', 'scraperlogs', 'favorites', 'outfits'];
     
     for (const colName of collections) {
       const collection = mongoose.connection.db.collection(colName);

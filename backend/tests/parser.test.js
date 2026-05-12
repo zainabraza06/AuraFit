@@ -151,9 +151,9 @@ describe('Pieces count inference', () => {
   ];
 
   for (const [sub, expected] of cases) {
-    test(`subCategory "${sub}" → pieces = ${expected}`, () => {
+    test(`subCategory "${sub}" → pieceDetails.totalCount = ${expected}`, () => {
       const p = normalizeProduct(makeRaw(), makeConfig({ subCategory: sub }));
-      assert.equal(p.pieces, expected);
+      assert.equal(p.pieceDetails?.totalCount, expected);
     });
   }
 });

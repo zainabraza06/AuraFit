@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
+import { formatClothingForApi } from '../services/productCompat.js';
 
 export async function searchByImage(req, res) {
   try {
@@ -30,18 +31,16 @@ export async function searchByImage(req, res) {
     const result = await model.generateContent([prompt, ...imageParts]);
     const analysis = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
 
+    const kw0 = (analysis.keywords && analysis.keywords[0]) ? String(analysis.keywords[0]) : '';
     const searchQuery = {
       $or: [
         { primaryColor: { $regex: analysis.color, $options: 'i' } },
-        { name: { $regex: analysis.keywords[0], $options: 'i' } }
+        ...(kw0 ? [{ name: { $regex: kw0, $options: 'i' } }] : [])
       ]
     };
 
-    if (analysis.category) {
-      searchQuery.category = analysis.category.toLowerCase().includes('shoe') ? 'shoes' : 'clothing';
-    }
-
-    const matches = await Product.find(searchQuery).limit(10).lean();
+    const raw = await ClothingProduct.find(searchQuery).limit(10).lean();
+    const matches = raw.map(formatClothingForApi);
 
     res.json({
       analysis,

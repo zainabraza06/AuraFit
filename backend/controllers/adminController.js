@@ -1,4 +1,4 @@
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
 import ScraperLog from '../models/ScraperLog.js';
 
 let activeScrapePromise = null;
@@ -13,25 +13,26 @@ export function broadcastScraperEvent(data) {
 
 export async function getStats(req, res) {
   try {
-    const [total, byCategory, byBrand, recentCount, priceStats] = await Promise.all([
-      Product.countDocuments(),
-      Product.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }]),
-      Product.aggregate([
+    const [cTotal, cByBrand, cRecent, cPrice] = await Promise.all([
+      ClothingProduct.countDocuments(),
+      ClothingProduct.aggregate([
         { $group: { _id: '$brand', count: { $sum: 1 } } },
         { $sort: { count: -1 } }
       ]),
-      Product.countDocuments({ scrapedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-      Product.aggregate([
+      ClothingProduct.countDocuments({ scrapedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+      ClothingProduct.aggregate([
         { $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' }, avg: { $avg: '$price' } } }
       ])
     ]);
 
+    const byCategory = { clothing: cTotal, shoes: 0, accessories: 0 };
+
     res.json({
-      total,
-      byCategory: Object.fromEntries(byCategory.map((b) => [b._id, b.count])),
-      byBrand,
-      recentWeek: recentCount,
-      priceRange: priceStats[0] || { min: 0, max: 0, avg: 0 }
+      total: cTotal,
+      byCategory,
+      byBrand: cByBrand,
+      recentWeek: cRecent,
+      priceRange: cPrice[0] || { min: 0, max: 0, avg: 0 }
     });
   } catch {
     res.status(500).json({ error: 'Failed to fetch admin stats' });
@@ -116,8 +117,9 @@ export async function runScraper(req, res) {
 
 export async function deleteProductsByBrand(req, res) {
   try {
-    const result = await Product.deleteMany({ brand: req.params.brand });
-    res.json({ deleted: result.deletedCount, brand: req.params.brand });
+    const brand = req.params.brand;
+    const c = await ClothingProduct.deleteMany({ brand });
+    res.json({ deleted: c.deletedCount, brand, clothingDeleted: c.deletedCount });
   } catch {
     res.status(500).json({ error: 'Failed to delete brand products' });
   }

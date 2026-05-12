@@ -1,5 +1,5 @@
 import Favorite from '../models/Favorite.js';
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
 
 export async function getFavorites(req, res) {
   try {
@@ -19,8 +19,8 @@ export async function toggleFavorite(req, res) {
   try {
     const { productId } = req.params;
 
-    const product = await Product.findById(productId).select('_id name').lean();
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    const exists = await ClothingProduct.findById(productId).select('_id').lean();
+    if (!exists) return res.status(404).json({ error: 'Product not found' });
 
     const existing = await Favorite.findOne({ user: req.user._id, product: productId });
 
@@ -29,7 +29,10 @@ export async function toggleFavorite(req, res) {
       return res.json({ favorited: false, message: 'Removed from favorites' });
     }
 
-    await Favorite.create({ user: req.user._id, product: productId });
+    await Favorite.create({
+      user: req.user._id,
+      product: productId
+    });
     res.status(201).json({ favorited: true, message: 'Added to favorites' });
   } catch (err) {
     if (err.code === 11000) return res.json({ favorited: true, message: 'Already in favorites' });

@@ -1,49 +1,62 @@
 /**
  * BaseAdapter.js
- * Abstract base class for all brand scraper adapters.
- * Provides the 3-strategy pipeline: Shopify Collection → Shopify All → HTML.
- * Subclasses can override extractCollectionProducts / extractProductDetails
- * to handle brand-specific quirks.
+ * Shopify → normalize → validate → optional LLM repair → AI enrich.
+ * Pass parserHooks for shoes / watches / jewelry verticals.
  */
 
 import { extractFromShopifyCollection, extractFromShopifyAll, mapShopifyProduct } from '../extractors/shopifyExtractor.js';
 import { extractFromHtml } from '../extractors/htmlExtractor.js';
 import { normalizeProduct, validateProduct } from '../parsers/productParser.js';
-import { politeSleep, withRetry } from '../utils/requestUtils.js';
+import { enrichProduct, needsAiRefinement } from '../utils/aiEnricher.js';
+import { tryRepairWithLLM } from '../utils/productRepair.js';
+import { politeSleep } from '../utils/requestUtils.js';
 import logger from '../utils/logger.js';
+
+const AI_ENRICH_THRESHOLD = 0.55;
 
 export class BaseAdapter {
   /**
-   * @param {object} brandConfig - Full brand config from clothingBrands.js / shoeBrands.js
+   * @param {object} brandConfig
+   * @param {object} [parserHooks]
+   * @param {function} parserHooks.normalizeProduct
+   * @param {function} parserHooks.validateProduct
+   * @param {function} [parserHooks.enrichProduct]
+   * @param {function} [parserHooks.needsAiRefinement]
+   * @param {string} [parserHooks.vertical] clothing | shoes | watches | jewelry
+   * @param {boolean} [parserHooks.enableLlmRepair] default true
    */
-  constructor(brandConfig) {
+  constructor(brandConfig, parserHooks = {}) {
     this.config = brandConfig;
     this.brand = brandConfig.brand;
     this.baseUrl = brandConfig.baseUrl;
     this.category = brandConfig.category;
+    this.shopifyKeywords = brandConfig.shopifyKeywords || [];
+
+    this._normalize = parserHooks.normalizeProduct || normalizeProduct;
+    this._validate = parserHooks.validateProduct || validateProduct;
+    this._enrich = parserHooks.enrichProduct || enrichProduct;
+    this._needsAi = parserHooks.needsAiRefinement || needsAiRefinement;
+    this._vertical = parserHooks.vertical || 'clothing';
+    this._repairWithLlm = parserHooks.enableLlmRepair !== false;
   }
 
-  /**
-   * scrapeCollection(collection)
-   * Runs the 3-strategy pipeline for a single collection config.
-   * Returns an array of validated, normalized product objects.
-   */
   async scrapeCollection(collection) {
     const collectionUrl = `${this.baseUrl}${collection.path}`;
     const maxItems = Number(process.env.SCRAPER_MAX_PER_BRAND ?? 50);
+
     const brandConfig = {
       brand: this.brand,
       category: this.category,
       subCategory: collection.subCategory,
       occasion: collection.occasion || [],
       style: collection.style || [],
-      source: this.constructor.name
+      source: this.constructor.name,
+      gender: collection.gender
     };
 
     let rawProducts = [];
     let strategy = 'failed';
 
-    // ── Strategy 1: Shopify Collection JSON ──────────────────────────
     try {
       const result = await this.extractCollectionProducts(collectionUrl, maxItems);
       if (result.products.length > 0) {
@@ -54,10 +67,9 @@ export class BaseAdapter {
       logger.warn(`[${this.brand}] Strategy 1 failed: ${err.message}`);
     }
 
-    // ── Strategy 2: Shopify /products.json ───────────────────────────
     if (rawProducts.length === 0) {
       try {
-        const result = await extractFromShopifyAll(collectionUrl, maxItems, this.shopifyKeywords || []);
+        const result = await extractFromShopifyAll(collectionUrl, maxItems, this.shopifyKeywords);
         if (result.products.length > 0) {
           rawProducts = result.products;
           strategy = result.strategy;
@@ -67,7 +79,6 @@ export class BaseAdapter {
       }
     }
 
-    // ── Strategy 3: HTML / Cheerio ────────────────────────────────────
     if (rawProducts.length === 0) {
       try {
         await politeSleep();
@@ -86,66 +97,71 @@ export class BaseAdapter {
       return { products: [], strategy: 'failed', url: collectionUrl };
     }
 
-    // ── Normalize & Validate ─────────────────────────────────────────
     const baseOrigin = this.baseUrl;
     const normalized = [];
 
     for (const raw of rawProducts) {
-      // Map Shopify raw product if needed
       const mapped = raw.handle !== undefined ? mapShopifyProduct(raw, baseOrigin) : raw;
       if (!mapped) continue;
 
-      const product = normalizeProduct(mapped, brandConfig);
-      const { valid, reason } = validateProduct(product);
+      let product = this._normalize(mapped, brandConfig);
+      if (!product && this._repairWithLlm) {
+        product = await tryRepairWithLLM(
+          mapped,
+          brandConfig,
+          'normalize returned null',
+          this._vertical,
+          this._normalize
+        );
+      }
+      if (!product) continue;
 
-      if (valid) {
-        normalized.push(product);
-      } else {
-        logger.warn(`[${this.brand}] Skipped product: ${reason}`, mapped.title || '');
+      let { valid, reason } = this._validate(product);
+      if (!valid && this._repairWithLlm) {
+        const repaired = await tryRepairWithLLM(mapped, brandConfig, reason, this._vertical, this._normalize);
+        if (repaired) {
+          product = repaired;
+          ({ valid, reason } = this._validate(product));
+        }
+      }
+      if (!valid) {
+        logger.warn(`[${this.brand}] Skipped: ${reason}`, mapped.title || '');
+        continue;
       }
 
-      await politeSleep(200); // micro-delay between processing
+      if (product.metadataScore < AI_ENRICH_THRESHOLD || this._needsAi(product)) {
+        product = await this._enrich(product);
+        await politeSleep(300);
+      }
+
+      normalized.push(product);
+      await politeSleep(150);
     }
 
-    logger.success(`[${this.brand}] ${collection.path}: ${normalized.length} valid products (${strategy})`);
+    logger.success(`[${this.brand}] ${collection.path}: ${normalized.length} products (${strategy})`);
     return { products: normalized, strategy, url: collectionUrl };
   }
 
-  /**
-   * extractCollectionProducts(collectionUrl, maxItems)
-   * Default: uses Shopify collection JSON extractor.
-   * Override in subclasses for brand-specific logic.
-   */
   async extractCollectionProducts(collectionUrl, maxItems) {
     return extractFromShopifyCollection(collectionUrl, maxItems);
   }
 
-  /**
-   * getHtmlOptions()
-   * Returns options passed to extractFromHtml in Strategy 3.
-   * Override in subclasses for non-Shopify sites that use different URL formats.
-   */
   getHtmlOptions() {
     return {};
   }
 
-  /**
-   * scrapeAll()
-   * Iterates over all collections in the brand config.
-   * Returns aggregated results for this brand.
-   */
   async scrapeAll() {
     const collections = this.config.collections || [];
     const results = [];
 
     for (const collection of collections) {
-      await politeSleep(); // polite delay between collections
+      await politeSleep();
       const result = await this.scrapeCollection(collection);
       results.push(result);
     }
 
-    const totalProducts = results.reduce((sum, r) => sum + r.products.length, 0);
-    logger.info(`[${this.brand}] Total scraped: ${totalProducts} products across ${collections.length} collections`);
+    const total = results.reduce((sum, r) => sum + r.products.length, 0);
+    logger.info(`[${this.brand}] Total: ${total} products across ${collections.length} collections`);
 
     return results;
   }

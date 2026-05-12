@@ -4,44 +4,39 @@
  */
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
 import { getTextEmbedding } from '../services/huggingface.js';
+import { buildClothingEmbeddingText } from '../services/embeddingText.js';
 
 dotenv.config();
 
 export async function embedAllProducts() {
   try {
-    const products = await Product.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] }).lean();
-    console.log(`\n🔍 Found ${products.length} products needing embeddings.`);
+    const products = await ClothingProduct.find({
+      $or: [{ embedding: { $exists: false } }, { embedding: [] }]
+    }).lean();
+    console.log(`\n🔍 Found ${products.length} clothing products needing embeddings.`);
 
     let updated = 0;
     for (const product of products) {
       try {
-        const text = [
-          product.name,
-          product.brand,
-          product.category,
-          product.subCategory,
-          ...(product.style || []),
-          ...(product.occasion || []),
-          ...(product.colors || [])
-        ].filter(Boolean).join(', ');
+        const text = buildClothingEmbeddingText(product);
 
         const embedding = await getTextEmbedding(text);
-        
+
         if (embedding?.length) {
           const flatEmbedding = Array.isArray(embedding[0]) ? embedding[0] : embedding;
-          await Product.findByIdAndUpdate(product._id, { embedding: flatEmbedding });
+          await ClothingProduct.findByIdAndUpdate(product._id, { embedding: flatEmbedding });
           updated++;
           process.stdout.write(`\r🚀 Embedded ${updated}/${products.length} products`);
         }
-        
-        await new Promise(r => setTimeout(r, 300));
+
+        await new Promise((r) => setTimeout(r, 300));
       } catch (e) {
         console.error(`\n❌ Failed for ${product._id}:`, e.message);
       }
     }
-    
+
     console.log(`\n✨ Finished! Successfully embedded ${updated} products.`);
     return updated;
   } catch (err) {

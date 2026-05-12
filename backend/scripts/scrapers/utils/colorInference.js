@@ -73,7 +73,7 @@ export function inferColors(text) {
   };
 }
 
-/** Legacy single-color helper */
+/** Returns canonical primaryColor (convenience wrapper around inferColors). */
 export function inferColor(text) {
   return inferColors(text).primaryColor;
 }
