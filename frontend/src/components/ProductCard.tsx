@@ -1,16 +1,17 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { favoritesApi } from '@/lib/api';
 
 interface Product {
-  _id: string;
+  _id?: string;
+  id?: string;
   name: string;
   brand: string;
   price: number;
   primaryColor?: string;
   colors?: string[];
-  category: string;
+  category?: string;
   subCategory?: string;
   occasion?: string[];
   images?: string[];
@@ -18,43 +19,115 @@ interface Product {
   compareAtPrice?: number;
 }
 
+function normalizeProductId(product: Product): string | null {
+  const raw = product._id ?? product.id;
+  if (raw == null) return null;
+  const s =
+    typeof raw === 'object' && raw !== null && '$oid' in (raw as Record<string, unknown>)
+      ? String((raw as { $oid: string }).$oid)
+      : String(raw);
+  return /^[a-f0-9]{24}$/i.test(s) ? s : null;
+}
+
 interface ProductCardProps {
   product: Product;
   showBadge?: string;
   width?: number;
+  /** When true, heart starts filled (e.g. on /favorites). Skips initial network check. */
+  favoritedOverride?: boolean;
 }
 
-export default function ProductCard({ product, showBadge, width }: ProductCardProps) {
-  const [isFav, setIsFav] = useState(false);
+export default function ProductCard({ product, showBadge, width, favoritedOverride }: ProductCardProps) {
+  const [isFav, setIsFav] = useState(!!favoritedOverride);
   const [favLoading, setFavLoading] = useState(false);
+
+  const productId = normalizeProductId(product);
+
+  useEffect(() => {
+    setIsFav(!!favoritedOverride);
+  }, [favoritedOverride, productId]);
+
+  useEffect(() => {
+    if (favoritedOverride || !productId) return;
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('fashion_token');
+    if (!token) return;
+
+    let cancelled = false;
+    favoritesApi
+      .check(productId)
+      .then((res) => {
+        if (!cancelled) setIsFav(!!res.data?.favorited);
+      })
+      .catch(() => {
+        /* 401 / network — leave default */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, favoritedOverride]);
 
   const imageUrl = product.imageUrl || product.images?.[0] || '/placeholder.jpg';
   const isOnSale = product.compareAtPrice && product.compareAtPrice > product.price;
 
-  const toggleFavorite = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (favLoading) return;
-    const token = localStorage.getItem('fashion_token');
-    if (!token) { alert('Please login to save favorites'); return; }
-    setFavLoading(true);
-    try {
-      const res = await favoritesApi.toggle(product._id);
-      setIsFav(res.data.favorited);
-    } catch { /* silent */ }
-    finally { setFavLoading(false); }
-  };
+  const toggleFavorite = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (favLoading) return;
+      const token = localStorage.getItem('fashion_token');
+      if (!token) {
+        alert('Please login to save favorites');
+        return;
+      }
+      if (!productId) {
+        alert('This item cannot be saved (missing product id).');
+        return;
+      }
+      setFavLoading(true);
+      try {
+        const res = await favoritesApi.toggle(productId);
+        setIsFav(!!res.data?.favorited);
+      } catch (err: unknown) {
+        const ax = err as { response?: { status?: number; data?: { error?: string } } };
+        const status = ax.response?.status;
+        const msg = ax.response?.data?.error;
+        if (status === 401) alert('Session expired — please log in again.');
+        else if (status === 404) alert(msg || 'Product not found in catalog.');
+        else alert(msg || 'Could not update favorites. Please try again.');
+      } finally {
+        setFavLoading(false);
+      }
+    },
+    [favLoading, productId]
+  );
+
+  if (!productId) {
+    return (
+      <div className="product-card" style={width ? { width } : {}}>
+        <div className="product-card__image">
+          <img src={imageUrl} alt={product.name} loading="lazy" />
+        </div>
+        <div className="product-card__body">
+          <p className="product-card__brand">{product.brand}</p>
+          <h3 className="product-card__name">{product.name}</h3>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="product-card" style={width ? { width } : {}}>
-      <Link href={`/product/${product._id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+      <Link href={`/product/${productId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
         {/* Image */}
         <div className="product-card__image">
           <img
             src={imageUrl}
             alt={product.name}
             loading="lazy"
-            onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/placeholder.jpg';
+            }}
           />
           {/* Overlay with quick-view */}
           <div className="product-card__overlay">
@@ -79,18 +152,15 @@ export default function ProductCard({ product, showBadge, width }: ProductCardPr
           </div>
           {/* Color + Category tags */}
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
-            {product.primaryColor && (
-              <span className="tag">{product.primaryColor}</span>
-            )}
-            {product.subCategory && (
-              <span className="tag">{product.subCategory}</span>
-            )}
+            {product.primaryColor && <span className="tag">{product.primaryColor}</span>}
+            {product.subCategory && <span className="tag">{product.subCategory}</span>}
           </div>
         </div>
       </Link>
 
       {/* Favorite button (outside link to prevent navigation) */}
       <button
+        type="button"
         className={`product-card__fav ${isFav ? 'active' : ''}`}
         onClick={toggleFavorite}
         disabled={favLoading}

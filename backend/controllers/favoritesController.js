@@ -1,8 +1,35 @@
+import mongoose from 'mongoose';
 import Favorite from '../models/Favorite.js';
 import ClothingProduct from '../models/ClothingProduct.js';
+import ShoeProduct from '../models/ShoeProduct.js';
+import JewelryProduct from '../models/JewelryProduct.js';
+import WatchProduct from '../models/WatchProduct.js';
+
+/** Legacy rows created before productKind + refPath existed. */
+async function backfillFavoriteProductKinds() {
+  await Favorite.updateMany(
+    { $or: [{ productKind: { $exists: false } }, { productKind: null }, { productKind: '' }] },
+    { $set: { productKind: 'ClothingProduct' } }
+  );
+}
+
+/**
+ * @param {string} productId
+ * @returns {Promise<'ClothingProduct'|'ShoeProduct'|'JewelryProduct'|'WatchProduct'|null>}
+ */
+async function resolveProductKind(productId) {
+  if (!mongoose.Types.ObjectId.isValid(productId)) return null;
+  if (await ClothingProduct.exists({ _id: productId })) return 'ClothingProduct';
+  if (await ShoeProduct.exists({ _id: productId })) return 'ShoeProduct';
+  if (await JewelryProduct.exists({ _id: productId })) return 'JewelryProduct';
+  if (await WatchProduct.exists({ _id: productId })) return 'WatchProduct';
+  return null;
+}
 
 export async function getFavorites(req, res) {
   try {
+    await backfillFavoriteProductKinds();
+
     const favorites = await Favorite.find({ user: req.user._id })
       .populate({ path: 'product', select: '-embedding' })
       .sort({ createdAt: -1 })
@@ -17,10 +44,12 @@ export async function getFavorites(req, res) {
 
 export async function toggleFavorite(req, res) {
   try {
+    await backfillFavoriteProductKinds();
+
     const { productId } = req.params;
 
-    const exists = await ClothingProduct.findById(productId).select('_id').lean();
-    if (!exists) return res.status(404).json({ error: 'Product not found' });
+    const productKind = await resolveProductKind(productId);
+    if (!productKind) return res.status(404).json({ error: 'Product not found' });
 
     const existing = await Favorite.findOne({ user: req.user._id, product: productId });
 
@@ -31,7 +60,8 @@ export async function toggleFavorite(req, res) {
 
     await Favorite.create({
       user: req.user._id,
-      product: productId
+      product: productId,
+      productKind
     });
     res.status(201).json({ favorited: true, message: 'Added to favorites' });
   } catch (err) {
@@ -51,7 +81,11 @@ export async function removeFavorite(req, res) {
 
 export async function checkFavorite(req, res) {
   try {
-    const exists = await Favorite.exists({ user: req.user._id, product: req.params.productId });
+    const { productId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.json({ favorited: false });
+    }
+    const exists = await Favorite.exists({ user: req.user._id, product: productId });
     res.json({ favorited: !!exists });
   } catch {
     res.status(500).json({ error: 'Failed to check favorite status' });

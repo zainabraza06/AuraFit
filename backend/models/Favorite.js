@@ -1,12 +1,21 @@
 import mongoose from 'mongoose';
 
+/** Must match registered Mongoose model names for populate(refPath). */
+const PRODUCT_KINDS = ['ClothingProduct', 'ShoeProduct', 'JewelryProduct', 'WatchProduct'];
+
 /**
- * Favorite — explicit join table for user-product favorites.
+ * Favorite — user ↔ catalog item (clothing or accessory).
  */
 const FavoriteSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'ClothingProduct', required: true }
+    productKind: {
+      type: String,
+      enum: PRODUCT_KINDS,
+      default: 'ClothingProduct',
+      required: true
+    },
+    product: { type: mongoose.Schema.Types.ObjectId, refPath: 'productKind', required: true }
   },
   { timestamps: true }
 );

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import ProductCard from '@/components/ProductCard';
-import { productsApi, recommendationsApi } from '@/lib/api';
+import { productsApi, recommendationsApi, favoritesApi } from '@/lib/api';
 
 export default function ProductDetailsPage() {
   const { id } = useParams();
@@ -10,6 +10,8 @@ export default function ProductDetailsPage() {
   const [recommendations, setRecommendations] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState('');
+  const [isFav, setIsFav] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -33,6 +35,39 @@ export default function ProductDetailsPage() {
 
     fetchData();
   }, [id]);
+
+  useEffect(() => {
+    if (!product?._id || typeof window === 'undefined') return;
+    const token = localStorage.getItem('fashion_token');
+    if (!token) return;
+    favoritesApi
+      .check(String(product._id))
+      .then((res) => setIsFav(!!res.data?.favorited))
+      .catch(() => {});
+  }, [product?._id]);
+
+  const toggleMainFavorite = async () => {
+    if (!product?._id) return;
+    const token = localStorage.getItem('fashion_token');
+    if (!token) {
+      alert('Please login to save favorites');
+      return;
+    }
+    setFavLoading(true);
+    try {
+      const res = await favoritesApi.toggle(String(product._id));
+      setIsFav(!!res.data?.favorited);
+    } catch (err: unknown) {
+      const ax = err as { response?: { status?: number; data?: { error?: string } } };
+      const status = ax.response?.status;
+      const msg = ax.response?.data?.error;
+      if (status === 401) alert('Session expired — please log in again.');
+      else if (status === 404) alert(msg || 'Product not found in catalog.');
+      else alert(msg || 'Could not update favorites. Please try again.');
+    } finally {
+      setFavLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -121,7 +156,16 @@ export default function ProductDetailsPage() {
               <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg" style={{ flex: 1, justifyContent: 'center' }}>
                 Buy on {product.brand} →
               </a>
-              <button className="btn btn-ghost btn-lg" style={{ flex: 1, justifyContent: 'center' }}>♥ Save</button>
+              <button
+                type="button"
+                className={`btn btn-ghost btn-lg ${isFav ? 'active' : ''}`}
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={toggleMainFavorite}
+                disabled={favLoading}
+                aria-pressed={isFav}
+              >
+                {isFav ? '♥ Saved' : '♡ Save'}
+              </button>
             </div>
           </div>
         </div>

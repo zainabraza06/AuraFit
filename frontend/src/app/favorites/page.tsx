@@ -66,7 +66,7 @@ export default function FavoritesPage() {
         {favorites.length > 0 ? (
           <div className="product-grid">
             {favorites.map((p) => (
-              <ProductCard key={p._id} product={p} />
+              <ProductCard key={p._id} product={p} favoritedOverride />
             ))}
           </div>
         ) : (
