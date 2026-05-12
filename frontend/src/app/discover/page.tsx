@@ -73,7 +73,7 @@ function DiscoverContent() {
       </div>
 
       <div className="container" style={{ padding: '3rem clamp(1rem,4vw,3rem)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2.5rem', alignItems: 'start' }}>
+        <div className="split-grid" style={{ ['--split-aside' as any]: '260px' }}>
 
           {/* ── Sidebar ── */}
           <aside>

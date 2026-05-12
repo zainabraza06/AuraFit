@@ -69,7 +69,7 @@ export default function VisualSearchPage() {
               <p style={{ color: 'var(--text-muted)' }}>Supports JPG, PNG up to 5MB</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'center' }}>
+            <div className="resp-grid-2" style={{ alignItems: 'center' }}>
               <div className="glass-card" style={{ padding: '1rem' }}>
                 <img src={imagePreview} alt="Preview" style={{ width: '100%', borderRadius: 'var(--radius-sm)', maxHeight: '400px', objectFit: 'contain' }} />
                 <button className="btn btn-ghost" style={{ width: '100%', marginTop: '1rem' }} onClick={() => fileInputRef.current?.click()}>
