@@ -12,12 +12,12 @@ const OutfitSchema = new mongoose.Schema({
   },
   heroProduct: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
+    ref: 'ClothingProduct',
     required: true
   },
   accessories: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product'
+    ref: 'ClothingProduct'
   }],
   stylistReasoning: String,
   occasion: [String],

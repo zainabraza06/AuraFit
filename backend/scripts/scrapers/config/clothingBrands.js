@@ -382,6 +382,28 @@ export const CLOTHING_BRANDS = [
       { path: '/collections/sale',
         subCategory: 'other',             occasion: ['casual'],                          style: ['minimal'] }
     ]
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // J. (JUNAID JAMSHED) — junaidjamshed.com  (Shopify) — Women + Men
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    brand: 'J.',
+    baseUrl: 'https://www.junaidjamshed.com',
+    adapter: 'ShopifyGenericAdapter',
+    category: 'clothing',
+    collections: [
+      { path: '/collections/mens-kurta', subCategory: 'mens-kurta', occasion: ['eid', 'casual', 'office'], style: ['minimal', 'printed'], gender: 'men' },
+      { path: '/collections/mens-shalwar-kameez', subCategory: 'mens-shalwar-kameez', occasion: ['eid', 'formal', 'party'], style: ['embroidered', 'elegant'], gender: 'men' },
+      { path: '/collections/mens-unstitched', subCategory: 'mens-unstitched-3-piece', occasion: ['eid', 'casual'], style: ['printed'], gender: 'men' },
+      { path: '/collections/mens-waistcoat', subCategory: 'mens-waistcoat', occasion: ['eid', 'formal', 'wedding'], style: ['embroidered'], gender: 'men' },
+      { path: '/collections/mens-western-wear', subCategory: 'mens-western-sets', occasion: ['casual', 'office'], style: ['western', 'minimal'], gender: 'men' },
+      { path: '/collections/mens-casual-shirts', subCategory: 'mens-shirt-tops', occasion: ['casual', 'office'], style: ['printed', 'minimal'], gender: 'men' },
+      { path: '/collections/mens-t-shirts', subCategory: 'mens-shirt-tops', occasion: ['casual'], style: ['printed', 'minimal'], gender: 'men' },
+      { path: '/collections/womens-kurta', subCategory: 'kurta', occasion: ['casual', 'office', 'eid'], style: ['printed', 'minimal'], gender: 'women' },
+      { path: '/collections/womens-2-piece-suit', subCategory: '2-piece', occasion: ['casual', 'party'], style: ['printed', 'elegant'], gender: 'women' },
+      { path: '/collections/womens-3-piece-suit', subCategory: '3-piece', occasion: ['party', 'eid'], style: ['embroidered', 'elegant'], gender: 'women' }
+    ]
   }
 
 ];

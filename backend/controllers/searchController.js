@@ -1,4 +1,15 @@
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
+import { formatClothingForApi } from '../services/productCompat.js';
+import { attachGenderFilter } from '../utils/catalogQuery.js';
+
+async function runClothingFind(query, sortObj, skip, limitNum, withTextScore = false) {
+  const proj = withTextScore ? { score: { $meta: 'textScore' }, embedding: 0 } : { embedding: 0 };
+  let q = ClothingProduct.find(query, proj).skip(skip).limit(limitNum);
+  if (withTextScore) q = q.sort({ score: { $meta: 'textScore' } });
+  else q = q.sort(sortObj);
+  const raw = await q.lean();
+  return raw.map(formatClothingForApi);
+}
 
 export async function search(req, res) {
   try {
@@ -10,7 +21,8 @@ export async function search(req, res) {
       minPrice,
       maxPrice,
       page = 1,
-      limit = 24
+      limit = 24,
+      gender
     } = req.query;
 
     const query = {};
@@ -21,7 +33,10 @@ export async function search(req, res) {
       query.$text = { $search: q };
     }
 
-    if (category) query.category = category;
+    if (category === 'clothing') query.category = 'clothing';
+
+    attachGenderFilter(query, gender);
+
     if (color) {
       query.$or = [
         { primaryColor: { $regex: color, $options: 'i' } },
@@ -36,47 +51,60 @@ export async function search(req, res) {
     }
 
     const skip = (pageNum - 1) * limitNum;
-    let products, total;
+    const sortObj = { scrapedAt: -1 };
+    let products;
+    let total;
+
+    const cq = { ...query };
+    if (!category) delete cq.category;
 
     if (q.trim().length > 0) {
-      [products, total] = await Promise.all([
-        Product.find(query, { score: { $meta: 'textScore' }, embedding: 0 })
-          .sort({ score: { $meta: 'textScore' } })
-          .skip(skip)
-          .limit(limitNum)
-          .lean(),
-        Product.countDocuments(query)
-      ]);
-
+      products = await runClothingFind(cq, sortObj, skip, limitNum, true);
+      total = await ClothingProduct.countDocuments(cq);
       if (products.length === 0 && q.trim()) {
-        const regexQuery = {
+        const textMatch = {
           $or: [
             { name: { $regex: q, $options: 'i' } },
             { brand: { $regex: q, $options: 'i' } },
             { tags: { $elemMatch: { $regex: q, $options: 'i' } } },
             { description: { $regex: q, $options: 'i' } }
-          ],
-          ...(category ? { category } : {}),
-          ...(color ? { primaryColor: { $regex: color, $options: 'i' } } : {})
+          ]
         };
-        [products, total] = await Promise.all([
-          Product.find(regexQuery, { embedding: 0 })
-            .sort({ metadataScore: -1, scrapedAt: -1 })
-            .skip(skip)
-            .limit(limitNum)
-            .lean(),
-          Product.countDocuments(regexQuery)
-        ]);
-      }
-    } else {
-      [products, total] = await Promise.all([
-        Product.find(query, { embedding: 0 })
-          .sort({ scrapedAt: -1 })
+        const andParts = [textMatch];
+        if (color) {
+          andParts.push({
+            $or: [
+              { primaryColor: { $regex: color, $options: 'i' } },
+              { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
+            ]
+          });
+        }
+        const regexQuery = { $and: andParts };
+        attachGenderFilter(regexQuery, gender);
+        if (category === 'clothing') regexQuery.category = 'clothing';
+        if (occasion) regexQuery.occasion = { $in: Array.isArray(occasion) ? occasion : [occasion] };
+        if (minPrice || maxPrice) {
+          regexQuery.price = {};
+          if (minPrice) regexQuery.price.$gte = Number(minPrice);
+          if (maxPrice) regexQuery.price.$lte = Number(maxPrice);
+        }
+
+        const raw = await ClothingProduct.find(regexQuery, { embedding: 0 })
+          .sort({ metadataScore: -1, scrapedAt: -1 })
           .skip(skip)
           .limit(limitNum)
-          .lean(),
-        Product.countDocuments(query)
-      ]);
+          .lean();
+        products = raw.map(formatClothingForApi);
+        total = await ClothingProduct.countDocuments(regexQuery);
+      }
+    } else {
+      const raw = await ClothingProduct.find(cq, { embedding: 0 })
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum)
+        .lean();
+      products = raw.map(formatClothingForApi);
+      total = await ClothingProduct.countDocuments(cq);
     }
 
     res.json({
@@ -101,15 +129,17 @@ export async function getSuggestions(req, res) {
     const { q = '' } = req.query;
     if (q.length < 2) return res.json({ suggestions: [] });
 
-    const products = await Product.find(
+    const fromClothing = await ClothingProduct.find(
       { name: { $regex: q, $options: 'i' } },
       { name: 1, brand: 1, category: 1 }
-    ).limit(8).lean();
+    )
+      .limit(10)
+      .lean();
 
-    const suggestions = products.map((p) => ({
+    const suggestions = fromClothing.map((p) => ({
       id: p._id,
       label: `${p.name} — ${p.brand}`,
-      category: p.category
+      category: p.category || 'clothing'
     }));
 
     res.json({ suggestions });

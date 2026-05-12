@@ -6,7 +6,7 @@ import {
   buildShopifyCollectionProductsJsonUrl,
   inferColor,
   normalizeShopifyProduct
-} from './scraper.js';
+} from './utils/shopifyJsonHelpers.js';
 
 test('inferColor maps common colors', () => {
   assert.equal(inferColor('Red Silk Kurti'), 'Red');

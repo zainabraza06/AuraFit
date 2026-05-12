@@ -19,7 +19,7 @@ const UserSchema = new mongoose.Schema(
     },
 
     // Quick-access favorites list (product IDs)
-    favoriteProducts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }]
+    favoriteProducts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ClothingProduct' }]
   },
   { timestamps: true }
 );

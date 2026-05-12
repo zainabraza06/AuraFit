@@ -1,4 +1,6 @@
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
+import { formatClothingForApi } from '../services/productCompat.js';
+import { attachGenderFilter } from '../utils/catalogQuery.js';
 
 export async function getProducts(req, res) {
   try {
@@ -14,18 +16,20 @@ export async function getProducts(req, res) {
       minPrice,
       maxPrice,
       sort = 'scrapedAt',
-      order = 'desc'
+      order = 'desc',
+      gender
     } = req.query;
 
     const query = {};
-
-    if (category) query.category = category;
     if (brand) query.brand = { $regex: brand, $options: 'i' };
     if (subCategory) query.subCategory = subCategory;
-    if (color) query.$or = [
-      { primaryColor: { $regex: color, $options: 'i' } },
-      { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
-    ];
+    attachGenderFilter(query, gender);
+    if (color) {
+      query.$or = [
+        { primaryColor: { $regex: color, $options: 'i' } },
+        { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
+      ];
+    }
     if (occasion) query.occasion = { $in: Array.isArray(occasion) ? occasion : [occasion] };
     if (style) query.style = { $in: Array.isArray(style) ? style : [style] };
     if (minPrice || maxPrice) {
@@ -39,10 +43,15 @@ export async function getProducts(req, res) {
     const skip = (pageNum - 1) * limitNum;
     const sortObj = { [sort]: order === 'asc' ? 1 : -1 };
 
-    const [products, total] = await Promise.all([
-      Product.find(query).sort(sortObj).skip(skip).limit(limitNum).select('-embedding').lean(),
-      Product.countDocuments(query)
+    if (category === 'clothing') query.category = 'clothing';
+    const cq = { ...query };
+    if (!category) delete cq.category;
+
+    const [raw, total] = await Promise.all([
+      ClothingProduct.find(cq).sort(sortObj).skip(skip).limit(limitNum).select('-embedding').lean(),
+      ClothingProduct.countDocuments(cq)
     ]);
+    const products = raw.map(formatClothingForApi);
 
     res.json({
       products,
@@ -62,20 +71,16 @@ export async function getProducts(req, res) {
 
 export async function getFeaturedProducts(req, res) {
   try {
-    const [clothing, shoes] = await Promise.all([
-      Product.aggregate([
-        { $match: { category: 'clothing', images: { $exists: true, $ne: [] } } },
-        { $sample: { size: 6 } },
-        { $project: { embedding: 0 } }
-      ]),
-      Product.aggregate([
-        { $match: { category: 'shoes', images: { $exists: true, $ne: [] } } },
-        { $sample: { size: 4 } },
-        { $project: { embedding: 0 } }
-      ])
-    ]);
+    const match = { images: { $exists: true, $ne: [] } };
+    attachGenderFilter(match, req.query.gender);
 
-    res.json({ featured: [...clothing, ...shoes] });
+    const clothingRaw = await ClothingProduct.aggregate([
+      { $match: match },
+      { $sample: { size: 10 } },
+      { $project: { embedding: 0 } }
+    ]);
+    const featured = clothingRaw.map(formatClothingForApi);
+    res.json({ featured });
   } catch {
     res.status(500).json({ error: 'Failed to fetch featured products' });
   }
@@ -83,24 +88,25 @@ export async function getFeaturedProducts(req, res) {
 
 export async function getProductStats(req, res) {
   try {
-    const [total, byCategory, byBrand, priceRange] = await Promise.all([
-      Product.countDocuments(),
-      Product.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }]),
-      Product.aggregate([
+    const [total, cByBrand, cPrice] = await Promise.all([
+      ClothingProduct.countDocuments(),
+      ClothingProduct.aggregate([
         { $group: { _id: '$brand', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 10 }
+        { $limit: 12 }
       ]),
-      Product.aggregate([
+      ClothingProduct.aggregate([
         { $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' }, avg: { $avg: '$price' } } }
       ])
     ]);
 
+    const byCategory = [{ _id: 'clothing', count: total }];
+
     res.json({
       total,
       byCategory,
-      topBrands: byBrand,
-      priceRange: priceRange[0] || { min: 0, max: 0, avg: 0 }
+      topBrands: cByBrand,
+      priceRange: cPrice[0] || { min: 0, max: 0, avg: 0 }
     });
   } catch {
     res.status(500).json({ error: 'Failed to fetch stats' });
@@ -109,9 +115,9 @@ export async function getProductStats(req, res) {
 
 export async function getProductById(req, res) {
   try {
-    const product = await Product.findById(req.params.id).select('-embedding').lean();
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    res.json({ product });
+    const raw = await ClothingProduct.findById(req.params.id).select('-embedding').lean();
+    if (!raw) return res.status(404).json({ error: 'Product not found' });
+    res.json({ product: formatClothingForApi(raw) });
   } catch (err) {
     if (err.name === 'CastError') return res.status(400).json({ error: 'Invalid product ID' });
     res.status(500).json({ error: 'Failed to fetch product' });

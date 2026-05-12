@@ -13,102 +13,20 @@
  *   4. Top 10 ranked results returned; one best-matching shoe found per product.
  */
 
-import Product from '../models/Product.js';
+import ClothingProduct from '../models/ClothingProduct.js';
+import { formatClothingForApi, intentPrintToPatterns } from './productCompat.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
 import { rankProductsWithAI } from './aiService.js';
+import { normalizeColor } from './colorNormalize.js';
 
-// ─── Canonical color list & alias map ────────────────────────────────────────
+// ─── Canonical color list ────────────────────────────────────────────────────
 export const CANONICAL_COLORS = [
   'Black', 'White', 'Grey', 'Red', 'Pink', 'Purple',
   'Blue', 'Green', 'Teal', 'Yellow', 'Orange',
   'Gold', 'Beige', 'Brown', 'Multicolor'
 ];
 
-const COLOR_ALIASES = {
-  'navy': 'Blue', 'navy blue': 'Blue', 'sky blue': 'Blue', 'cobalt': 'Blue',
-  'royal blue': 'Blue', 'light blue': 'Blue', 'powder blue': 'Blue',
-  'steel blue': 'Blue', 'pastel blue': 'Blue', 'dark blue': 'Blue',
-  'deep blue': 'Blue', 'midnight blue': 'Blue', 'electric blue': 'Blue',
-  'baby blue': 'Blue', 'prussian blue': 'Blue', 'cerulean': 'Blue',
-  'azure': 'Blue', 'denim': 'Blue', 'indigo': 'Blue', 'nila': 'Blue',
-  'emerald': 'Green', 'olive': 'Green', 'mint': 'Green', 'sage': 'Green',
-  'forest green': 'Green', 'bottle green': 'Green', 'sea green': 'Green',
-  'dark green': 'Green', 'deep green': 'Green', 'mehendi green': 'Green',
-  'mint green': 'Green', 'lime green': 'Green', 'lime': 'Green',
-  'pista': 'Green', 'pistachio': 'Green', 'apple green': 'Green',
-  'jungle green': 'Green', 'hunter green': 'Green', 'kelly green': 'Green',
-  'army green': 'Green', 'military green': 'Green', 'forest': 'Green',
-  'neon green': 'Green', 'grass green': 'Green', 'parrot green': 'Green',
-  'dhani': 'Green', 'mehendi': 'Green', 'sabz': 'Green',
-  'maroon': 'Red', 'crimson': 'Red', 'burgundy': 'Red', 'wine': 'Red',
-  'rust': 'Red', 'dark red': 'Red', 'deep red': 'Red', 'brick red': 'Red',
-  'dark maroon': 'Red', 'deep maroon': 'Red', 'dark burgundy': 'Red',
-  'cherry': 'Red', 'cardinal': 'Red', 'scarlet': 'Red', 'ruby': 'Red',
-  'raspberry': 'Red', 'strawberry': 'Red', 'blood red': 'Red',
-  'mehroon': 'Red', 'mehrun': 'Red', 'merun': 'Red', 'surkh': 'Red', 'laal': 'Red',
-  'beige': 'Beige', 'nude': 'Beige', 'camel': 'Beige', 'fawn': 'Beige',
-  'khaki': 'Beige', 'khaaki': 'Beige', 'sand': 'Beige', 'oat': 'Beige',
-  'linen': 'Beige', 'biscuit': 'Beige', 'wheat': 'Beige', 'taupe': 'Beige',
-  'nude beige': 'Beige', 'warm beige': 'Beige', 'natural': 'Beige',
-  'ivory': 'White', 'cream': 'White', 'off white': 'White', 'off-white': 'White',
-  'snow': 'White', 'pearl': 'White', 'chalk': 'White', 'milk white': 'White',
-  'pure white': 'White', 'bright white': 'White', 'warm white': 'White',
-  'eggshell': 'White', 'antique white': 'White', 'safed': 'White',
-  'silver': 'Grey', 'ash': 'Grey', 'steel grey': 'Grey', 'slate': 'Grey',
-  'stone': 'Grey', 'smoke': 'Grey', 'gray': 'Grey', 'grey': 'Grey',
-  'light grey': 'Grey', 'dark grey': 'Grey', 'steel gray': 'Grey',
-  'platinum': 'Grey', 'gunmetal': 'Grey', 'charcoal grey': 'Grey',
-  'warm grey': 'Grey', 'cool grey': 'Grey', 'dove grey': 'Grey',
-  'charcoal': 'Black', 'graphite': 'Black', 'onyx': 'Black',
-  'ebony': 'Black', 'jet black': 'Black', 'pitch black': 'Black', 'off black': 'Black',
-  'blush': 'Pink', 'peach': 'Pink', 'rose': 'Pink', 'fuchsia': 'Pink',
-  'hot pink': 'Pink', 'dusty pink': 'Pink', 'baby pink': 'Pink',
-  'nude pink': 'Pink', 'pastel pink': 'Pink', 'dusty rose': 'Pink',
-  'old rose': 'Pink', 'candy pink': 'Pink', 'shocking pink': 'Pink',
-  'light pink': 'Pink', 'deep pink': 'Pink', 'salmon': 'Pink',
-  'magenta': 'Pink', 'cerise': 'Pink', 'flamingo': 'Pink',
-  'carnation': 'Pink', 'blush pink': 'Pink', 'rose pink': 'Pink',
-  'bubblegum': 'Pink', 'millennial pink': 'Pink', 'macaroon pink': 'Pink', 'gulabi': 'Pink',
-  'lavender': 'Purple', 'lilac': 'Purple', 'mauve': 'Purple', 'plum': 'Purple',
-  'violet': 'Purple', 'grape': 'Purple', 'wisteria': 'Purple',
-  'pastel purple': 'Purple', 'light purple': 'Purple', 'deep purple': 'Purple',
-  'dark purple': 'Purple', 'royal purple': 'Purple', 'dusty purple': 'Purple',
-  'amethyst': 'Purple', 'orchid': 'Purple', 'heather': 'Purple', 'periwinkle': 'Purple',
-  'jamuni': 'Purple', 'baingan': 'Purple',
-  'coral': 'Orange', 'terracotta': 'Orange', 'amber': 'Orange',
-  'burnt orange': 'Orange', 'peach orange': 'Orange', 'apricot': 'Orange',
-  'pumpkin': 'Orange', 'tangerine': 'Orange', 'mango': 'Orange',
-  'deep orange': 'Orange', 'burnt sienna': 'Orange', 'copper': 'Orange', 'narangi': 'Orange',
-  'mustard': 'Yellow', 'lemon': 'Yellow', 'saffron': 'Yellow',
-  'lemon yellow': 'Yellow', 'pastel yellow': 'Yellow', 'butter': 'Yellow',
-  'canary': 'Yellow', 'sunflower': 'Yellow', 'golden yellow': 'Yellow',
-  'bright yellow': 'Yellow', 'neon yellow': 'Yellow', 'chartreuse': 'Yellow',
-  'ochre': 'Yellow', 'corn': 'Yellow', 'honey': 'Yellow', 'zard': 'Yellow', 'peela': 'Yellow',
-  'golden': 'Gold', 'gold': 'Gold', 'antique gold': 'Gold', 'dull gold': 'Gold',
-  'champagne': 'Gold', 'bronze': 'Gold', 'brass': 'Gold', 'metallic gold': 'Gold',
-  'light gold': 'Gold', 'rose gold': 'Gold',
-  'turquoise': 'Teal', 'aqua': 'Teal', 'cyan': 'Teal', 'seafoam': 'Teal',
-  'teal green': 'Teal', 'dark teal': 'Teal', 'deep teal': 'Teal',
-  'teal blue': 'Teal', 'peacock': 'Teal', 'peacock blue': 'Teal',
-  'ferozi': 'Teal', 'firozi': 'Teal',
-  'chocolate': 'Brown', 'mocha': 'Brown', 'coffee': 'Brown', 'caramel': 'Brown',
-  'tan': 'Brown', 'walnut': 'Brown', 'toffee': 'Brown', 'chestnut': 'Brown',
-  'dark brown': 'Brown', 'light brown': 'Brown', 'mahogany': 'Brown',
-  'sienna': 'Brown', 'sepia': 'Brown', 'hazel': 'Brown', 'cocoa': 'Brown',
-  'saddle brown': 'Brown', 'raw umber': 'Brown',
-  'multi': 'Multicolor', 'multicolor': 'Multicolor', 'multi-color': 'Multicolor',
-  'multi colour': 'Multicolor', 'multicolour': 'Multicolor',
-  'printed': 'Multicolor', 'colourful': 'Multicolor', 'colorful': 'Multicolor',
-  'floral': 'Multicolor', 'patterned': 'Multicolor', 'geometric': 'Multicolor',
-  'abstract': 'Multicolor', 'tie dye': 'Multicolor', 'ombre': 'Multicolor'
-};
-
-export function normalizeColor(color) {
-  if (!color) return null;
-  const lower = color.toLowerCase().trim();
-  if (COLOR_ALIASES[lower]) return COLOR_ALIASES[lower];
-  return color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
-}
+export { normalizeColor };
 
 // ─── Cosine similarity ────────────────────────────────────────────────────────
 function cosineSimilarity(a, b) {
@@ -278,7 +196,8 @@ function buildDBQuery(intent, dropped, colorMode) {
     query.occasion = { $in: [...expanded] };
   }
   if (!dropped.has('print') && intent.print) {
-    query.print = intent.print;
+    const patterns = intentPrintToPatterns(intent.print);
+    if (patterns.length) query.pattern = { $in: patterns };
   }
   if (!dropped.has('dressStyle') && intent.dressStyle) {
     const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
@@ -299,10 +218,11 @@ function buildDBQuery(intent, dropped, colorMode) {
     }
   }
   if (!dropped.has('stitching') && intent.stitching) {
-    query.stitching = intent.stitching;
+    if (intent.stitching === 'unstitched') query.stitchedType = 'unstitched';
+    else query.stitchedType = { $in: ['stitched', 'semi-stitched'] };
   }
   if (!dropped.has('pieces') && intent.pieces) {
-    query.pieces = intent.pieces;
+    query['pieceDetails.totalCount'] = intent.pieces;
   }
   if (!dropped.has('fabric') && intent.fabric) {
     query.fabric = { $regex: new RegExp(intent.fabric, 'i') };
@@ -319,7 +239,8 @@ function buildDBQuery(intent, dropped, colorMode) {
   return query;
 }
 
-const SELECT_FIELDS = 'name brand category subCategory dressStyle stitching print pieces fabric type price primaryColor colors primaryExactColor exactColors occasion style tags imageUrl images productUrl description gender';
+const SELECT_CLOTHING =
+  'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion style tags imageUrl images productUrl description gender metadataScore embedding';
 
 async function fetchCandidates(intent) {
   const specified = getSpecifiedConstraints(intent);
@@ -363,7 +284,8 @@ async function fetchCandidates(intent) {
 
   for (const level of levels) {
     const query = buildDBQuery(intent, level.dropped, level.colorMode);
-    const pool = await Product.find(query).select(SELECT_FIELDS).limit(100).lean();
+    const poolRaw = await ClothingProduct.find(query).select(SELECT_CLOTHING).limit(100).lean();
+    const pool = poolRaw.map(formatClothingForApi);
 
     if (pool.length > bestProducts.length) {
       bestProducts = pool;
@@ -410,10 +332,8 @@ function scoreAgainstIntent(product, intent) {
 
 // ─── Find one best shoe per dress ────────────────────────────────────────────
 async function fetchShoePool() {
-  return Product.find({ category: 'shoes' })
-    .select('name brand category subCategory price primaryColor colors occasion style tags imageUrl images productUrl')
-    .limit(80)
-    .lean();
+  // Catalog is clothing-only (single ClothingProduct collection for recommendations).
+  return [];
 }
 
 function matchShoesFromPool(dresses, shoePool) {
@@ -487,16 +407,17 @@ export async function getOutfitForQuery(intent) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function getRecommendations(productId, options = {}) {
   const { maxShoes = 6, maxClothing = 6 } = options;
-  const source = await Product.findById(productId).lean();
-  if (!source) throw new Error('Product not found');
+  const srcRaw = await ClothingProduct.findById(productId).lean();
+  if (!srcRaw) throw new Error('Product not found');
+  const source = formatClothingForApi(srcRaw);
 
   const baseQuery = { _id: { $ne: source._id } };
-  const isClothing = source.category === 'clothing';
 
-  const [shoePool, clothingPool] = await Promise.all([
-    isClothing ? Product.find({ ...baseQuery, category: 'shoes' }).limit(100).lean() : [],
-    Product.find({ ...baseQuery, category: 'clothing' }).limit(isClothing ? 50 : 100).lean()
+  const [shoePool, clothingPoolRaw] = await Promise.all([
+    Promise.resolve([]),
+    ClothingProduct.find(baseQuery).limit(100).lean()
   ]);
+  const clothingPool = clothingPoolRaw.map(formatClothingForApi);
 
   const scoredShoes    = shoePool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxShoes);
   const scoredClothing = clothingPool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxClothing);
@@ -504,6 +425,4 @@ export async function getRecommendations(productId, options = {}) {
   return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
 }
 
-// Exported for vectorSearch.js compatibility
-export { scoreProductAgainstIntent };
-function scoreProductAgainstIntent() { return { total: 0 }; } // stub — no longer used internally
+export { scoreProductAgainstIntent, textualMatchScore } from './intentScoring.js';

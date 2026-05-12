@@ -1,6 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import axios from 'axios';
 import dotenv from 'dotenv';
+import { completeJsonWithProviderFallback, parseIntentWithProviderOrder } from './llmClient.js';
 
 dotenv.config();
 
@@ -20,10 +19,10 @@ export async function rankProductsWithAI(products, intent) {
   Color: ${p.primaryExactColor || p.primaryColor || 'N/A'}
   Occasion: ${(p.occasion || []).join(', ') || 'N/A'}
   Dress style: ${p.dressStyle || p.subCategory || 'N/A'}
-  Print/Work: ${p.print || 'N/A'}
-  Stitching: ${p.stitching || 'N/A'}
+  Print/Work: ${p.print || p.pattern || 'N/A'}
+  Stitching: ${p.stitching || p.stitchedType || 'N/A'}
   Fabric: ${p.fabric || 'N/A'}
-  Description: ${(p.description || '').slice(0, 300)}`
+  Description: ${(p.description || '').slice(0, 2000)}`
     )
     .join('\n\n');
 
@@ -73,74 +72,19 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
       .filter((r) => r.product != null);
   }
 
-  // 1. Gemini 2.5 Flash
-  if (process.env.GEMINI_API_KEY) {
-    for (const modelName of ['gemini-2.5-flash', 'gemini-1.5-flash']) {
-      try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-        });
-        const result = await model.generateContent(prompt);
-        return parseRankings(result.response.text());
-      } catch (err) {
-        console.warn(`[rankProductsWithAI] ${modelName} failed:`, err.message);
-      }
-    }
+  try {
+    const { text, provider } = await completeJsonWithProviderFallback({
+      system:
+        'You are AuraFit\'s fashion ranker. Output a single valid JSON object exactly as requested. No markdown, no commentary.',
+      user: prompt,
+      temperature: 0.2
+    });
+    console.log(`[rankProductsWithAI] ranked via ${provider}`);
+    return parseRankings(text);
+  } catch (err) {
+    console.warn('[rankProductsWithAI] All providers exhausted:', err.message);
   }
 
-  // 3. Groq
-  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here') {
-    try {
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: 'You are a fashion product ranker. Return ONLY valid JSON.' },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.1,
-          response_format: { type: 'json_object' }
-        },
-        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' } }
-      );
-      return parseRankings(response.data.choices[0].message.content);
-    } catch (err) {
-      console.warn('[rankProductsWithAI] Groq failed:', err.message);
-    }
-  }
-
-  // 4. OpenRouter
-  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'your_openrouter_api_key_here') {
-    try {
-      const response = await axios.post(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-          model: 'google/gemma-2-9b-it:free',
-          messages: [
-            { role: 'system', content: 'You are a fashion product ranker. Return ONLY valid JSON.' },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.1
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://aurafit.com',
-            'X-Title': 'AuraFit'
-          }
-        }
-      );
-      return parseRankings(response.data.choices[0].message.content);
-    } catch (err) {
-      console.warn('[rankProductsWithAI] OpenRouter failed:', err.message);
-    }
-  }
-
-  console.warn('[rankProductsWithAI] All providers exhausted, returning original order');
   return products.map((p, i) => ({ product: p, rank: i + 1, reason: null }));
 }
 
@@ -152,168 +96,26 @@ const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','k
  * to map them to a canonical value. Returns null if no mapping exists.
  */
 export async function mapDressStyleWithAI(term) {
-  const prompt = `You are a Pakistani fashion expert. Map the garment term "${term}" to EXACTLY ONE value from this list: ${VALID_DRESS_STYLES.join(', ')}. Return ONLY a JSON object like {"dressStyle":"shalwar-kameez"} or {"dressStyle":null} if it does not fit any category.`;
+  const user = `You are a Pakistani fashion expert. Map the garment term "${term}" to EXACTLY ONE value from this list: ${VALID_DRESS_STYLES.join(', ')}. Return ONLY a JSON object like {"dressStyle":"shalwar-kameez"} or {"dressStyle":null} if it does not fit any category.`;
 
-  if (process.env.GEMINI_API_KEY) {
-    for (const modelName of ['gemini-2.5-flash', 'gemini-1.5-flash']) {
-      try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.0 }
-        });
-        const result = await model.generateContent(prompt);
-        const parsed = JSON.parse(result.response.text());
-        const mapped = parsed?.dressStyle?.toLowerCase?.().trim();
-        return VALID_DRESS_STYLES.includes(mapped) ? mapped : null;
-      } catch { /* try next */ }
-    }
-  }
-
-  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here') {
-    try {
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        { model: 'llama-3.1-8b-instant', messages: [{ role: 'user', content: prompt }], temperature: 0.0, response_format: { type: 'json_object' } },
-        { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' } }
-      );
-      const parsed = JSON.parse(response.data.choices[0].message.content);
-      const mapped = parsed?.dressStyle?.toLowerCase?.().trim();
-      return VALID_DRESS_STYLES.includes(mapped) ? mapped : null;
-    } catch { /* fall through */ }
-  }
-
-  return null;
-}
-
-/**
- * AuraFit Unified AI Service
- * Orchestrates multi-provider fallbacks for Intent Parsing.
- * Order: Gemini 2.5 -> Gemini 1.5 -> Groq (Llama 3) -> OpenRouter
- */
-
-export const parseIntentWithFallback = async (message, prompt) => {
-  // 1. Try Gemini 2.5 Flash (Primary)
   try {
-    const result = await callGemini(message, prompt, 'gemini-2.5-flash');
-    console.log('🤖 Intent parsed by: Gemini 2.5 Flash');
-    return result;
-  } catch (err) {
-    console.warn('⚠️ Gemini 2.5 failed, falling back to Groq:', err.message);
-  }
-
-  // 2. Try Groq (Fallback 1)
-  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here') {
-    try {
-      const result = await callGroq(message, prompt);
-      console.log('🤖 Intent parsed by: Groq (Llama 3)');
-      return result;
-    } catch (err) {
-      console.warn('⚠️ Groq failed, falling back to OpenRouter:', err.message);
-    }
-  }
-
-  // 3. Try OpenRouter (Fallback 2)
-  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'your_openrouter_api_key_here') {
-    try {
-      const result = await callOpenRouter(message, prompt);
-      console.log('🤖 Intent parsed by: OpenRouter (Mistral Free)');
-      return result;
-    } catch (err) {
-      console.warn('⚠️ OpenRouter failed, falling back to Gemini 1.5:', err.message);
-    }
-  }
-
-  // 4. Try Gemini 1.5 Flash (Final Fallback)
-  try {
-    const result = await callGemini(message, prompt, 'gemini-1.5-flash');
-    console.log('🤖 Intent parsed by: Gemini 1.5 Flash');
-    return result;
-  } catch (err) {
-    console.error('❌ All AI providers exhausted or failed:', err.message);
-    throw new Error('All AI providers exhausted or failed.');
-  }
-};
-
-/**
- * Helper: Google Gemini Call
- */
-async function callGemini(message, prompt, modelName) {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
-  
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
-  });
-
-  const result = await model.generateContent(prompt + `\n\nUser Request: "${message}"`);
-  const response = await result.response;
-  let text = response.text();
-  if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-  return JSON.parse(text);
-}
-
-/**
- * Helper: Groq Call (Llama 3 70B)
- */
-async function callGroq(message, prompt) {
-  try {
-    const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: prompt + " Return ONLY a valid JSON object." },
-          { role: 'user', content: message }
-        ],
-        temperature: 0.1,
-        response_format: { type: 'json_object' }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    const content = response.data.choices[0].message.content;
-    return JSON.parse(extractJson(content));
-  } catch (err) {
-    throw new Error(`Groq API Error: ${err.response?.data?.error?.message || err.message}`);
+    const { text } = await completeJsonWithProviderFallback({
+      system: 'Reply with JSON only.',
+      user,
+      temperature: 0
+    });
+    const parsed = JSON.parse(extractJson(text));
+    const mapped = parsed?.dressStyle?.toLowerCase?.().trim();
+    return VALID_DRESS_STYLES.includes(mapped) ? mapped : null;
+  } catch {
+    return null;
   }
 }
 
 /**
- * Helper: OpenRouter Call
+ * Intent parsing — OpenRouter → Groq → Gemini 1.5 → Gemini 2.5
  */
-async function callOpenRouter(message, prompt) {
-  try {
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'google/gemma-2-9b-it:free',
-        messages: [
-          { role: 'system', content: prompt + " Return ONLY a valid JSON object." },
-          { role: 'user', content: message }
-        ],
-        temperature: 0.1
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://aurafit.com',
-          'X-Title': 'AuraFit'
-        }
-      }
-    );
-    const content = response.data.choices[0].message.content;
-    return JSON.parse(extractJson(content));
-  } catch (err) {
-    throw new Error(`OpenRouter API Error: ${err.response?.data?.error?.message || err.message}`);
-  }
-}
+export const parseIntentWithFallback = async (message, prompt) => parseIntentWithProviderOrder(message, prompt);
 
 /**
  * Utility: Robust JSON extraction from LLM response
