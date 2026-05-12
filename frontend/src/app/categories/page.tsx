@@ -45,13 +45,13 @@ export default function CategoriesPage() {
           <h1 className="title" style={{ marginTop: '0.75rem' }}>Collections by Category</h1>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem', marginBottom: '6rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '2rem', marginBottom: '6rem' }}>
           {CATEGORIES.map((cat) => (
             <Link key={cat.id} href={`/discover?category=${cat.id}`} style={{ textDecoration: 'none' }}>
               <div className="product-card" style={{ height: '400px' }}>
                 <div className="product-card__image" style={{ height: '100%' }}>
                   <img src={cat.image} alt={cat.name} />
-                  <div className="product-card__overlay" style={{ opacity: 1, background: 'linear-gradient(to top, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.2) 100%)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'flex-start', padding: '2.5rem' }}>
+                  <div className="product-card__overlay" style={{ opacity: 1, background: 'linear-gradient(to top, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.2) 100%)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'flex-start', padding: 'clamp(1.25rem,4vw,2.5rem)' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{cat.icon}</div>
                     <h2 className="title" style={{ color: 'var(--text-primary)', fontSize: '2rem', marginBottom: '0.5rem' }}>{cat.name}</h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '300px' }}>{cat.desc}</p>

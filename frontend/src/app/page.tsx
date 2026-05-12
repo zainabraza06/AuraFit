@@ -219,11 +219,11 @@ export default function HomePage() {
                 </div>
 
                 {/* Hero card */}
-                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', display: 'grid', gridTemplateColumns: 'clamp(220px,30%,340px) 1fr', boxShadow: 'var(--shadow-lg), var(--shadow-gold)', marginBottom: '2.5rem' }}>
-                  <div style={{ backgroundImage: `url(${chatResult.results[0].product.imageUrl || chatResult.results[0].product.images?.[0] || '/placeholder.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'top center', minHeight: 400, position: 'relative' }}>
+                <div className="featured-pick" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-accent)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-lg), var(--shadow-gold)', marginBottom: '2.5rem' }}>
+                  <div className="featured-pick__media" style={{ backgroundImage: `url(${chatResult.results[0].product.imageUrl || chatResult.results[0].product.images?.[0] || '/placeholder.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'top center', position: 'relative' }}>
                     <div style={{ position: 'absolute', top: 12, left: 12, background: 'var(--accent)', color: '#0c0b0a', padding: '0.22rem 0.65rem', borderRadius: 2, fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase' }}>✦ AI Pick</div>
                   </div>
-                  <div style={{ padding: '2rem 2.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'center' }}>
+                  <div className="featured-pick__content">
                     <div>
                       <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.16em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.35rem' }}>{chatResult.results[0].product.brand}</p>
                       <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.2rem,2.3vw,1.7rem)', lineHeight: 1.22 }}>{chatResult.results[0].product.name}</h3>

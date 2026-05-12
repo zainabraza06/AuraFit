@@ -89,7 +89,7 @@ export default function VirtualTryOnPage() {
 
         {/* Upload zone */}
         {step !== 'done' && (
-          <div className="fade-up-d2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', maxWidth: 820, margin: '0 auto 3rem' }}>
+          <div className="fade-up-d2 resp-grid-2" style={{ maxWidth: 820, margin: '0 auto 3rem' }}>
             <label style={{ cursor: 'pointer', display: 'block' }}>
               <input type="file" accept="image/*" onChange={handlePersonChange} style={{ display: 'none' }} />
               <div className="glass-card" style={{ borderStyle: 'dashed', borderColor: personPreview ? 'var(--accent)' : 'var(--border-accent)', overflow: 'hidden', minHeight: 340 }}>
@@ -169,7 +169,7 @@ export default function VirtualTryOnPage() {
         {step === 'done' && resultUrl && (
           <div className="fade-up" style={{ maxWidth: 900, margin: '0 auto' }}>
             <h2 className="title" style={{ textAlign: 'center', marginBottom: '2rem' }}>Your <span className="gradient-text">Result</span></h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+            <div className="resp-grid-2" style={{ marginBottom: '2rem' }}>
               <div>
                 <p style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Before</p>
                 <div className="glass-card" style={{ overflow: 'hidden' }}>
@@ -191,7 +191,7 @@ export default function VirtualTryOnPage() {
         )}
 
         {/* Info cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1.5rem', maxWidth: 820, margin: '5rem auto 0' }}>
+        <div className="resp-grid-3" style={{ maxWidth: 820, margin: '5rem auto 0' }}>
           {[
             { icon: '🤖', title: 'IDM-VTON', desc: 'State-of-the-art open-source virtual try-on model trained on large fashion datasets' },
             { icon: '⚡', title: 'Replicate', desc: 'GPU-accelerated inference — results in ~30-90 seconds with zero infrastructure' },

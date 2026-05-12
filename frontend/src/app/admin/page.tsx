@@ -234,11 +234,11 @@ export default function AdminDashboard() {
         </div>
 
         {/* Live Stream + History */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '2.5rem', alignItems: 'start' }}>
+        <div className="split-grid" style={{ ['--split-aside' as any]: '380px' }}>
           {/* Scraper History Table */}
           <div>
             <h2 className="title" style={{ fontSize: '1.6rem', marginBottom: '1.5rem' }}>Scraper History</h2>
-            <div className="glass-card" style={{ overflow: 'hidden' }}>
+            <div className="glass-card" style={{ overflowX: 'auto' }}>
               {logs.length === 0 ? (
                 <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <p>No scraper runs yet. Trigger one above.</p>

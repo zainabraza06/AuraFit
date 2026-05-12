@@ -231,7 +231,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
               <span style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, background: 'var(--accent)', color: 'var(--bg-primary)' }}>#1</span>
             </div>
 
-            <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', overflow: 'hidden', borderColor: 'var(--border-accent)' }}>
+            <div className="glass-card media-split" style={{ overflow: 'hidden', borderColor: 'var(--border-accent)' }}>
               <div style={{ aspectRatio: '3/4', overflow: 'hidden', background: 'var(--bg-elevated)' }}>
                 <img
                   src={heroDress.imageUrl || heroDress.images?.[0] || '/placeholder.jpg'}
@@ -242,7 +242,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                   onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
                 />
               </div>
-              <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="media-split__content">
                 <div>
                   <p className="product-card__brand" style={{ fontSize: '0.72rem', marginBottom: '0.4rem' }}>{heroDress.brand}</p>
                   <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.45rem', lineHeight: 1.25, marginBottom: '0.5rem' }}>{heroDress.name}</h3>

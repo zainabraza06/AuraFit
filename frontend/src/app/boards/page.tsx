@@ -77,7 +77,7 @@ export default function BoardsPage() {
                   {board.occasion?.map((o: string) => <span key={o} className="tag" style={{ marginRight: '0.5rem' }}>#{o}</span>)}
                 </div>
                 
-                <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'var(--bg-secondary)', flex: 1 }}>
+                <div className="resp-grid-2" style={{ padding: '1.5rem', gap: '1rem', background: 'var(--bg-secondary)', flex: 1 }}>
                   {board.heroProduct && (
                     <div style={{ aspectRatio: '3/4', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--bg-elevated)' }}>
                       <img src={board.heroProduct.imageUrl || board.heroProduct.images?.[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />

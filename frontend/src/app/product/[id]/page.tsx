@@ -54,11 +54,11 @@ export default function ProductDetailsPage() {
     <main className="page">
       <div className="container" style={{ padding: '4rem 0' }}>
         {/* Product Info Section */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '4rem', marginBottom: '6rem' }}>
+        <div className="product-info-grid" style={{ marginBottom: '6rem' }}>
           {/* Gallery */}
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div className="product-gallery">
             {/* Thumbnails */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '80px' }}>
+            <div className="product-thumbs">
               {(product.images || []).slice(0, 5).map((img: string, idx: number) => (
                 <div 
                   key={idx} 
@@ -84,7 +84,7 @@ export default function ProductDetailsPage() {
           {/* Details */}
           <div>
             <span className="section-label">{product.brand}</span>
-            <h1 className="title" style={{ fontSize: '3rem', marginTop: '1rem', marginBottom: '1rem' }}>{product.name}</h1>
+            <h1 className="title" style={{ fontSize: 'clamp(2rem,6vw,3rem)', marginTop: '1rem', marginBottom: '1rem' }}>{product.name}</h1>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', marginBottom: '2rem' }}>
               <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent-gold)' }}>PKR {product.price.toLocaleString()}</span>
               {product.compareAtPrice && (
@@ -97,7 +97,7 @@ export default function ProductDetailsPage() {
                 {product.description || 'No description available for this premium piece.'}
               </p>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div className="resp-grid-2" style={{ gap: '1.5rem' }}>
                 <div>
                   <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Category</h4>
                   <p>{product.category} {product.subCategory && `— ${product.subCategory}`}</p>
@@ -117,11 +117,11 @@ export default function ProductDetailsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg" style={{ flex: 1, justifyContent: 'center' }}>
                 Buy on {product.brand} →
               </a>
-              <button className="btn btn-ghost btn-lg">♥ Save</button>
+              <button className="btn btn-ghost btn-lg" style={{ flex: 1, justifyContent: 'center' }}>♥ Save</button>
             </div>
           </div>
         </div>
