@@ -31,7 +31,8 @@ export const productsApi = {
 // ─── Recommendations ─────────────────────────────────────────────────────────
 export const recommendationsApi = {
   forProduct: (id: string) => api.get(`/recommendations/${id}`),
-  outfit: (message: string) => api.post('/recommendations/outfit', { message })
+  outfit: (message: string, prioritiesHint?: string) =>
+    api.post('/recommendations/outfit', { message, ...(prioritiesHint ? { prioritiesHint } : {}) })
 };
 
 // ─── Search ──────────────────────────────────────────────────────────────────
