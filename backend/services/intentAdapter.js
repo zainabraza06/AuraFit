@@ -85,22 +85,23 @@ export function inferConstraintPriorityFallback(partial) {
 }
 
 /**
- * Optional one-line hint from client, e.g. "occasion over color".
- * Pushes matching keys to the front of priority if not already there.
+ * Extracts an ordered constraint list from a plain-English priority hint
+ * sent by the client (e.g. from a UI priority control: "occasion over color").
+ * Returns keys in importance order (most important first), filtered to RELAX_KEYS.
  */
-export function mergePriorityHint(priority, hint) {
-  if (!hint || !String(hint).trim()) return priority;
+function buildPriorityFromHint(hint) {
+  if (!hint || !String(hint).trim()) return [];
   const h = String(hint).toLowerCase();
-  const bump = [];
-  if (/(occasion|event|function|wedding|party)/i.test(h)) bump.push('occasion');
-  if (/(color|colour|shade|tone)/i.test(h)) bump.push('color');
-  if (/(dress|style|silhouette|type|kurta|lehenga|saree)/i.test(h)) bump.push('dressStyle');
-  if (/(season|summer|winter|lawn|warm)/i.test(h)) bump.push('season');
-  if (/(fabric|material|lawn|silk|cotton)/i.test(h)) bump.push('fabric');
-  if (/(piece|2-piece|3-piece|unstitched)/i.test(h)) bump.push('pieces');
-  if (/(budget|price|cheap|affordable|under)/i.test(h)) bump.push('budget');
-  const merged = [...new Set([...bump.filter((k) => RELAX_KEYS.has(k)), ...priority])];
-  return merged.filter((k) => k !== 'budget');
+  const out = [];
+  if (/(occasion|event|function|wedding|party)/i.test(h)) out.push('occasion');
+  if (/(color|colour|shade|tone)/i.test(h))               out.push('color');
+  if (/(dress|style|silhouette|type|kurta|lehenga|saree)/i.test(h)) out.push('dressStyle');
+  if (/(print|embroid|pattern|work)/i.test(h))            out.push('print');
+  if (/(season|summer|winter)/i.test(h))                  out.push('season');
+  if (/(fabric|material|lawn|silk|cotton)/i.test(h))      out.push('fabric');
+  if (/(piece|2-piece|3-piece|unstitched)/i.test(h))      out.push('pieces');
+  if (/(stitched|stitching)/i.test(h))                    out.push('stitching');
+  return out.filter((k) => RELAX_KEYS.has(k));
 }
 
 /**
@@ -127,9 +128,7 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
     }
   }
 
-  let constraintPriority = sanitizePriority(raw.constraintPriority);
-  constraintPriority = mergePriorityHint(constraintPriority, prioritiesHint);
-
+  // ── Resolve remaining fields needed for the fallback ────────────────────────
   const occasion = Array.isArray(raw.occasion) ? raw.occasion : ['casual'];
   const seasonRaw = raw.season && raw.season !== 'null' ? String(raw.season).toLowerCase().trim() : null;
   const season =
@@ -143,18 +142,49 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
 
   const pieces = typeof raw.pieces === 'number' && raw.pieces >= 1 && raw.pieces <= 4 ? raw.pieces : null;
 
-  if (!constraintPriority.length) {
+  const stitchingRaw =
+    raw.stitching && raw.stitching !== 'null' ? String(raw.stitching).toLowerCase().trim() : null;
+  const fabricRaw =
+    raw.fabric && raw.fabric !== 'null' ? String(raw.fabric).toLowerCase().trim() : null;
+
+  // ── Constraint priority — 3-tier cascade ─────────────────────────────────
+  //
+  //   Tier 1: Client sends prioritiesHint (explicit UI control, e.g. a priority
+  //           picker or the user typed "occasion over color").
+  //           → Those keys go FIRST (most protected), then LLM order fills the rest.
+  //
+  //   Tier 2: LLM detected explicit or inferred priority from the user's message
+  //           (e.g. "must be red, don't care about occasion" → ["color", ...]).
+  //           → Use directly when no Tier 1 hint is present.
+  //
+  //   Tier 3: Code-based inference from field presence + occasion type.
+  //           → Used when Tier 1 & 2 both produce an empty list.
+  //
+  //   Tier 4: DEFAULT_RELAX_ORDER in buildUnifiedRelaxOrder (last resort).
+  //
+  let constraintPriority;
+
+  const hintKeys = buildPriorityFromHint(prioritiesHint);
+  const llmOrder  = sanitizePriority(raw.constraintPriority);
+
+  if (hintKeys.length) {
+    // Tier 1: hint-specified keys go first; LLM's remaining keys fill the rest
+    constraintPriority = [...new Set([...hintKeys, ...llmOrder])];
+  } else if (llmOrder.length) {
+    // Tier 2: LLM fully decides the order
+    constraintPriority = llmOrder;
+  } else {
+    // Tier 3: code-based fallback
     constraintPriority = inferConstraintPriorityFallback({
       occasion,
       season,
-      dressStyle: dressStyleRaw,
+      dressStyle:  dressStyleRaw,
       pieces,
-      stitching:
-        raw.stitching && raw.stitching !== 'null' ? String(raw.stitching).toLowerCase().trim() : null,
-      fabric: raw.fabric && raw.fabric !== 'null' ? String(raw.fabric).toLowerCase().trim() : null,
+      stitching:   stitchingRaw,
+      fabric:      fabricRaw,
       print,
       colorFamily: resolvedColor !== 'Any' ? resolvedColor : null,
-      colorExact: resolvedShade
+      colorExact:  resolvedShade
     });
   }
 
@@ -170,9 +200,8 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
     style: Array.isArray(raw.style) ? raw.style : [],
     piece: raw.piece && raw.piece !== 'null' ? String(raw.piece).toLowerCase().trim() : null,
     pieces,
-    fabric: raw.fabric && raw.fabric !== 'null' ? String(raw.fabric).toLowerCase().trim() : null,
-    stitching:
-      raw.stitching && raw.stitching !== 'null' ? String(raw.stitching).toLowerCase().trim() : null,
+    fabric:    fabricRaw   || null,
+    stitching: stitchingRaw || null,
     print,
     gender: ['women', 'men', 'kids', 'unisex'].includes(raw.gender) ? raw.gender : 'women',
     dressType: raw.dressType && raw.dressType !== 'null' ? String(raw.dressType).toLowerCase().trim() : null,
