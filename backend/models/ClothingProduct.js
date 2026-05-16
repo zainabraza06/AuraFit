@@ -166,6 +166,10 @@ const ClothingProductSchema = new mongoose.Schema(
     aiEnriched:     { type: Boolean, default: false },   // true when Gemini filled missing fields
     metadataScore:  { type: Number, default: 0 },        // completeness 0-1
 
+    // ─── Stock ───────────────────────────────────────────────────────────
+    inStock:          { type: Boolean, default: true },   // false when absent from latest scrape run
+    stockLastChecked: { type: Date },                     // timestamp of last scraper confirmation
+
     // ─── Timestamps ──────────────────────────────────────────────────────
     scrapedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
@@ -193,6 +197,7 @@ ClothingProductSchema.index({ priceRange: 1 });
 ClothingProductSchema.index({ trendTags: 1 });
 ClothingProductSchema.index({ price: 1 });
 ClothingProductSchema.index({ tags: 1 });
+ClothingProductSchema.index({ inStock: 1 });
 ClothingProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });
 
 // ─── Virtual: primary image ───────────────────────────────────────────────────

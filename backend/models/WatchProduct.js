@@ -83,6 +83,9 @@ const WatchProductSchema = new mongoose.Schema(
     aiEnriched: { type: Boolean, default: false },
     metadataScore: { type: Number, default: 0 },
 
+    inStock:          { type: Boolean, default: true },
+    stockLastChecked: { type: Date },
+
     scrapedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   },
@@ -91,6 +94,7 @@ const WatchProductSchema = new mongoose.Schema(
 
 WatchProductSchema.index({ brand: 1, watchType: 1 });
 WatchProductSchema.index({ gender: 1 });
+WatchProductSchema.index({ inStock: 1 });
 WatchProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });
 
 export default mongoose.models.WatchProduct || mongoose.model('WatchProduct', WatchProductSchema);

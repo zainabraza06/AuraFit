@@ -88,13 +88,6 @@ export default function RecommendationResult({ data, compact = false }: { data: 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%' }}>
         {matchQuality && matchQuality.tier !== 'exact' && <MatchBadge matchQuality={matchQuality} />}
 
-        {relaxationMessage && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.20)', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            <span style={{ flexShrink: 0, opacity: 0.7 }}>ℹ</span>
-            <span>{relaxationMessage}</span>
-          </div>
-        )}
-
         {heroDress && (
           <a href={heroDress.productUrl || '#'} target="_blank" rel="noopener noreferrer"
             style={{ textDecoration: 'none', display: 'flex', gap: '0.7rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', transition: 'border-color 0.2s' }}
@@ -122,8 +115,15 @@ export default function RecommendationResult({ data, compact = false }: { data: 
         )}
 
         {topResult?.matchReason && (
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, padding: '0 0.25rem' }}>
-            "{topResult.matchReason}"
+          <div style={{ padding: '0.5rem 0.65rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.06)', borderLeft: '2px solid var(--accent)' }}>
+            <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.2rem' }}>Why AI chose this</p>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, margin: 0 }}>"{topResult.matchReason}"</p>
+          </div>
+        )}
+
+        {relaxationMessage && (
+          <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.4, padding: '0 0.1rem' }}>
+            ℹ {relaxationMessage}
           </p>
         )}
 
@@ -212,12 +212,6 @@ export default function RecommendationResult({ data, compact = false }: { data: 
           )}
         </div>
 
-        {relaxationMessage && (
-          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'flex-start', gap: '0.65rem', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.20)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <span style={{ flexShrink: 0, marginTop: '0.05rem', opacity: 0.7 }}>ℹ</span>
-            <span>{relaxationMessage}</span>
-          </div>
-        )}
       </div>
 
       {heroDress ? (
@@ -254,9 +248,15 @@ export default function RecommendationResult({ data, compact = false }: { data: 
 
                 {topResult.matchReason && (
                   <div style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.06)', border: '1px solid rgba(201,169,110,0.18)', borderLeft: '3px solid var(--accent)' }}>
+                    <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.4rem' }}>Why AI chose this</p>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.6, margin: 0 }}>
                       "{topResult.matchReason}"
                     </p>
+                    {relaxationMessage && (
+                      <p style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                        ℹ {relaxationMessage}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -338,9 +338,12 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                         <CategoryChips product={p} />
 
                         {r.matchReason && (
-                          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            "{r.matchReason}"
-                          </p>
+                          <div>
+                            <p style={{ fontSize: '0.56rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.15rem' }}>Why AI chose this</p>
+                            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                              "{r.matchReason}"
+                            </p>
+                          </div>
                         )}
 
                         {shoe?.product && (
