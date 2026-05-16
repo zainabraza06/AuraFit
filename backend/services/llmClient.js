@@ -11,6 +11,7 @@ import {
   recordLlmProviderSuccess
 } from './llmCircuitBreaker.js';
 import { bumpMetric, logRecommendationEvent } from './recommendationMetrics.js';
+import { logger } from '../utils/logger.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -155,6 +156,7 @@ export async function completeJsonWithProviderFallback(opts) {
     }
   }
 
+  logger.error('llm', 'All LLM providers exhausted (completeJson)', { prompt: opts.user?.slice(0, 300) });
   throw new Error('All LLM providers failed or no API keys configured');
 }
 
@@ -221,6 +223,7 @@ export async function parseIntentWithProviderOrder(message, prompt) {
     }
   }
 
+  logger.error('llm', 'All LLM providers exhausted (parseIntent)', { message: message?.slice(0, 300) });
   throw new Error('All AI providers exhausted or failed.');
 }
 
