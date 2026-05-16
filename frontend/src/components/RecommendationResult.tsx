@@ -76,7 +76,7 @@ function CategoryChips({ product }: { product: any }) {
 export default function RecommendationResult({ data, compact = false }: { data: any; compact?: boolean }) {
   if (!data || !data.results?.length) return null;
 
-  const { intent, results, matchQuality, relaxationMessage } = data;
+  const { intent, results, matchQuality, relaxationMessage, catalogNote } = data;
   const topResult  = results[0];
   const heroDress  = topResult?.product;
   const heroShoe   = topResult?.shoe;
@@ -87,6 +87,13 @@ export default function RecommendationResult({ data, compact = false }: { data: 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%' }}>
         {matchQuality && matchQuality.tier !== 'exact' && <MatchBadge matchQuality={matchQuality} />}
+
+        {catalogNote && (
+          <div style={{ display: 'flex', gap: '0.45rem', padding: '0.5rem 0.7rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.2)', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 700 }}>✦</span>
+            <span>{catalogNote}</span>
+          </div>
+        )}
 
         {heroDress && (
           <a href={heroDress.productUrl || '#'} target="_blank" rel="noopener noreferrer"
@@ -211,6 +218,13 @@ export default function RecommendationResult({ data, compact = false }: { data: 
             </span>
           )}
         </div>
+
+        {catalogNote && (
+          <div style={{ marginTop: '0.9rem', display: 'flex', gap: '0.65rem', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.22)', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 700, marginTop: '0.05rem' }}>✦</span>
+            <span>{catalogNote}</span>
+          </div>
+        )}
 
       </div>
 
