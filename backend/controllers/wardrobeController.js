@@ -6,7 +6,9 @@ export async function addWardrobeItem(req, res) {
     if (!req.file) return res.status(400).json({ error: 'Please upload an image of your clothing' });
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    });
 
     const prompt = `
       Identify this piece of clothing.

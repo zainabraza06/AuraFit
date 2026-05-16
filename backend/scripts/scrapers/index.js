@@ -34,6 +34,7 @@ import { MariaBAdapter }      from './adapters/MariaBAdapter.js';
 import { SanaSafinazAdapter } from './adapters/SanaSafinazAdapter.js';
 import { ElanAdapter }        from './adapters/ElanAdapter.js';
 import { ShopifyGenericAdapter } from './adapters/ShopifyGenericAdapter.js';
+import { KhaadiAdapter } from './adapters/KhaadiAdapter.js';
 
 const ADAPTER_MAP = {
   BeechtreeAdapter,
@@ -44,7 +45,8 @@ const ADAPTER_MAP = {
   MariaBAdapter,
   SanaSafinazAdapter,
   ElanAdapter,
-  ShopifyGenericAdapter
+  ShopifyGenericAdapter,
+  KhaadiAdapter
 };
 
 // ─── Upsert helper ────────────────────────────────────────────────────────────

@@ -404,6 +404,87 @@ export const CLOTHING_BRANDS = [
       { path: '/collections/womens-2-piece-suit', subCategory: '2-piece', occasion: ['casual', 'party'], style: ['printed', 'elegant'], gender: 'women' },
       { path: '/collections/womens-3-piece-suit', subCategory: '3-piece', occasion: ['party', 'eid'], style: ['embroidered', 'elegant'], gender: 'women' }
     ]
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // KHAADI — pk.khaadi.com  (Salesforce Commerce Cloud / Demandware, not Shopify)
+  // PLP: SSR `div.product[data-pid]` + `data-gtmdata` JSON; PDP: `/slug/PID.html`
+  // Full PK nav (Ready to Wear, Fabrics, New In, Eid, Sale). Excludes /sale/fragrances/ (non-apparel).
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    brand: 'Khaadi',
+    baseUrl: 'https://pk.khaadi.com',
+    adapter: 'KhaadiAdapter',
+    category: 'clothing',
+    collections: [
+      // ── Ready to Wear — Essentials ───────────────────────────────────────────
+      { path: '/ready-to-wear/essentials/2-piece/',
+        subCategory: '2-piece',           occasion: ['casual', 'office', 'eid'],       style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/ready-to-wear/essentials/3-piece/',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'casual'],       style: ['printed', 'elegant'],       gender: 'women' },
+      { path: '/ready-to-wear/essentials/kurta/',
+        subCategory: 'kurta',             occasion: ['casual', 'office', 'eid'],       style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/ready-to-wear/essentials/pants/',
+        subCategory: 'pants',             occasion: ['casual', 'office'],             style: ['minimal'],                  gender: 'women' },
+      { path: '/ready-to-wear/essentials/shalwar/',
+        subCategory: 'shalwar',           occasion: ['casual', 'eid'],                 style: ['minimal', 'printed'],       gender: 'women' },
+      { path: '/ready-to-wear/essentials/dupatta/',
+        subCategory: 'dupatta',           occasion: ['casual', 'party'],               style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/ready-to-wear/essentials/shawl/',
+        subCategory: 'dupatta',           occasion: ['party', 'eid', 'casual'],       style: ['embroidered', 'elegant'],   gender: 'women' },
+      // ── Ready to Wear — Signature ────────────────────────────────────────────
+      { path: '/ready-to-wear/signature/2-piece/',
+        subCategory: '2-piece',           occasion: ['party', 'eid'],                  style: ['embroidered', 'elegant'],   gender: 'women' },
+      { path: '/ready-to-wear/signature/3-piece/',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'wedding'],      style: ['embroidered', 'elegant'],   gender: 'women' },
+      { path: '/ready-to-wear/signature/kurta/',
+        subCategory: 'kurta',             occasion: ['party', 'eid', 'casual'],        style: ['embroidered', 'elegant'],   gender: 'women' },
+      { path: '/ready-to-wear/signature/pants/',
+        subCategory: 'pants',             occasion: ['party', 'office'],              style: ['elegant', 'minimal'],       gender: 'women' },
+      { path: '/ready-to-wear/signature/shalwar/',
+        subCategory: 'shalwar',           occasion: ['party', 'eid'],                 style: ['embroidered', 'elegant'],   gender: 'women' },
+      { path: '/ready-to-wear/signature/dupatta/',
+        subCategory: 'dupatta',           occasion: ['party', 'eid', 'wedding'],      style: ['embroidered', 'elegant'],   gender: 'women' },
+      // ── Ready to Wear — Casuals ────────────────────────────────────────────────
+      { path: '/ready-to-wear/casuals/shirt/',
+        subCategory: 'western',           occasion: ['casual', 'office'],             style: ['minimal', 'trendy'],        gender: 'women' },
+      { path: '/ready-to-wear/casuals/t-shirt/',
+        subCategory: 'western',           occasion: ['casual'],                       style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/ready-to-wear/casuals/blouse/',
+        subCategory: 'western',           occasion: ['casual', 'office', 'party'],   style: ['trendy', 'minimal'],        gender: 'women' },
+      { path: '/ready-to-wear/casuals/tunic/',
+        subCategory: 'kurta',             occasion: ['casual', 'office'],             style: ['trendy', 'printed'],      gender: 'women' },
+      { path: '/ready-to-wear/casuals/trousers/',
+        subCategory: 'pants',             occasion: ['casual', 'office'],             style: ['minimal', 'western'],     gender: 'women' },
+      // ── Fabrics (unstitched) — Essentials & Signature ─────────────────────────
+      { path: '/fabrics/essentials/2-piece/',
+        subCategory: 'unstitched-2-piece',occasion: ['casual', 'office'],             style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/fabrics/essentials/3-piece/',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'eid'],                 style: ['printed'],                  gender: 'women' },
+      { path: '/fabrics/signature/2-piece/',
+        subCategory: 'unstitched-2-piece',occasion: ['party', 'eid'],                  style: ['embroidered', 'elegant'],   gender: 'women' },
+      { path: '/fabrics/signature/3-piece/',
+        subCategory: 'unstitched-3-piece',occasion: ['eid', 'party', 'wedding'],     style: ['embroidered', 'elegant'],   gender: 'women' },
+      // ── New In ────────────────────────────────────────────────────────────────
+      { path: '/new-in/fabrics/',
+        subCategory: 'unstitched-3-piece',occasion: ['casual', 'eid'],                 style: ['printed', 'trendy'],        gender: 'women' },
+      { path: '/new-in/ready-to-wear/',
+        subCategory: 'kurta',             occasion: ['casual', 'party', 'eid'],        style: ['trendy', 'printed'],      gender: 'women' },
+      { path: '/new-in/tailored/',
+        subCategory: '3-piece',           occasion: ['party', 'eid', 'formal'],      style: ['elegant', 'embroidered'],   gender: 'women' },
+      // ── Eid collection ─────────────────────────────────────────────────────────
+      { path: '/eid-collection/ready-to-wear/',
+        subCategory: 'festive',           occasion: ['eid', 'party', 'casual'],      style: ['embroidered', 'printed'],   gender: 'women' },
+      { path: '/eid-collection/tailored/',
+        subCategory: 'festive',           occasion: ['eid', 'party', 'formal'],      style: ['embroidered', 'elegant'],   gender: 'women' },
+      // ── Sale (apparel only) ───────────────────────────────────────────────────
+      { path: '/sale/ready-to-wear/',
+        subCategory: 'other',             occasion: ['casual'],                        style: ['minimal'],                  gender: 'women' },
+      { path: '/sale/fabrics/',
+        subCategory: 'unstitched-3-piece',occasion: ['casual'],                        style: ['printed', 'minimal'],       gender: 'women' },
+      { path: '/sale/tailored/',
+        subCategory: 'festive',           occasion: ['eid', 'party'],                 style: ['embroidered', 'elegant'],   gender: 'women' }
+    ]
   }
 
 ];
