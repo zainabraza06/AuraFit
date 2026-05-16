@@ -1,7 +1,7 @@
 /**
  * aiEnricher.js
  * Fills missing ClothingProduct fields via LLM when rules are insufficient.
- * Provider order: OpenRouter → Groq → Gemini 1.5 → Gemini 2.5 (see services/llmClient.js)
+ * Provider order: OpenRouter → Groq → Gemini fallbacks (see services/llmClient.js)
  */
 
 import { completeJsonWithProviderFallback } from '../../../services/llmClient.js';

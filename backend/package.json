@@ -12,6 +12,7 @@
     "scrape:jewelry": "node scripts/scrapers/runVertical.js jewelry",
     "scrape:all-verticals": "node scripts/scrapers/runVertical.js all",
     "scrape:test": "node scripts/testScraper.js",
+    "scrape:khaadi-test": "node scripts/scrapers/testKhaadiFetch.js",
     "scrape:fresh": "node scripts/clearDB.js && node scripts/scrapers/index.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "test": "node --test"
@@ -36,6 +37,8 @@
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "nodemon": "^3.1.9"
+    "mongodb-memory-server": "^10.2.0",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.1.4"
   }
 }

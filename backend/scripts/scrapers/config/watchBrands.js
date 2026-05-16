@@ -1,5 +1,6 @@
 /**
- * Watches — fashion & everyday (Shopify multi-brand PK).
+ * Watches — fashion & everyday (Shopify PK).
+ * Handles verified against live Shopify products.json per collection (2026).
  * Adapter: WatchBrandAdapter (see runVertical.js).
  */
 export const WATCH_BRANDS = [
@@ -9,13 +10,8 @@ export const WATCH_BRANDS = [
     adapter: 'WatchBrandAdapter',
     category: 'watches',
     collections: [
-      { path: '/collections/womens-watches', subCategory: 'women', occasion: ['casual', 'party', 'office'], style: ['trendy', 'elegant'], gender: 'women' },
-      { path: '/collections/mens-watches', subCategory: 'men', occasion: ['casual', 'formal', 'office'], style: ['minimal', 'elegant'], gender: 'men' },
-      { path: '/collections/couple-watches', subCategory: 'couple', occasion: ['wedding', 'eid', 'party'], style: ['elegant'], gender: 'unisex' },
-      { path: '/collections/smart-watches', subCategory: 'smart', occasion: ['casual', 'sports'], style: ['trendy'], gender: 'unisex' },
-      { path: '/collections/kids-watches', subCategory: 'kids', occasion: ['casual'], style: ['minimal'], gender: 'kids' },
-      { path: '/collections/new-arrival-watches', subCategory: 'new', occasion: ['casual', 'party'], style: ['trendy'], gender: 'unisex' },
-      { path: '/collections/sale-watches', subCategory: 'sale', occasion: ['casual'], style: ['minimal'], gender: 'unisex' }
+      { path: '/collections/watches', subCategory: 'women', occasion: ['casual', 'party', 'office'], style: ['trendy', 'elegant'], gender: 'women' },
+      { path: '/collections/men-watches', subCategory: 'men', occasion: ['casual', 'formal', 'office'], style: ['minimal', 'elegant'], gender: 'men' }
     ]
   },
   {
@@ -24,23 +20,19 @@ export const WATCH_BRANDS = [
     adapter: 'WatchBrandAdapter',
     category: 'watches',
     collections: [
-      { path: '/collections/womens-watches', subCategory: 'women', occasion: ['party', 'office'], style: ['elegant'], gender: 'women' },
-      { path: '/collections/mens-watches', subCategory: 'men', occasion: ['formal', 'office', 'casual'], style: ['minimal'], gender: 'men' },
-      { path: '/collections/smart-watches', subCategory: 'smart', occasion: ['casual'], style: ['trendy'], gender: 'unisex' },
-      { path: '/collections/couple-watches', subCategory: 'couple', occasion: ['wedding', 'eid'], style: ['elegant'], gender: 'unisex' },
-      { path: '/collections/sale-watches', subCategory: 'sale', occasion: ['casual'], style: ['minimal'], gender: 'unisex' }
+      { path: '/collections/watches', subCategory: 'unisex', occasion: ['casual', 'party'], style: ['trendy'], gender: 'unisex' },
+      { path: '/collections/women-watches', subCategory: 'women', occasion: ['party', 'office'], style: ['elegant'], gender: 'women' },
+      { path: '/collections/men-watches', subCategory: 'men', occasion: ['formal', 'office', 'casual'], style: ['minimal'], gender: 'men' },
+      { path: '/collections/girls-watches', subCategory: 'kids', occasion: ['casual'], style: ['minimal'], gender: 'kids' }
     ]
   },
   {
-    brand: 'Borjan',
-    baseUrl: 'https://www.borjan.com.pk',
+    brand: 'Limelight',
+    baseUrl: 'https://www.limelight.pk',
     adapter: 'WatchBrandAdapter',
     category: 'watches',
     collections: [
-      { path: '/collections/womens-watches', subCategory: 'women', occasion: ['party', 'office'], style: ['elegant'], gender: 'women' },
-      { path: '/collections/mens-watches', subCategory: 'men', occasion: ['formal', 'casual'], style: ['minimal'], gender: 'men' },
-      { path: '/collections/new-in-watches', subCategory: 'new', occasion: ['casual'], style: ['trendy'], gender: 'unisex' },
-      { path: '/collections/sale-watches', subCategory: 'sale', occasion: ['casual'], style: ['minimal'], gender: 'unisex' }
+      { path: '/collections/watches', subCategory: 'women', occasion: ['casual', 'party', 'office'], style: ['trendy', 'elegant'], gender: 'women' }
     ]
   }
 ];

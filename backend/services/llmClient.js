@@ -1,6 +1,6 @@
 /**
  * Multi-provider JSON completions.
- * Priority: OpenRouter → Groq → Gemini 1.5 Flash → Gemini 2.5 Flash
+ * Priority: OpenRouter → Groq → Gemini (see geminiJsonFallbackChain / GEMINI_FALLBACK_MODELS)
  * Per-provider circuit breaker skips providers in cooldown after repeated failures.
  */
 import axios from 'axios';
@@ -15,6 +15,16 @@ import { bumpMetric, logRecommendationEvent } from './recommendationMetrics.js';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
+/** @returns {string[]} Gemini model ids for JSON completions (env override: GEMINI_FALLBACK_MODELS=comma,separated) */
+function geminiJsonFallbackChain() {
+  const raw = process.env.GEMINI_FALLBACK_MODELS;
+  if (raw?.trim()) {
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  // `gemini-1.5-flash` often 404s on v1beta; prefer current ids (override in .env if your project differs).
+  return ['gemini-2.0-flash', 'gemini-1.5-flash-002', 'gemini-2.5-flash'];
+}
+
 function openRouterHeaders() {
   return {
     Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -25,7 +35,8 @@ function openRouterHeaders() {
 }
 
 async function callOpenRouter(system, user, temperature = 0.1) {
-  const model = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free';
+  // Free slugs change on OpenRouter; set OPENROUTER_MODEL if you get HTTP 404.
+  const model = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.2-3b-instruct:free';
   const { data } = await axios.post(
     OPENROUTER_URL,
     {
@@ -127,7 +138,7 @@ export async function completeJsonWithProviderFallback(opts) {
   }
 
   if (process.env.GEMINI_API_KEY) {
-    for (const modelName of ['gemini-1.5-flash', 'gemini-2.5-flash']) {
+    for (const modelName of geminiJsonFallbackChain()) {
       if (!canUseLlmProvider(modelName)) {
         bumpMetric('llm_gemini_skipped_cooldown');
         logRecommendationEvent({ event: 'llm_provider_skipped', provider: modelName });
@@ -193,7 +204,7 @@ export async function parseIntentWithProviderOrder(message, prompt) {
 
   if (process.env.GEMINI_API_KEY) {
     const combined = `${prompt}\n\nUser Request: "${message}"`;
-    for (const modelName of ['gemini-1.5-flash', 'gemini-2.5-flash']) {
+    for (const modelName of geminiJsonFallbackChain()) {
       if (!canUseLlmProvider(modelName)) {
         bumpMetric('llm_gemini_skipped_cooldown');
         continue;
