@@ -183,6 +183,78 @@ function getSpecifiedConstraints(intent) {
 // Accessory/non-outfit terms that should never appear as main outfit results
 const NON_OUTFIT_PATTERN = /dupatta|stole|scarf|scarves|clutch|bag|jewelry|jewellery/i;
 
+// ─── Contextual relaxation message ───────────────────────────────────────────
+/**
+ * Builds a human-readable explanation of what was relaxed and what's still matched,
+ * using the actual values from the user's intent (not just constraint key names).
+ *
+ * relaxedFields entries:
+ *   - regular key strings: 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'occasion', 'season'
+ *   - special: 'color' (fully dropped) or starts with 'exact color' (downgraded exact→family)
+ */
+function buildRelaxationMessage(intent, relaxedFields) {
+  if (!relaxedFields.length) return null;
+
+  const droppedKeys = new Set(
+    relaxedFields.filter((f) => f !== 'color' && !f.startsWith('exact color'))
+  );
+  const colorFullyDropped = relaxedFields.includes('color');
+  const colorDowngraded   = relaxedFields.some((f) => f.startsWith('exact color'));
+
+  // ── What was relaxed ──
+  const relaxedParts = [];
+
+  if (droppedKeys.has('print'))
+    relaxedParts.push(intent.print ? `${intent.print} work` : 'print/work');
+  if (droppedKeys.has('dressStyle'))
+    relaxedParts.push(intent.dressStyle ? `${intent.dressStyle} style` : 'dress style');
+  if (droppedKeys.has('stitching'))
+    relaxedParts.push(intent.stitching ? `${intent.stitching} type` : 'stitching');
+  if (droppedKeys.has('pieces'))
+    relaxedParts.push(intent.pieces ? `${intent.pieces}-piece` : 'piece count');
+  if (droppedKeys.has('fabric'))
+    relaxedParts.push(intent.fabric ? `${intent.fabric} fabric` : 'fabric');
+  if (droppedKeys.has('occasion') && intent.occasion?.length)
+    relaxedParts.push(`${intent.occasion.join('/')} occasion`);
+  else if (droppedKeys.has('occasion'))
+    relaxedParts.push('occasion');
+  if (droppedKeys.has('season'))
+    relaxedParts.push(intent.season ? `${intent.season} season` : 'season');
+
+  if (colorDowngraded) {
+    const exact  = intent.colorExact;
+    const family = intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null;
+    relaxedParts.push(
+      exact && family ? `exact ${exact} → showing ${family} shades` : 'exact shade → showing color family'
+    );
+  } else if (colorFullyDropped) {
+    const col = intent.colorExact || (intent.colorFamily !== 'Any' ? intent.colorFamily : null);
+    relaxedParts.push(col ? `${col} color` : 'color');
+  }
+
+  // ── What's still being applied ──
+  const stillParts = [];
+  const baseCol = intent.colorExact || (intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null);
+
+  if (!colorFullyDropped && !colorDowngraded && baseCol) stillParts.push(baseCol);
+  if (colorDowngraded && intent.colorFamily && intent.colorFamily !== 'Any')
+    stillParts.push(`${intent.colorFamily} shades`);
+  if (!droppedKeys.has('print') && intent.print)         stillParts.push(intent.print);
+  if (!droppedKeys.has('dressStyle') && intent.dressStyle) stillParts.push(intent.dressStyle);
+  if (!droppedKeys.has('stitching') && intent.stitching) stillParts.push(intent.stitching);
+  if (!droppedKeys.has('pieces') && intent.pieces)        stillParts.push(`${intent.pieces}-piece`);
+  if (!droppedKeys.has('fabric') && intent.fabric)        stillParts.push(intent.fabric);
+  if (!droppedKeys.has('occasion') && intent.occasion?.length)
+    stillParts.push(intent.occasion.join('/'));
+  if (!droppedKeys.has('season') && intent.season)        stillParts.push(intent.season);
+
+  const relaxedStr = relaxedParts.join(', ');
+  const stillStr   = stillParts.length
+    ? ` Showing results that still match: ${stillParts.join(', ')}.`
+    : '';
+  return `No exact match — relaxed ${relaxedStr}.${stillStr}`;
+}
+
 // Build DB query for a given relaxation state
 function buildDBQuery(intent, dropped, colorMode) {
   const query = {
@@ -502,15 +574,7 @@ async function fetchCandidates(intent) {
     if (pool.length >= 20) break; // enough to rank — don't over-relax
   }
 
-  // Build relaxation message for the frontend
-  if (relaxedFields.length > 0) {
-    const droppedFields = relaxedFields.filter((f) => !f.includes('→'));
-    const colorNote = relaxedFields.find((f) => f.includes('→'));
-    const parts = [];
-    if (droppedFields.length) parts.push(`relaxed ${droppedFields.join(', ')}`);
-    if (colorNote)            parts.push(colorNote);
-    relaxationMessage = `No exact match found — ${parts.join('; ')}.`;
-  }
+  relaxationMessage = buildRelaxationMessage(intent, relaxedFields);
 
   return { products: bestProducts, relaxationMessage, specified };
 }
