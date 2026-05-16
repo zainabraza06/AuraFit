@@ -100,6 +100,9 @@ const ShoeProductSchema = new mongoose.Schema(
     aiEnriched: { type: Boolean, default: false },
     metadataScore: { type: Number, default: 0 },
 
+    inStock:          { type: Boolean, default: true },
+    stockLastChecked: { type: Date },
+
     scrapedAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   },
@@ -108,6 +111,7 @@ const ShoeProductSchema = new mongoose.Schema(
 
 ShoeProductSchema.index({ brand: 1, shoeType: 1 });
 ShoeProductSchema.index({ gender: 1, occasion: 1 });
+ShoeProductSchema.index({ inStock: 1 });
 ShoeProductSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });
 
 export default mongoose.models.ShoeProduct || mongoose.model('ShoeProduct', ShoeProductSchema);

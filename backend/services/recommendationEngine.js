@@ -187,6 +187,7 @@ const NON_OUTFIT_PATTERN = /dupatta|stole|scarf|scarves|clutch|bag|jewelry|jewel
 function buildDBQuery(intent, dropped, colorMode) {
   const query = {
     category: 'clothing',
+    inStock:  { $ne: false },   // exclude products marked out-of-stock by the scraper
     subCategory: { $nin: ['dupatta', 'scarves', 'jewelry', 'bags'] },
     name: { $not: NON_OUTFIT_PATTERN }
   };
@@ -282,7 +283,7 @@ async function fetchAccessoryPools(intent, plan = null) {
       : {};
   const budget =
     intent.maxBudget > 0 ? { price: { $lte: Math.round(intent.maxBudget * 1.35) } } : {};
-  const base = { ...genderFilter, ...budget };
+  const base = { ...genderFilter, ...budget, inStock: { $ne: false } };
 
   const shoeNarrow = plan?.shoeTypes?.length ? { ...base, shoeType: { $in: plan.shoeTypes } } : null;
   const jewelryNarrow = plan?.jewelryTypes?.length ? { ...base, jewelryType: { $in: plan.jewelryTypes } } : null;
@@ -332,7 +333,7 @@ function buildAccessoryOnlyDbQuery(intent) {
       : {};
   const budget =
     intent.maxBudget > 0 ? { price: { $lte: Math.round(intent.maxBudget * 1.35) } } : {};
-  const q = { ...genderFilter, ...budget };
+  const q = { ...genderFilter, ...budget, inStock: { $ne: false } };
 
   if (intent.colorFamily && intent.colorFamily !== 'Any') {
     q.primaryColor = intent.colorFamily;
@@ -661,7 +662,7 @@ export async function getRecommendations(productId, options = {}) {
   if (!srcRaw) throw new Error('Product not found');
   const source = formatClothingForApi(srcRaw);
 
-  const baseQuery = { _id: { $ne: source._id } };
+  const baseQuery = { _id: { $ne: source._id }, inStock: { $ne: false } };
 
   const pools = await fetchAccessoryPools({ gender: source.gender, maxBudget: 0 });
   const shoePool = pools.shoes;

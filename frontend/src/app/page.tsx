@@ -201,13 +201,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Relaxation / match quality banner */}
-            {(chatResult.relaxationMessage || (chatResult.matchQuality?.tier && chatResult.matchQuality.tier !== 'exact')) && (
-              <div style={{ display: 'flex', gap: '0.6rem', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.2)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '2rem' }}>
-                <span style={{ flexShrink: 0, opacity: 0.7 }}>ℹ</span>
-                <span>{chatResult.relaxationMessage || chatResult.matchQuality?.message}</span>
-              </div>
-            )}
 
             {chatResult.results?.length > 0 ? (
               <>
@@ -240,8 +233,14 @@ export default function HomePage() {
                     </div>
                     {/* AI match reason */}
                     {chatResult.results[0].matchReason && (
-                      <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.6, fontStyle: 'italic' }}>
-                        "{chatResult.results[0].matchReason}"
+                      <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-accent)', borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius-sm)' }}>
+                        <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.4rem' }}>Why AI chose this</p>
+                        <p style={{ fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.6, fontStyle: 'italic', margin: 0 }}>"{chatResult.results[0].matchReason}"</p>
+                        {chatResult.relaxationMessage && (
+                          <p style={{ marginTop: '0.55rem', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            ℹ {chatResult.relaxationMessage}
+                          </p>
+                        )}
                       </div>
                     )}
                     {/* Price + CTA */}
@@ -302,7 +301,10 @@ export default function HomePage() {
                             </div>
                             {/* Match reason */}
                             {r.matchReason && (
-                              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{r.matchReason}</p>
+                              <div>
+                                <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.2rem' }}>Why AI chose this</p>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{r.matchReason}</p>
+                              </div>
                             )}
                             <p style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-light)' }}>PKR {r.product.price?.toLocaleString()}</p>
                             {/* Paired shoe */}
