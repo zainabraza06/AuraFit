@@ -23,6 +23,7 @@ import imageSearchRoutes    from './routes/imageSearch.js';
 import wardrobeRoutes       from './routes/wardrobe.js';
 import tryonRoutes          from './routes/tryon.js';
 import vectorSearchRoutes   from './routes/vectorSearch.js';
+import supportRoutes        from './routes/support.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +84,7 @@ export function createApp() {
   app.use('/api/search', searchRoutes); // text/regex fallback
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/support', supportRoutes);
 
   // Health check
   app.get('/api/health', (req, res) => {

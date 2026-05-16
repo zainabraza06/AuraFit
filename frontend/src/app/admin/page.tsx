@@ -3,7 +3,9 @@ import { useState, useEffect, useRef } from 'react';
 import { adminApi, authApi } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
+
 interface LogEntry { type: string; message: string; timestamp?: string; stats?: any; }
+interface SystemLogEntry { _id: string; type: string; source: string; message: string; userMessage?: string; userEmail?: string; resolved: boolean; adminNote?: string; createdAt: string; }
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -19,6 +21,9 @@ export default function AdminDashboard() {
   const [sseConnected, setSseConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [systemLogs, setSystemLogs] = useState<SystemLogEntry[]>([]);
+  const [sysLogSource, setSysLogSource] = useState('');
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   // Change password state
   const [showPwModal, setShowPwModal] = useState(false);
@@ -70,9 +75,27 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchSystemLogs = async (source = '') => {
+    try {
+      const res = await adminApi.systemLogs({ limit: 50, ...(source ? { source } : {}) });
+      setSystemLogs(res.data.logs ?? []);
+    } catch { /* non-critical */ }
+  };
+
+  const handleResolveLog = async (id: string) => {
+    setResolvingId(id);
+    try {
+      await adminApi.resolveLog(id);
+      setSystemLogs(prev => prev.map(l => l._id === id ? { ...l, resolved: true } : l));
+    } catch { /* ignore */ } finally {
+      setResolvingId(null);
+    }
+  };
+
   useEffect(() => {
     if (!authed) return;
     fetchData();
+    fetchSystemLogs();
     esRef.current = adminApi.scraperStream(
       (data) => {
         setSseConnected(true);
@@ -321,6 +344,98 @@ export default function AdminDashboard() {
                 <div ref={logsEndRef} />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* System Logs + Support Requests */}
+        <div style={{ marginTop: '4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <h2 className="title" style={{ fontSize: '1.6rem', margin: 0 }}>System Logs</h2>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {(['', 'error', 'llm', 'recommendation', 'user_escalation'] as const).map(src => (
+                <button
+                  key={src || 'all'}
+                  className={`chip${sysLogSource === src ? ' chip--active' : ''}`}
+                  style={{ fontSize: '0.73rem', padding: '0.3rem 0.85rem', opacity: sysLogSource === src ? 1 : 0.65 }}
+                  onClick={() => { setSysLogSource(src); fetchSystemLogs(src); }}
+                >
+                  {src === '' ? 'All' : src === 'user_escalation' ? 'Support Requests' : src}
+                </button>
+              ))}
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => fetchSystemLogs(sysLogSource)}
+            >
+              ↻ Refresh
+            </button>
+          </div>
+
+          <div className="glass-card" style={{ overflowX: 'auto' }}>
+            {systemLogs.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <p>No system log entries yet.</p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ background: 'rgba(255,255,255,0.03)', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  <tr>
+                    <th style={{ padding: '1rem 1.25rem' }}>Time</th>
+                    <th style={{ padding: '1rem 1.25rem' }}>Source</th>
+                    <th style={{ padding: '1rem 1.25rem' }}>Message</th>
+                    <th style={{ padding: '1rem 1.25rem' }}>Status</th>
+                    <th style={{ padding: '1rem 1.25rem' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {systemLogs.map(log => (
+                    <tr key={log._id} style={{ borderTop: '1px solid var(--border)', transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                      <td style={{ padding: '0.85rem 1.25rem', fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {new Date(log.createdAt).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '0.85rem 1.25rem' }}>
+                        <span className="tag" style={{
+                          background: log.source === 'user_escalation'
+                            ? 'rgba(201,169,110,0.1)' : log.type === 'error'
+                            ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)',
+                          color: log.source === 'user_escalation'
+                            ? 'var(--accent)' : log.type === 'error'
+                            ? 'var(--error)' : 'var(--text-secondary)',
+                          borderColor: 'transparent',
+                          fontSize: '0.7rem',
+                        }}>
+                          {log.source}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1.25rem', fontSize: '0.85rem', maxWidth: 400 }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.message}</div>
+                        {log.userEmail && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{log.userEmail}</div>}
+                      </td>
+                      <td style={{ padding: '0.85rem 1.25rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: log.resolved ? 'var(--success)' : 'var(--text-muted)' }}>
+                          {log.resolved ? '✓ Resolved' : '● Open'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1.25rem' }}>
+                        {!log.resolved && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                            disabled={resolvingId === log._id}
+                            onClick={() => handleResolveLog(log._id)}
+                          >
+                            {resolvingId === log._id ? '…' : 'Resolve'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import ClothingProduct from '../models/ClothingProduct.js';
 import ScraperLog from '../models/ScraperLog.js';
+import SystemLog from '../models/SystemLog.js';
 import { lexicalTaxonomyAlignment } from '../services/catalogTaxonomyAudit.js';
 
 let activeScrapePromise = null;
@@ -123,6 +124,64 @@ export async function deleteProductsByBrand(req, res) {
     res.json({ deleted: c.deletedCount, brand, clothingDeleted: c.deletedCount });
   } catch {
     res.status(500).json({ error: 'Failed to delete brand products' });
+  }
+}
+
+// ─── System Logs ─────────────────────────────────────────────────────────────
+
+export async function getSystemLogs(req, res) {
+  try {
+    const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
+    const source = req.query.source; // optional filter
+    const query = source ? { source } : {};
+    const logs = await SystemLog.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    res.json({ logs });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch system logs' });
+  }
+}
+
+export async function resolveSystemLog(req, res) {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body || {};
+    const log = await SystemLog.findByIdAndUpdate(
+      id,
+      {
+        resolved: true,
+        resolvedBy: req.user?.email || req.user?._id || 'admin',
+        resolvedAt: new Date(),
+        ...(adminNote ? { adminNote } : {})
+      },
+      { new: true }
+    );
+    if (!log) return res.status(404).json({ error: 'Log not found' });
+    res.json({ log });
+  } catch {
+    res.status(500).json({ error: 'Failed to resolve log' });
+  }
+}
+
+/**
+ * POST /api/support/escalate — public (no auth), logs a user escalation request.
+ * Called from the chat when AI returns no results.
+ */
+export async function createEscalation(req, res) {
+  try {
+    const { userMessage, userEmail } = req.body || {};
+    if (!userMessage?.trim()) {
+      return res.status(400).json({ error: 'userMessage is required' });
+    }
+    const log = await SystemLog.create({
+      type: 'info',
+      source: 'user_escalation',
+      message: `User requested admin help: "${String(userMessage).slice(0, 200)}"`,
+      userMessage: String(userMessage).trim(),
+      userEmail: userEmail?.trim() || null,
+    });
+    res.json({ success: true, id: log._id });
+  } catch {
+    res.status(500).json({ error: 'Failed to submit support request' });
   }
 }
 

@@ -7,7 +7,9 @@ import {
   streamScraperEvents,
   runScraper,
   deleteProductsByBrand,
-  postCatalogLexicalAudit
+  postCatalogLexicalAudit,
+  getSystemLogs,
+  resolveSystemLog,
 } from '../controllers/adminController.js';
 
 export { broadcastScraperEvent } from '../controllers/adminController.js';
@@ -23,5 +25,7 @@ router.get('/scraper/stream', streamScraperEvents);
 router.post('/scraper/run', runScraper);
 router.delete('/products/brand/:brand', deleteProductsByBrand);
 router.post('/catalog/lexical-audit', postCatalogLexicalAudit);
+router.get('/system-logs', getSystemLogs);
+router.post('/system-logs/:id/resolve', resolveSystemLog);
 
 export default router;

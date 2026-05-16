@@ -5,6 +5,7 @@ import { parseIntentWithFallback } from '../services/aiService.js';
 import { getOutfitForQuery, getRecommendations } from '../services/recommendationEngine.js';
 import { buildIntentParsePrompt } from '../services/intentPrompt.js';
 import { rawIntentToEngineIntent } from '../services/intentAdapter.js';
+import { logger } from '../utils/logger.js';
 
 export async function getProductRecommendations(req, res) {
   try {
@@ -47,6 +48,10 @@ export async function generateOutfit(req, res) {
     });
   } catch (err) {
     console.error('[generateOutfit]', err);
+    logger.error('recommendation', `generateOutfit failed: ${err.message}`, {
+      userMessage: req.body?.message,
+      stack: err.stack?.slice(0, 800),
+    });
     res.status(500).json({ error: 'Outfit generation failed', details: err.message });
   }
 }

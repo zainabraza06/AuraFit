@@ -63,6 +63,8 @@ export const adminApi = {
   scraperLogs: (limit = 20) => api.get('/admin/scraper/logs', { params: { limit } }),
   scraperStatus: () => api.get('/admin/scraper/status'),
   triggerScrape: () => api.post('/admin/scraper/run'),
+  systemLogs: (params?: { limit?: number; source?: string }) => api.get('/admin/system-logs', { params }),
+  resolveLog: (id: string, adminNote?: string) => api.post(`/admin/system-logs/${id}/resolve`, { adminNote }),
   /** Opens a Server-Sent Events stream for real-time scraper progress */
   scraperStream: (onMessage: (data: any) => void, onError?: (e: Event) => void): EventSource => {
     const es = new EventSource(`${API_BASE}/admin/scraper/stream`);
@@ -72,6 +74,12 @@ export const adminApi = {
     if (onError) es.onerror = onError;
     return es;
   }
+};
+
+// ─── Support / Escalation ─────────────────────────────────────────────────────
+export const supportApi = {
+  escalate: (userMessage: string, userEmail?: string) =>
+    api.post('/support/escalate', { userMessage, userEmail })
 };
 
 // ─── Wardrobe & Boards ───────────────────────────────────────────────────────

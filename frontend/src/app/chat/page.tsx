@@ -1,15 +1,17 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { recommendationsApi } from '@/lib/api';
+import { recommendationsApi, supportApi } from '@/lib/api';
 import RecommendationResult from '@/components/RecommendationResult';
 
-type Msg = { role: 'user' | 'ai'; text?: string; data?: any };
+type Msg = { role: 'user' | 'ai'; text?: string; data?: any; noResults?: boolean; isError?: boolean };
 
-const PROMPTS = [
-  'A maroon wedding outfit with gold accessories',
-  'Casual eid look under Rs. 8000',
-  'Office formal attire in navy blue',
-  'Pastel summer dress with white heels',
+const OCCASION_CHIPS = [
+  { label: 'Eid', prompt: 'A festive Eid outfit with accessories' },
+  { label: 'Wedding', prompt: 'A bridal/guest wedding look' },
+  { label: 'Mehndi', prompt: 'A colorful mehndi outfit' },
+  { label: 'Party', prompt: 'A stylish party look for evening' },
+  { label: 'Office', prompt: 'A smart office formal outfit' },
+  { label: 'Casual', prompt: 'An everyday casual look' },
 ];
 
 export default function ChatPage() {
@@ -19,6 +21,8 @@ export default function ChatPage() {
   }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [escalating, setEscalating] = useState(false);
+  const [escalated, setEscalated] = useState<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -26,6 +30,7 @@ export default function ChatPage() {
   const send = async (text: string) => {
     const q = text.trim(); if (!q || loading) return;
     setInput('');
+    const userMsgIdx = messages.length;
     setMessages(p => [...p, { role: 'user', text: q }]);
     setLoading(true);
     try {
@@ -33,11 +38,38 @@ export default function ChatPage() {
       if (res.data?.results?.length) {
         setMessages(p => [...p, { role: 'ai', data: res.data }]);
       } else {
-        setMessages(p => [...p, { role: 'ai', text: "I couldn't find a perfect match right now. Try a different occasion or color!" }]);
+        setMessages(p => [...p, {
+          role: 'ai',
+          text: "I couldn't find a perfect match right now. Try a different occasion or color, or let me connect you with our style expert.",
+          noResults: true,
+          data: { _userMessage: q }
+        }]);
       }
     } catch {
-      setMessages(p => [...p, { role: 'ai', text: "I'm having trouble reaching the styling engine. Please try again in a moment." }]);
+      setMessages(p => [...p, {
+        role: 'ai',
+        text: "I'm having trouble reaching the styling engine. Please try again in a moment.",
+        isError: true,
+        data: { _userMessage: q }
+      }]);
     } finally { setLoading(false); }
+  };
+
+  const handleEscalate = async (msgIdx: number, userMessage: string) => {
+    if (escalating || escalated.has(msgIdx)) return;
+    setEscalating(true);
+    try {
+      await supportApi.escalate(userMessage);
+      setEscalated(prev => new Set([...prev, msgIdx]));
+      setMessages(p => [...p, {
+        role: 'ai',
+        text: "Your request has been sent to our style expert. We'll get back to you soon with personalized recommendations!"
+      }]);
+    } catch {
+      setMessages(p => [...p, { role: 'ai', text: "Couldn't submit the request. Please try again." }]);
+    } finally {
+      setEscalating(false);
+    }
   };
 
   return (
@@ -60,7 +92,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 80px) clamp(1rem,4vw,3rem) 160px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 80px) clamp(1rem,4vw,3rem) 200px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '0.4rem' }}>
             {msg.role === 'ai' && (
@@ -82,9 +114,38 @@ export default function ChatPage() {
                 lineHeight: 1.65, fontWeight: msg.role === 'user' ? 500 : 400,
               }}>
                 {msg.text}
+                {/* Escalate button on no-results or error messages */}
+                {(msg.noResults || msg.isError) && !escalated.has(i) && (
+                  <div style={{ marginTop: '0.85rem' }}>
+                    <button
+                      onClick={() => handleEscalate(i, msg.data?._userMessage || '')}
+                      disabled={escalating}
+                      style={{
+                        background: 'rgba(201,169,110,0.12)',
+                        border: '1px solid rgba(201,169,110,0.35)',
+                        color: 'var(--accent)',
+                        padding: '0.45rem 1rem',
+                        borderRadius: '100px',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        letterSpacing: '0.02em',
+                      }}
+                    >
+                      {escalating ? 'Sending…' : '👩‍💼 Notify a Style Expert'}
+                    </button>
+                  </div>
+                )}
+                {escalated.has(i) && (
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--success)' }}>
+                    ✓ Expert notified
+                  </p>
+                )}
               </div>
             )}
-            {msg.data && <div style={{ width: '100%' }}><RecommendationResult data={msg.data} /></div>}
+            {msg.data && !msg.noResults && !msg.isError && (
+              <div style={{ width: '100%' }}><RecommendationResult data={msg.data} /></div>
+            )}
           </div>
         ))}
 
@@ -104,15 +165,21 @@ export default function ChatPage() {
       </div>
 
       {/* Input area */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'rgba(8,8,16,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', padding: '1rem clamp(1rem,4vw,3rem) 1.5rem' }}>
-        {/* Prompt chips */}
-        {messages.length <= 1 && (
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.85rem', maxWidth: 860, margin: '0 auto 0.85rem' }}>
-            {PROMPTS.map(p => (
-              <button key={p} className="chip" onClick={() => send(p)} style={{ fontSize: '0.75rem' }}>{p}</button>
-            ))}
-          </div>
-        )}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'rgba(8,8,16,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', padding: '0.85rem clamp(1rem,4vw,3rem) 1.25rem' }}>
+        {/* Occasion chips — always visible */}
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', maxWidth: 860, margin: '0 auto 0.75rem' }}>
+          {OCCASION_CHIPS.map(chip => (
+            <button
+              key={chip.label}
+              className="chip"
+              onClick={() => send(chip.prompt)}
+              disabled={loading}
+              style={{ fontSize: '0.73rem', padding: '0.3rem 0.85rem' }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: '0.85rem', maxWidth: 860, margin: '0 auto' }}>
           <div className="style-input-wrap" style={{ flex: 1 }}>
             <input
