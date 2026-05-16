@@ -56,6 +56,7 @@ ${productList}
 
 Return ONLY valid JSON — no markdown, no explanation:
 {
+  "catalogNote": "1-2 honest sentences if there is a meaningful gap between what the user requested and what is actually available in these results — be specific about the attribute that differs (e.g. wrong garment type, unavailable print/work, color mismatch, piece count off). Set to null if the top results are a good overall match.",
   "rankings": [
     { "productIndex": 0, "rank": 1, "reason": "Exact maroon embroidered lehenga, perfect for a wedding occasion and within budget" },
     { "productIndex": 2, "rank": 2, "reason": "..." }
@@ -67,10 +68,15 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
   function parseRankings(text) {
     if (text.includes('```')) text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(extractJson(text));
-    return parsed.rankings
+    const rankings = parsed.rankings
       .sort((a, b) => a.rank - b.rank)
       .map((r) => ({ product: products[r.productIndex], rank: r.rank, reason: r.reason }))
       .filter((r) => r.product != null);
+    const catalogNote =
+      typeof parsed.catalogNote === 'string' && parsed.catalogNote.trim()
+        ? parsed.catalogNote.trim()
+        : null;
+    return { rankings, catalogNote };
   }
 
   try {
@@ -86,7 +92,7 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
     console.warn('[rankProductsWithAI] All providers exhausted:', err.message);
   }
 
-  return products.map((p, i) => ({ product: p, rank: i + 1, reason: null }));
+  return { rankings: products.map((p, i) => ({ product: p, rank: i + 1, reason: null })), catalogNote: null };
 }
 
 const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];

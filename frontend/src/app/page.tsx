@@ -204,6 +204,14 @@ export default function HomePage() {
 
             {chatResult.results?.length > 0 ? (
               <>
+                {/* ── Catalog note (LLM-generated mismatch banner) ── */}
+                {chatResult.catalogNote && (
+                  <div style={{ display: 'flex', gap: '0.65rem', padding: '0.8rem 1.1rem', borderRadius: 'var(--radius-sm)', background: 'rgba(201,169,110,0.07)', border: '1px solid rgba(201,169,110,0.22)', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.65, marginBottom: '2rem' }}>
+                    <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 700, marginTop: '0.05rem' }}>✦</span>
+                    <span>{chatResult.catalogNote}</span>
+                  </div>
+                )}
+
                 {/* ── #1 Hero Best Pick ── */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
                   <span style={{ background: 'var(--accent)', color: '#0c0b0a', padding: '0.22rem 0.65rem', borderRadius: 2, fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>✦ #1 Best Match</span>

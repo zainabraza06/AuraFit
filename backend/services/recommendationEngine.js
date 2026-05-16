@@ -635,7 +635,7 @@ export async function getOutfitForQuery(intent) {
 
   // 3. AI dress rank first so accessory plan uses the same hero the user sees at #1
   const tRank = Date.now();
-  const ranked = await rankProductsWithAI(presorted, intent);
+  const { rankings: ranked, catalogNote } = await rankProductsWithAI(presorted, intent);
   logRecommendationEvent({
     event: 'style_me_rank_ms',
     ms: Date.now() - tRank,
@@ -707,6 +707,7 @@ export async function getOutfitForQuery(intent) {
       message: relaxationMessage
     },
     relaxationMessage,
+    catalogNote: catalogNote || null,   // LLM-generated mismatch banner (null = good match)
     catalogExtractionHealth,
     intentEcho: {
       constraintPriority: intent.constraintPriority || [],
