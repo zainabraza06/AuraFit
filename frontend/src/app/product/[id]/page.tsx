@@ -1,8 +1,19 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import ProductCard from '@/components/ProductCard';
 import { productsApi, recommendationsApi, favoritesApi } from '@/lib/api';
+
+function normalizeProductId(product: any): string | null {
+  if (!product) return null;
+  const raw = product._id ?? product.id;
+  if (raw == null) return null;
+  const s =
+    typeof raw === 'object' && raw !== null && '$oid' in raw
+      ? String(raw.$oid)
+      : String(raw);
+  return /^[a-f0-9]{24}$/i.test(s) ? s : null;
+}
 
 export default function ProductDetailsPage() {
   const { id } = useParams();
@@ -37,17 +48,24 @@ export default function ProductDetailsPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!product?._id || typeof window === 'undefined') return;
+    if (!product || typeof window === 'undefined') return;
+    const productId = normalizeProductId(product);
+    if (!productId) return;
     const token = localStorage.getItem('fashion_token');
     if (!token) return;
-    favoritesApi
-      .check(String(product._id))
-      .then((res) => setIsFav(!!res.data?.favorited))
-      .catch(() => {});
-  }, [product?._id]);
 
-  const toggleMainFavorite = async () => {
-    if (!product?._id) return;
+    favoritesApi
+      .check(productId)
+      .then((res) => setIsFav(!!res.data?.favorited))
+      .catch((err) => console.error('Error checking favorite:', err));
+  }, [product]);
+
+  const toggleMainFavorite = useCallback(async () => {
+    const productId = normalizeProductId(product);
+    if (!productId) {
+      console.warn('No valid product ID available');
+      return;
+    }
     const token = localStorage.getItem('fashion_token');
     if (!token) {
       alert('Please login to save favorites');
@@ -55,9 +73,12 @@ export default function ProductDetailsPage() {
     }
     setFavLoading(true);
     try {
-      const res = await favoritesApi.toggle(String(product._id));
+      console.log('Toggling favorite for product:', productId);
+      const res = await favoritesApi.toggle(productId);
+      console.log('Favorite response:', res.data);
       setIsFav(!!res.data?.favorited);
     } catch (err: unknown) {
+      console.error('Error toggling favorite:', err);
       const ax = err as { response?: { status?: number; data?: { error?: string } } };
       const status = ax.response?.status;
       const msg = ax.response?.data?.error;
@@ -67,7 +88,7 @@ export default function ProductDetailsPage() {
     } finally {
       setFavLoading(false);
     }
-  };
+  }, [product]);
 
   if (loading) {
     return (

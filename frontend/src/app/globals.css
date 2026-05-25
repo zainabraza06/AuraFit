@@ -191,6 +191,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; line-height
   color: var(--text-primary);
 }
 .btn-ghost:hover { background: var(--bg-hover); border-color: var(--border-accent); color: var(--accent); }
+.btn-ghost.active { background: rgba(201,169,110,0.12); border-color: var(--accent); color: var(--accent); }
 
 .btn-sm  { padding: 0.42rem 1.05rem; font-size: 0.72rem; }
 .btn-lg  { padding: 0.95rem 2.5rem; font-size: 0.88rem; }
@@ -394,9 +395,11 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; line-height
 /* ─── Grids ───────────────────────────────────────────────────────────────────── */
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); gap: 1.5rem; }
 .masonry { columns: 4; column-gap: 1.5rem; }
-@media (max-width:1200px) { .masonry { columns: 3; } }
-@media (max-width:768px)  { .masonry { columns: 2; } .product-grid { grid-template-columns: repeat(2,1fr); gap: 0.85rem; } }
-@media (max-width:480px)  { .masonry { columns: 1; } .product-grid { grid-template-columns: 1fr; } }
+@media (max-width:1200px) { .masonry { columns: 3; } .product-grid { grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); } }
+@media (max-width:768px)  { .masonry { columns: 2; } .product-grid { grid-template-columns: repeat(auto-fill,minmax(160px,1fr)); gap: 0.85rem; } }
+@media (max-width:600px)  { .product-grid { grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap: 0.75rem; } }
+@media (max-width:480px)  { .masonry { columns: 1; } .product-grid { grid-template-columns: repeat(2,1fr); gap: 0.75rem; } }
+@media (max-width:360px)  { .product-grid { grid-template-columns: 1fr; } }
 
 /* ─── Chips ───────────────────────────────────────────────────────────────────── */
 .chip {
