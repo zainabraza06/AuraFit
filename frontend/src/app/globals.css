@@ -621,7 +621,7 @@ select.input option { background: var(--bg-card); color: var(--text-primary); }
 /* Split layout with configurable aside width via CSS var --split-aside */
 .split-grid {
   display: grid;
-  grid-template-columns: 1fr var(--split-aside, 320px);
+  grid-template-columns: var(--split-aside, 320px) 1fr;
   gap: var(--split-gap, 2.5rem);
   align-items: var(--split-align, start);
 }
