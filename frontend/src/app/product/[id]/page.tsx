@@ -116,12 +116,12 @@ export default function ProductDetailsPage() {
             {/* Thumbnails */}
             <div className="product-thumbs">
               {(product.images || []).slice(0, 5).map((img: string, idx: number) => (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   className={`glass-card ${activeImage === img ? 'active' : ''}`}
-                  style={{ 
-                    aspectRatio: '1', 
-                    overflow: 'hidden', 
+                  style={{
+                    aspectRatio: '1',
+                    overflow: 'hidden',
                     cursor: 'pointer',
                     borderColor: activeImage === img ? 'var(--accent)' : 'var(--border)'
                   }}
@@ -152,7 +152,7 @@ export default function ProductDetailsPage() {
               <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.8' }}>
                 {product.description || 'No description available for this premium piece.'}
               </p>
-              
+
               <div className="resp-grid-2" style={{ gap: '1.5rem' }}>
                 <div>
                   <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Category</h4>
@@ -203,7 +203,7 @@ export default function ProductDetailsPage() {
             {/* Matching Shoes */}
             <div style={{ marginBottom: '5rem' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                Matching Shoes 
+                Matching Shoes
                 <span className="tag" style={{ background: 'rgba(45, 212, 191, 0.1)', color: 'var(--accent-teal)', borderColor: 'rgba(45, 212, 191, 0.2)' }}>High Compatibility</span>
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
