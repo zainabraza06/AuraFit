@@ -1,79 +1,108 @@
 /**
  * colorInference.js
- * Infers colors from a product title/description.
+ * Infers colors from a product's text, source-prioritized for accuracy.
  *
- * Returns two parallel sets:
- *   primaryColor / colors       — canonical family names (unchanged, used everywhere existing)
- *   primaryExactColor / exactColors — the literal keyword matched from the product text
- */
-
-const COLOR_MAP = [
-  { keywords: ['black', 'onyx', 'jet black', 'charcoal black'], color: 'Black' },
-  { keywords: ['white', 'ivory', 'off white', 'off-white', 'cream', 'milk'], color: 'White' },
-  { keywords: ['red', 'maroon', 'crimson', 'scarlet', 'rust', 'burgundy', 'wine', 'mehroon', 'mehrun', 'laal'], color: 'Red' },
-  { keywords: ['navy blue', 'royal blue', 'sky blue', 'teal blue', 'cobalt', 'indigo', 'denim', 'navy', 'blue'], color: 'Blue' },
-  { keywords: ['bottle green', 'forest green', 'sea green', 'mint green', 'hunter green', 'army green', 'parrot green', 'mehendi green', 'pista', 'pistachio', 'emerald', 'olive', 'mint', 'sage', 'lime', 'dhani', 'mehendi', 'sabz', 'green'], color: 'Green' },
-  { keywords: ['mustard', 'lemon yellow', 'golden yellow', 'saffron', 'lemon', 'yellow', 'zard', 'peela'], color: 'Yellow' },
-  { keywords: ['hot pink', 'baby pink', 'dusty pink', 'blush pink', 'rose pink', 'nude pink', 'fuchsia', 'magenta', 'blush', 'peach', 'rose', 'salmon', 'gulabi', 'pink'], color: 'Pink' },
-  { keywords: ['lavender', 'lilac', 'mauve', 'plum', 'violet', 'grape', 'jamuni', 'baingan', 'purple'], color: 'Purple' },
-  { keywords: ['burnt orange', 'terracotta', 'coral', 'apricot', 'amber', 'tangerine', 'mango', 'narangi', 'orange'], color: 'Orange' },
-  { keywords: ['antique gold', 'rose gold', 'dull gold', 'golden', 'champagne', 'bronze', 'fawn', 'camel', 'nude', 'khaki', 'sand', 'beige', 'gold'], color: 'Gold' },
-  { keywords: ['steel grey', 'charcoal grey', 'dove grey', 'light grey', 'dark grey', 'silver', 'slate', 'ash', 'gray', 'grey'], color: 'Grey' },
-  { keywords: ['dark brown', 'chocolate', 'mocha', 'coffee', 'caramel', 'toffee', 'walnut', 'chestnut', 'tan', 'brown'], color: 'Brown' },
-  { keywords: ['peacock blue', 'teal green', 'dark teal', 'turquoise', 'ferozi', 'firozi', 'aqua', 'cyan', 'teal'], color: 'Teal' },
-  { keywords: ['multi', 'multicolor', 'multi-color', 'multicolour'], color: 'Multicolor' }
-  // Note: 'printed'/'floral'/'patterned' etc. describe print style, NOT color.
-  // Products with no color word found fall back to Multicolor via the default.
-];
-
-/**
- * inferColors(text)
+ * The vocabulary (shade → family) is shared with the runtime search layer via
+ * constants/colorVocabulary.js, so a shade always resolves to the SAME family
+ * everywhere. This fixes two classes of bug:
+ *   1. Family drift  — e.g. beige items used to be stored as "Gold" and never
+ *      matched a "Beige" search. Now every shade maps to one canonical family.
+ *   2. Wrong shade   — e.g. a "burgundy" item getting labelled "maroon" because
+ *      the old code returned the first keyword in the list rather than the shade
+ *      actually present. Now the exact shade is the one that really appears,
+ *      preferring the most reliable source (variant color option / title) and
+ *      the earliest occurrence.
  *
  * Returns:
- *   primaryColor      — canonical family, e.g. "Red"      (original field, unchanged)
- *   colors            — canonical families, e.g. ["Red"]  (original field, unchanged)
- *   primaryExactColor — exact scraped shade, e.g. "maroon" (new field)
- *   exactColors       — all exact shades found, e.g. ["maroon"] (new field)
+ *   primaryColor      — canonical family, e.g. "Red"
+ *   colors            — canonical families, e.g. ["Red", "Gold"]
+ *   primaryExactColor — exact shade actually found, e.g. "burgundy"
+ *   exactColors       — all exact shades found, e.g. ["burgundy", "golden"]
  */
-export function inferColors(text) {
-  const fallback = {
-    primaryColor: 'Multicolor',
-    colors: ['Multicolor'],
-    primaryExactColor: 'multicolor',
-    exactColors: ['multicolor']
+
+import { SHADE_ENTRIES } from '../../../constants/colorVocabulary.js';
+
+const FALLBACK = Object.freeze({
+  primaryColor: 'Multicolor',
+  colors: ['Multicolor'],
+  primaryExactColor: 'multicolor',
+  exactColors: ['multicolor']
+});
+
+/**
+ * Normalize the caller input into priority-ranked text segments.
+ * Lower priority number = more trustworthy color source.
+ *
+ * Accepts either a plain string (legacy callers) or a structured object:
+ *   { options, title, tags, description }
+ *   - options: variant color option values (Shopify option2/option3) — most reliable
+ *   - title:   product name — reliable
+ *   - tags:    catalog tags — moderate
+ *   - description: marketing copy — noisiest, used only as a last resort
+ */
+function buildSegments(input) {
+  if (typeof input === 'string') {
+    return [{ text: input.toLowerCase(), priority: 0 }];
+  }
+  if (!input || typeof input !== 'object') return [];
+
+  const seg = [];
+  const push = (val, priority) => {
+    const text = Array.isArray(val) ? val.join(' ') : (val || '');
+    if (text && String(text).trim()) seg.push({ text: String(text).toLowerCase(), priority });
   };
+  push(input.options, 0);
+  push(input.title, 0);
+  push(input.tags, 1);
+  push(input.description, 2);
+  return seg;
+}
 
-  if (!text) return fallback;
-  const lower = text.toLowerCase();
+export function inferColors(input) {
+  const segments = buildSegments(input);
+  if (!segments.length) return { ...FALLBACK, colors: [...FALLBACK.colors], exactColors: [...FALLBACK.exactColors] };
 
-  const found = []; // { exact: keyword, family: canonical }
-  const seenFamilies = new Set();
-
-  for (const entry of COLOR_MAP) {
-    for (const kw of entry.keywords) {
-      const escaped = kw.replace(/[-]/g, '[-\\s]?');
-      const regex = new RegExp(`\\b${escaped}\\b`);
-      if (regex.test(lower)) {
-        if (!seenFamilies.has(entry.color)) {
-          seenFamilies.add(entry.color);
-          found.push({ exact: kw, family: entry.color });
-        }
-        break;
+  // For each shade, record its best (most trustworthy, earliest) occurrence.
+  const matches = []; // { shade, family, priority, index }
+  for (const { shade, family, regex } of SHADE_ENTRIES) {
+    for (const seg of segments) {
+      const m = regex.exec(seg.text);
+      if (m) {
+        matches.push({ shade, family, priority: seg.priority, index: m.index });
+        break; // first (highest-priority) segment wins for this shade
       }
     }
   }
 
-  if (found.length === 0) return fallback;
+  if (!matches.length) {
+    return { ...FALLBACK, colors: [...FALLBACK.colors], exactColors: [...FALLBACK.exactColors] };
+  }
+
+  // Order: most trustworthy source first, then earliest in text, then more
+  // specific (longer) shade first so "brick red" beats a bare "red".
+  matches.sort(
+    (a, b) => a.priority - b.priority || a.index - b.index || b.shade.length - a.shade.length
+  );
+
+  // One representative shade per family, keeping the ranked order.
+  const seenFamily = new Set();
+  const ordered = [];
+  for (const m of matches) {
+    if (!seenFamily.has(m.family)) {
+      seenFamily.add(m.family);
+      ordered.push(m);
+    }
+  }
 
   return {
-    primaryColor: found[0].family,          // canonical — e.g. "Red"
-    colors: found.map((f) => f.family),     // canonical — e.g. ["Red", "Gold"]
-    primaryExactColor: found[0].exact,      // exact     — e.g. "maroon"
-    exactColors: found.map((f) => f.exact)  // exact     — e.g. ["maroon", "golden"]
+    primaryColor: ordered[0].family,
+    colors: ordered.map((o) => o.family),
+    primaryExactColor: ordered[0].shade,
+    exactColors: ordered.map((o) => o.shade)
   };
 }
 
 /** Returns canonical primaryColor (convenience wrapper around inferColors). */
-export function inferColor(text) {
-  return inferColors(text).primaryColor;
+export function inferColor(input) {
+  return inferColors(input).primaryColor;
 }

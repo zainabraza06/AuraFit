@@ -99,13 +99,19 @@ export class BaseAdapter {
 
     const baseOrigin = this.baseUrl;
     const normalized = [];
+    const skipAi = String(process.env.SCRAPER_SKIP_AI || '').toLowerCase() === 'true';
+    // SKIP_AI disables the LLM repair path too (not just enrichment).
+    const useLlmRepair = this._repairWithLlm && !skipAi;
+    // This catalog is women-only for the clothing & shoe verticals.
+    const womenOnly = this._vertical === 'clothing' || this._vertical === 'shoes';
+    let droppedGender = 0;
 
     for (const raw of rawProducts) {
       const mapped = raw.handle !== undefined ? mapShopifyProduct(raw, baseOrigin) : raw;
       if (!mapped) continue;
 
       let product = this._normalize(mapped, brandConfig);
-      if (!product && this._repairWithLlm) {
+      if (!product && useLlmRepair) {
         product = await tryRepairWithLLM(
           mapped,
           brandConfig,
@@ -117,7 +123,7 @@ export class BaseAdapter {
       if (!product) continue;
 
       let { valid, reason } = this._validate(product);
-      if (!valid && this._repairWithLlm) {
+      if (!valid && useLlmRepair) {
         const repaired = await tryRepairWithLLM(mapped, brandConfig, reason, this._vertical, this._normalize);
         if (repaired) {
           product = repaired;
@@ -129,13 +135,23 @@ export class BaseAdapter {
         continue;
       }
 
-      if (product.metadataScore < AI_ENRICH_THRESHOLD || this._needsAi(product)) {
+      // Women-only catalog: drop men's / kids' items (intentional, not a failure).
+      if (womenOnly && (product.gender === 'men' || product.gender === 'kids')) {
+        droppedGender++;
+        continue;
+      }
+
+      if (!skipAi && (product.metadataScore < AI_ENRICH_THRESHOLD || this._needsAi(product))) {
         product = await this._enrich(product);
         await politeSleep(300);
       }
 
       normalized.push(product);
       await politeSleep(150);
+    }
+
+    if (droppedGender > 0) {
+      logger.info(`[${this.brand}] ${collection.path}: dropped ${droppedGender} non-women item(s)`);
     }
 
     logger.success(`[${this.brand}] ${collection.path}: ${normalized.length} products (${strategy})`);

@@ -8,7 +8,7 @@ const REQUIRED = ['name', 'price', 'productUrl', 'images'];
 const FAMILY_MAP = {
   Red: 'red', Blue: 'blue', Green: 'green', Yellow: 'yellow',
   Pink: 'pink', Purple: 'purple', Orange: 'orange', Brown: 'earth',
-  Gold: 'earth', Teal: 'teal', Grey: 'neutral', Black: 'neutral',
+  Gold: 'earth', Beige: 'earth', Teal: 'teal', Grey: 'neutral', Black: 'neutral',
   White: 'neutral', Multicolor: 'multicolor'
 };
 
@@ -51,42 +51,43 @@ const SHOE_TYPE_RULES = [
   { kw: ['espadrille'], val: 'espadrille' },
   { kw: ['boat shoe'], val: 'boat-shoe' },
   { kw: ['clog'], val: 'clogs' },
-  { kw: ['flat shoe', 'ballet', 'flat '], val: 'flat' }
+  { kw: ['flat shoe', 'ballet flat', 'ballerina'], val: 'flat' }
 ];
 
-function inferShoeType(blob, configSub) {
+// Default silhouette for each merchandising bucket — used only when the product's
+// own title/tags carry no silhouette word.
+const BUCKET_DEFAULT_TYPE = {
+  heels: 'heel', flats: 'flat', sandals: 'sandal', khussa: 'khussa',
+  sneakers: 'sneaker', boots: 'boot', mules: 'mule', formal: 'formal-dress',
+  casual: 'flat', athletic: 'sneaker', ethnic: 'khussa', other: 'other'
+};
+
+/**
+ * Infer the silhouette from the product's OWN clean text (title + tags), which is
+ * reliable regardless of which collection the product was fetched from. Falls back
+ * to the collection bucket default only when the text carries no silhouette word.
+ * (Description is intentionally excluded — copy like "flat comfortable insole" on a
+ * heel used to corrupt the type.)
+ */
+function inferShoeType(cleanBlob, configSub) {
   for (const { kw, val } of SHOE_TYPE_RULES) {
-    if (kw.some((k) => blob.includes(k))) return val;
+    if (kw.some((k) => cleanBlob.includes(k))) return val;
   }
-  const map = {
-    heels: 'heel',
-    flats: 'flat',
-    sandals: 'sandal',
-    khussa: 'khussa',
-    sneakers: 'sneaker',
-    boots: 'boot',
-    mules: 'mule',
-    formal: 'formal-dress',
-    casual: 'flat',
-    athletic: 'sneaker',
-    ethnic: 'khussa',
-    kids: 'other',
-    women: 'other',
-    men: 'other',
-    new: 'other',
-    sale: 'other',
-    couple: 'other',
-    smart: 'sneaker',
-    mixed: 'other'
-  };
-  return map[configSub] || 'other';
+  return BUCKET_DEFAULT_TYPE[configSub] || 'other';
 }
 
 function inferGenderShoe(blob, brandGender) {
+  // Explicit product-text signals win over the collection's default gender —
+  // this matters when a collection JSON falls back to a site-wide product pool
+  // that can contain men's / kids' items despite a women-only collection config.
+  const textWomen = /\b(women|womens|women's|ladies|girls|female)\b/.test(blob);
+  const textMen   = /\b(men|mens|men's|gents|gentlemen|boys|male)\b/.test(blob);
+  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant)\b/.test(blob);
+
+  if (textMen && !textWomen) return 'men';
+  if (textKids && !textWomen) return 'kids';
   if (brandGender && ['women', 'men', 'kids', 'unisex'].includes(brandGender)) return brandGender;
-  if (/\bmen\b|\bmens\b|\bgents\b|\bboys\b|\bman\b/.test(blob)) return 'men';
-  if (/\bwomen\b|\bwomens\b|\bladies\b|\bgirls\b/.test(blob)) return 'women';
-  if (/\bkids\b|\bchild\b|\bjunior\b/.test(blob)) return 'kids';
+  if (textWomen) return 'women';
   return 'women';
 }
 
@@ -149,6 +150,8 @@ export function normalizeShoeProduct(raw, brandConfig) {
   if (!name || name.length < 2) return null;
 
   const blob = [name, raw.description || '', ...(raw.tags || [])].join(' ').toLowerCase();
+  // Clean signal for silhouette & gender: the product's own title + tags, no copy.
+  const cleanBlob = [name, ...(raw.tags || [])].join(' ').toLowerCase();
   if (SHOE_NEGATIVE.some((n) => blob.includes(n))) return null;
 
   const price = raw.price;
@@ -161,12 +164,21 @@ export function normalizeShoeProduct(raw, brandConfig) {
   const productUrl = (raw.productUrl || '').trim();
   if (!productUrl.startsWith('http')) return null;
 
-  const { primaryColor, colors, primaryExactColor, exactColors } = inferColors(blob);
-  const colorFamily = FAMILY_MAP[primaryColor] || 'multicolor';
-
   const subCategory = brandConfig.subCategory || 'other';
-  const shoeType = inferShoeType(blob, subCategory);
-  const gender = inferGenderShoe(blob, brandConfig.gender);
+  const shoeType = inferShoeType(cleanBlob, subCategory);
+  const gender = inferGenderShoe(cleanBlob, brandConfig.gender);
+  // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
+  // an intentionally-rejected men's/kids' item is not mistaken for a parse
+  // failure and sent through the LLM repair path.
+
+  // Colors — source-prioritized: variant color option & title over marketing copy.
+  const { primaryColor, colors, primaryExactColor, exactColors } = inferColors({
+    options: raw.variantOptions,
+    title: name,
+    tags: raw.tags,
+    description: raw.description
+  });
+  const colorFamily = FAMILY_MAP[primaryColor] || 'multicolor';
   const occasion = inferOccasionShoe(blob, brandConfig.occasion);
   const season = inferSeason(blob);
   const sportUse = /\b(run|sport|gym|training|basketball|football|athletic)\b/.test(blob);

@@ -385,24 +385,22 @@ export const CLOTHING_BRANDS = [
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // J. (JUNAID JAMSHED) — junaidjamshed.com  (Shopify) — Women + Men
+  // J. (JUNAID JAMSHED) — junaidjamshed.com  (Shopify) — Women only
   // ════════════════════════════════════════════════════════════════════════════
   {
     brand: 'J.',
     baseUrl: 'https://www.junaidjamshed.com',
     adapter: 'ShopifyGenericAdapter',
     category: 'clothing',
+    // J. is a large men+women+kids store; when a women collection handle 404s and
+    // the scraper falls back to the site-wide /products.json, filter to women's
+    // items so the pool isn't dominated by menswear (which we'd drop anyway).
+    shopifyKeywords: ['women', 'womens', "women's", 'ladies', 'kurti', 'girls'],
     collections: [
-      { path: '/collections/mens-kurta', subCategory: 'mens-kurta', occasion: ['eid', 'casual', 'office'], style: ['minimal', 'printed'], gender: 'men' },
-      { path: '/collections/mens-shalwar-kameez', subCategory: 'mens-shalwar-kameez', occasion: ['eid', 'formal', 'party'], style: ['embroidered', 'elegant'], gender: 'men' },
-      { path: '/collections/mens-unstitched', subCategory: 'mens-unstitched-3-piece', occasion: ['eid', 'casual'], style: ['printed'], gender: 'men' },
-      { path: '/collections/mens-waistcoat', subCategory: 'mens-waistcoat', occasion: ['eid', 'formal', 'wedding'], style: ['embroidered'], gender: 'men' },
-      { path: '/collections/mens-western-wear', subCategory: 'mens-western-sets', occasion: ['casual', 'office'], style: ['western', 'minimal'], gender: 'men' },
-      { path: '/collections/mens-casual-shirts', subCategory: 'mens-shirt-tops', occasion: ['casual', 'office'], style: ['printed', 'minimal'], gender: 'men' },
-      { path: '/collections/mens-t-shirts', subCategory: 'mens-shirt-tops', occasion: ['casual'], style: ['printed', 'minimal'], gender: 'men' },
       { path: '/collections/womens-kurta', subCategory: 'kurta', occasion: ['casual', 'office', 'eid'], style: ['printed', 'minimal'], gender: 'women' },
       { path: '/collections/womens-2-piece-suit', subCategory: '2-piece', occasion: ['casual', 'party'], style: ['printed', 'elegant'], gender: 'women' },
-      { path: '/collections/womens-3-piece-suit', subCategory: '3-piece', occasion: ['party', 'eid'], style: ['embroidered', 'elegant'], gender: 'women' }
+      { path: '/collections/womens-3-piece-suit', subCategory: '3-piece', occasion: ['party', 'eid'], style: ['embroidered', 'elegant'], gender: 'women' },
+      { path: '/collections/womens-unstitched', subCategory: 'unstitched-3-piece', occasion: ['casual', 'eid'], style: ['printed'], gender: 'women' }
     ]
   },
 

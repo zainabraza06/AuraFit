@@ -148,91 +148,117 @@ const SUBCATEGORY_KW = {
   'festive':            ['wedding wear','luxury formal','heavy embroidered','chikankari formal','festive wear']
 };
 
-// ─── Piece details lookup ─────────────────────────────────────────────────────
-const PIECE_DETAILS = {
-  '1-piece':            { includes: ['shirt'],                          totalCount: 1 },
-  'kurta':              { includes: ['kurta'],                          totalCount: 1 },
-  'pants':              { includes: ['trouser'],                        totalCount: 1 },
-  'shalwar':            { includes: ['shalwar'],                        totalCount: 1 },
-  'dupatta':            { includes: ['dupatta'],                        totalCount: 1 },
-  '2-piece':            { includes: ['shirt', 'trouser'],               totalCount: 2 },
-  '3-piece':            { includes: ['shirt', 'trouser', 'dupatta'],    totalCount: 3 },
-  '4-piece':            { includes: ['shirt', 'trouser', 'dupatta', 'inner'], totalCount: 4 },
-  'bridal':             { includes: ['shirt', 'trouser', 'dupatta'],    totalCount: 3 },
-  'festive':            { includes: ['shirt', 'trouser', 'dupatta'],    totalCount: 3 },
-  'unstitched-1-piece': { includes: ['fabric-shirt'],                   totalCount: 1 },
-  'unstitched-2-piece': { includes: ['fabric-shirt', 'fabric-trouser'], totalCount: 2 },
-  'unstitched-3-piece': { includes: ['fabric-shirt', 'fabric-trouser', 'fabric-dupatta'], totalCount: 3 },
-  'western':            { includes: ['top'],                            totalCount: 1 },
-  'co-ord':             { includes: ['top', 'bottom'],                  totalCount: 2 },
-  'other':              { includes: [],                                 totalCount: undefined }
+// ─── Canonical composition per subCategory ─────────────────────────────────
+// The collection a product was scraped from is the most reliable signal for its
+// garment composition. This table is the single source of truth for stitching,
+// piece count, and included pieces. Text is only used to REFINE ambiguous cases
+// (see below) — never to override a definite collection label. This prevents the
+// classic bugs where a stray "dupatta"/"trouser"/"1 piece" mention in marketing
+// copy corrupted a 2-piece / 3-piece item.
+//   definitePieces: true  → piece count is fixed by the collection, ignore text
+//   stitched: null        → stitching is ambiguous, fall back to text detection
+const SUBCATEGORY_CANONICAL = {
+  '2-piece':            { pieceType: '2-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shirt', 'trouser'],                dressStyle: 'shalwar-kameez' },
+  '3-piece':            { pieceType: '3-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shirt', 'trouser', 'dupatta'],     dressStyle: 'shalwar-kameez' },
+  '4-piece':            { pieceType: '4-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shirt', 'trouser', 'dupatta', 'inner'], dressStyle: 'shalwar-kameez' },
+  'kurta':              { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shirt'],                           dressStyle: 'kurta' },
+  'pants':              { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['trouser'],                         dressStyle: 'trouser' },
+  'shalwar':            { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shalwar'],                         dressStyle: 'trouser' },
+  'dupatta':            { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['dupatta'],                         dressStyle: 'other' },
+  'unstitched-1-piece': { pieceType: '1-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt'],                    dressStyle: 'shalwar-kameez' },
+  'unstitched-2-piece': { pieceType: '2-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt', 'fabric-trouser'],  dressStyle: 'shalwar-kameez' },
+  'unstitched-3-piece': { pieceType: '3-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt', 'fabric-trouser', 'fabric-dupatta'], dressStyle: 'shalwar-kameez' },
+  'co-ord':             { pieceType: '2-piece', definitePieces: true,  stitched: 'stitched',   includes: ['top', 'bottom'],                   dressStyle: 'co-ord' },
+  'western':            { pieceType: '1-piece', definitePieces: false, stitched: 'stitched',   includes: ['top'],                             dressStyle: 'western' },
+  // Ambiguous merchandising buckets — let text decide piece count / stitching.
+  'festive':            { pieceType: '3-piece', definitePieces: false, stitched: null,         includes: ['shirt', 'trouser', 'dupatta'],     dressStyle: 'shalwar-kameez' },
+  'bridal':             { pieceType: '3-piece', definitePieces: false, stitched: 'stitched',   includes: ['shirt', 'trouser', 'dupatta'],     dressStyle: 'lehenga' },
+  'other':              { pieceType: undefined, definitePieces: false, stitched: null,         includes: [],                                  dressStyle: undefined }
 };
 
-// ─── Piece-component tokens (description / title) ────────────────────────────
-const PIECE_TOKEN_RULES = [
-  { keys: ['dupatta', 'duppata', 'dopatta', 'chiffon dupatta', 'net dupatta', 'organza dupatta'], label: 'dupatta' },
-  { keys: ['shawl', 'stole'], label: 'dupatta' },
-  { keys: ['trouser', 'pants', 'pant ', 'cigarette pant', 'straight pant', 'culottes'], label: 'trouser' },
-  { keys: ['shalwar', 'salwar', 'tulip shalwar', 'gharara', 'sharara'], label: 'shalwar' },
-  { keys: ['shirt', 'kameez', 'kurta', 'tunic', 'peplum', 'short kurta'], label: 'shirt' },
-  { keys: ['slip', 'inner shirt', 'inner kurta', 'lining'], label: 'inner' },
-  { keys: ['waistcoat', 'vest', 'nehru jacket'], label: 'waistcoat' },
-  { keys: ['coat', 'blazer', 'jacket (men', 'bandhgala'], label: 'coat' },
-  { keys: ['lehenga skirt', 'lehenga', 'ghagra'], label: 'lehenga-skirt' },
-  { keys: ['choli', 'blouse'], label: 'choli' }
-];
+function canonicalFor(subCategory) {
+  return SUBCATEGORY_CANONICAL[subCategory] || SUBCATEGORY_CANONICAL['other'];
+}
+
+const PIECE_COUNT = { '1-piece': 1, '2-piece': 2, '3-piece': 3, '4-piece': 4 };
+
+// Generic suit buckets whose label should follow a title-driven piece/stitch override.
+const GENERIC_SUIT_SUBCATS = new Set([
+  '2-piece', '3-piece', '4-piece',
+  'unstitched-1-piece', 'unstitched-2-piece', 'unstitched-3-piece'
+]);
 
 /**
- * Reads title + description for which garment pieces are included.
+ * When the title overrides the collection's piece count / stitching, realign the
+ * subCategory label so it stays coherent (e.g. a "2-piece" collection item whose
+ * title says "3 Piece Unstitched" becomes 'unstitched-3-piece'). Only touches the
+ * generic suit buckets; kurta/pants/dupatta/festive/bridal/etc. keep their label.
  */
-function mergePieceDetailsFromDescription(blob, pieceType, subCategory, baseDetails) {
-  const includes = new Set(baseDetails?.includes?.filter(Boolean) || []);
-  for (const { keys, label } of PIECE_TOKEN_RULES) {
-    if (keys.some((k) => blob.includes(k))) includes.add(label);
+function reconcileSubCategory(subCategory, pieceType, stitchedType) {
+  if (!GENERIC_SUIT_SUBCATS.has(subCategory)) return subCategory;
+  const n = PIECE_COUNT[pieceType];
+  if (!n) return subCategory;
+  if (stitchedType === 'unstitched') {
+    return n === 1 ? 'unstitched-1-piece' : `unstitched-${n}-piece`;
   }
-  // Shopify-style "Includes: Shirt, Trouser, Dupatta"
-  const incMatch = blob.match(/includes?:\s*([^.;\n]+)/i);
-  if (incMatch) {
-    const seg = incMatch[1];
-    for (const { keys, label } of PIECE_TOKEN_RULES) {
-      if (keys.some((k) => seg.includes(k))) includes.add(label);
-    }
-    if (/shirt|kameez|kurta/i.test(seg)) includes.add('shirt');
-    if (/trouser|pant/i.test(seg)) includes.add('trouser');
-    if (/dupatta|dopatta/i.test(seg)) includes.add('dupatta');
-    if (/shalwar|salwar/i.test(seg)) includes.add('shalwar');
-    if (/slip|inner/i.test(seg)) includes.add('inner');
+  // Stitched single piece has no '1-piece' subCategory in the schema → 'kurta'.
+  return n === 1 ? 'kurta' : `${n}-piece`;
+}
+
+// Distinctive silhouettes whose presence in the TITLE is trustworthy enough to
+// override the collection's default dress style (a real lehenga/saree/gown).
+const DISTINCTIVE_DRESS_STYLE = [
+  { kw: ['saree', 'sari'], val: 'saree' },
+  { kw: ['lehenga', 'lehnga', 'lehenga choli', 'sharara', 'gharara'], val: 'lehenga' },
+  { kw: ['abaya'], val: 'abaya' },
+  { kw: ['floor length gown', 'evening gown', 'gown'], val: 'gown' },
+  { kw: ['maxi dress', 'maxi frock', 'maxi gown', 'maxi'], val: 'maxi' },
+  { kw: ['frock', 'a-line frock'], val: 'frock' },
+  { kw: ['palazzo'], val: 'palazzo' }
+];
+
+// SubCategories whose composition is a fixed single garment / special set — these
+// keep their canonical includes rather than a shirt+trouser+dupatta derivation.
+const SPECIAL_COMPOSITION = new Set(['kurta', 'pants', 'shalwar', 'dupatta', 'western', 'co-ord']);
+
+// Standard suit composition by piece count (dupatta only appears from 3 pieces up).
+const SUIT_PIECES = {
+  1: ['shirt'],
+  2: ['shirt', 'trouser'],
+  3: ['shirt', 'trouser', 'dupatta'],
+  4: ['shirt', 'trouser', 'dupatta', 'inner']
+};
+
+/**
+ * Build the included-pieces list from the RESOLVED pieceType + stitching, so the
+ * composition always agrees with the piece count (a 2-piece can never carry a
+ * dupatta). Special single-garment subCategories keep their canonical list.
+ * Unstitched suits use fabric-* tokens.
+ */
+function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical) {
+  if (SPECIAL_COMPOSITION.has(subCategory)) {
+    const includes = [...canonical.includes];
+    return { includes, totalCount: PIECE_COUNT[pieceType] || includes.length || undefined };
   }
-  // "shirt + trouser + dupatta" phrasing
-  if (/\bshirt\b.*\btrouser\b.*\bdupatta\b/i.test(blob) || /\bkameez\b.*\bshalwar\b.*\bdupatta\b/i.test(blob)) {
-    includes.add('shirt');
-    includes.add('trouser');
-    includes.add('dupatta');
+
+  const count = PIECE_COUNT[pieceType];
+  if (!count) {
+    // Unknown piece count (e.g. subCategory 'other') — leave composition open.
+    return { includes: [], totalCount: undefined };
   }
-  if (/\bkurta\b.*\bdupatta\b/i.test(blob) && !includes.has('trouser')) {
-    includes.add('kurta');
-    includes.add('dupatta');
+
+  let includes = SUIT_PIECES[count] || [];
+  if (stitchedType === 'unstitched') {
+    includes = includes.map((p) => (['shirt', 'trouser', 'dupatta'].includes(p) ? `fabric-${p}` : p));
   }
-  const arr = [...includes];
-  let total = baseDetails?.totalCount;
-  if (typeof total !== 'number' || total < 1) {
-    if (pieceType === '1-piece') total = 1;
-    else if (pieceType === '2-piece') total = 2;
-    else if (pieceType === '3-piece') total = 3;
-    else if (pieceType === '4-piece') total = 4;
-    else total = arr.length > 0 ? Math.min(4, Math.max(1, arr.length)) : undefined;
-  }
-  if (arr.length === 0 && baseDetails?.includes?.length) {
-    return { includes: [...baseDetails.includes], totalCount: total };
-  }
-  return { includes: arr.length ? arr : [...(baseDetails?.includes || [])], totalCount: total };
+  return { includes: [...includes], totalCount: count };
 }
 
 // ─── Color family derivation ──────────────────────────────────────────────────
 const FAMILY_MAP = {
   Red: 'red', Blue: 'blue', Green: 'green', Yellow: 'yellow',
   Pink: 'pink', Purple: 'purple', Orange: 'orange', Brown: 'earth',
-  Gold: 'earth', Teal: 'teal', Grey: 'neutral', Black: 'neutral',
+  Gold: 'earth', Beige: 'earth', Teal: 'teal', Grey: 'neutral', Black: 'neutral',
   White: 'neutral', Multicolor: 'multicolor'
 };
 
@@ -288,8 +314,13 @@ export function normalizeProduct(raw, brandConfig) {
   const textBlob = [name, raw.description || '', (raw.tags || []).join(' '),
                     (raw.variantOptions || []).join(' ')].join(' ').toLowerCase();
 
-  // ── Colors ──
-  const { primaryColor, colors, primaryExactColor, exactColors } = inferColors(textBlob);
+  // ── Colors (source-prioritized: variant color option & title over copy) ──
+  const { primaryColor, colors, primaryExactColor, exactColors } = inferColors({
+    options: raw.variantOptions,
+    title: name,
+    tags: raw.tags,
+    description: raw.description
+  });
   const colorFamily = FAMILY_MAP[primaryColor] || 'multicolor';
 
   // ── Occasion, style, subCategory ──
@@ -308,21 +339,30 @@ export function normalizeProduct(raw, brandConfig) {
   const styles      = dedupe([...configStyle,    ...inferFromMap(textBlob, STYLE_MAP)]);
   const subCategory = inferSubCategory(textBlob, configSubCategory);
 
-  // ── Piece system ──
-  const stitchedType = inferStitchedType(textBlob, subCategory);
-  const pieceType    = inferPieceType(subCategory, textBlob);
-  let pieceDetails = PIECE_DETAILS[subCategory] || PIECE_DETAILS['other'];
-  pieceDetails = mergePieceDetailsFromDescription(textBlob, pieceType, subCategory, pieceDetails);
+  // ── Piece system (title-authoritative, config fallback) ──
+  // The product TITLE is a clean, reliable signal and overrides the collection
+  // when they disagree (e.g. a "3 Piece … (Unstitched)" suit pulled via a
+  // site-wide fallback into a collection configured as 2-piece). The noisy
+  // DESCRIPTION is never used for these structural fields.
+  const titleLc      = name.toLowerCase();
+  const canonical0   = canonicalFor(subCategory);
+  const stitchedType = inferStitchedType(titleLc, canonical0);
+  const pieceType    = inferPieceType(titleLc, canonical0);
+  // Keep subCategory coherent with a title-driven override of a generic suit
+  // bucket (e.g. title "3 Piece … Unstitched" in a 2-piece collection).
+  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType);
+  const canonical    = canonicalFor(resolvedSubCategory);
+  const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical);
 
   // ── Style / pattern / fashion ──
-  const dressStyle  = inferDressStyle(textBlob, subCategory);
-  const fashionType = inferFashionType(textBlob, subCategory);
+  const dressStyle  = inferDressStyle(textBlob, canonical);
+  const fashionType = inferFashionType(textBlob, resolvedSubCategory);
   const pattern     = inferPattern(textBlob);
   const season      = inferSeason(textBlob);
-  const gender =
-    brandConfig.gender && ['women', 'men', 'kids', 'unisex'].includes(brandConfig.gender)
-      ? brandConfig.gender
-      : inferGender(textBlob);
+  const gender = resolveGender(textBlob, brandConfig.gender);
+  // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
+  // an intentionally-rejected men's/kids' item is not mistaken for a parse
+  // failure and sent through the LLM repair path.
   const fabric      = inferFabric(textBlob);
   const trendTags   = dedupe(inferFromMap(textBlob, TREND_TAG_MAP));
   const sleeveType  = inferFirstFromMap(textBlob, SLEEVE_MAP);
@@ -346,7 +386,7 @@ export function normalizeProduct(raw, brandConfig) {
     name: name.slice(0, 200),
     brand,
     category: 'clothing',
-    subCategory,
+    subCategory: resolvedSubCategory,
     pieceType,
     pieceDetails,
     stitchedType,
@@ -422,81 +462,37 @@ function inferSubCategory(blob, configDefault) {
   return configDefault || 'other';
 }
 
-function inferStitchedType(blob, subCategory) {
-  if (subCategory && (subCategory.startsWith('unstitched') || subCategory.startsWith('mens-unstitched'))) {
-    return 'unstitched';
-  }
-  if (blob.includes('semi-stitched') || blob.includes('semi stitched')) return 'semi-stitched';
-  const unstitchedKw = [
-    'unstitched', 'cut piece', 'material only',
-    'fabric suit', 'fabric collection', 'unstitched fabric', 'fabric only',
-    'ready to stitch', 'ready-to-stitch', 'rts ',
-    '2-piece fabric', '3-piece fabric', 'stitched fabric'
-  ];
-  if (unstitchedKw.some((k) => blob.includes(k))) return 'unstitched';
-  const stitchedKw = ['pret', 'ready to wear', 'rtw', 'ready-to-wear', 'stitched', 'outfit', 'assembled'];
-  if (stitchedKw.some((k) => blob.includes(k))) return 'stitched';
+function inferStitchedType(titleLc, canonical) {
+  // Explicit title signals win (checked most-specific first — note 'unstitched'
+  // and 'semi-stitched' both contain the substring 'stitched').
+  if (titleLc.includes('semi-stitched') || titleLc.includes('semi stitched')) return 'semi-stitched';
+  if (titleLc.includes('unstitched') || titleLc.includes('un-stitched')) return 'unstitched';
+  if (/\b(stitched|pret|ready[ -]?to[ -]?wear|rtw)\b/.test(titleLc)) return 'stitched';
+  // Otherwise trust the collection (unstitched-* / stitched pret buckets).
+  if (canonical && canonical.stitched) return canonical.stitched;
   return 'stitched';
 }
 
-function inferPieceType(subCategory, blob) {
-  // 1. Text-first: explicit piece count in product name overrides collection config
-  if (/\b4[- ]?piece\b|four[- ]piece/i.test(blob) || blob.includes('4pc')) return '4-piece';
-  if (/\b3[- ]?piece\b|three[- ]piece/i.test(blob) || blob.includes('3pc')) return '3-piece';
-  if (/\b2[- ]?piece\b|two[- ]piece/i.test(blob) || blob.includes('2pc')) return '2-piece';
-  if (/\b1[- ]?piece\b|one[- ]piece/i.test(blob) || blob.includes('1pc')) return '1-piece';
-  if (/\bpant\s*coat\b|\bcoat\s*pant\b|three[\s-]piece\s+suit|3[\s-]piece\s+(western|formal)/i.test(blob)) {
-    return '3-piece';
-  }
+function inferPieceType(titleLc, canonical) {
+  // An explicit piece count in the TITLE is authoritative and overrides the
+  // collection default (handles mislabeled/site-wide-fallback items).
+  if (/\b4[- ]?piece\b|four[- ]piece/.test(titleLc) || titleLc.includes('4pc')) return '4-piece';
+  if (/\b3[- ]?piece\b|three[- ]piece/.test(titleLc) || titleLc.includes('3pc')) return '3-piece';
+  if (/\b2[- ]?piece\b|two[- ]piece/.test(titleLc) || titleLc.includes('2pc')) return '2-piece';
+  if (/\b1[- ]?piece\b|one[- ]piece\b/.test(titleLc) || titleLc.includes('1pc')) return '1-piece';
+  if (/\bpant\s*coat\b|\bcoat\s*pant\b|three[\s-]piece\s+suit/.test(titleLc)) return '3-piece';
 
-  // 2. SubCategory fallback
-  if (!subCategory) return undefined;
-  if (subCategory.includes('4-piece')) return '4-piece';
-  if (subCategory.includes('3-piece') || subCategory === 'festive' || subCategory === 'bridal' || subCategory === 'mens-unstitched-3-piece') {
-    return '3-piece';
-  }
-  if (subCategory.includes('2-piece') || subCategory === 'co-ord' || subCategory === 'mens-unstitched-2-piece') return '2-piece';
-  if (
-    [
-      'kurta',
-      'pants',
-      'shalwar',
-      'dupatta',
-      'western',
-      'unstitched-1-piece',
-      'mens-kurta',
-      'mens-shirt-tops',
-      'mens-waistcoat',
-      'mens-formal-wear',
-      'mens-western-sets'
-    ].includes(subCategory)
-  ) {
-    return '1-piece';
-  }
-  return undefined;
+  // No explicit count in the title — use the collection's piece count.
+  return canonical?.pieceType;
 }
 
-function inferDressStyle(blob, subCategory) {
-  // Text-first
-  for (const { kw, val } of DRESS_STYLE_MAP) {
-    if (kw.some(k => blob.includes(k))) return val;
+function inferDressStyle(blob, canonical) {
+  // Only distinctive silhouettes may override the collection's default
+  // (a genuine lehenga/saree/gown/abaya inside a "3-piece" collection).
+  for (const { kw, val } of DISTINCTIVE_DRESS_STYLE) {
+    if (kw.some((k) => blob.includes(k))) return val;
   }
-  // SubCategory fallback
-  if (['2-piece','3-piece','unstitched-2-piece','unstitched-3-piece','shalwar','festive','bridal'].includes(subCategory)) return 'shalwar-kameez';
-  if (subCategory === 'kurta' || subCategory === 'unstitched-1-piece' || subCategory === 'mens-kurta') return 'kurta';
-  if (subCategory === 'mens-shirt-tops' || subCategory === 'mens-formal-wear' || subCategory === 'mens-western-sets') {
-    return 'shirt';
-  }
-  if (subCategory === 'mens-waistcoat') return 'jacket';
-  if (subCategory === 'mens-shalwar-kameez' || subCategory === 'mens-unstitched-2-piece' || subCategory === 'mens-unstitched-3-piece') {
-    return 'shalwar-kameez';
-  }
-  if (subCategory === 'co-ord') return 'co-ord';
-  if (subCategory === 'pants') return 'trouser';
-  if (subCategory === 'dupatta') return 'other';
-  if (subCategory === 'western') return 'western';
-  if (subCategory === 'co-ord') return 'co-ord';
-  return undefined;
+  return canonical?.dressStyle;
 }
 
 function inferFashionType(blob, subCategory) {
@@ -526,6 +522,28 @@ function inferGender(blob) {
   for (const { kw, val } of GENDER_MAP) {
     if (kw.some(k => blob.includes(k))) return val;
   }
+  return 'women';
+}
+
+/**
+ * Resolve gender with explicit product-text signals taking precedence over the
+ * collection's configured default. A women-only collection can still surface
+ * men's/kids' items when the scraper falls back to a site-wide product pool, so
+ * a clear "men"/"boys"/"kids" signal in the text must be honoured (and dropped
+ * downstream) rather than silently forced to 'women'.
+ */
+function resolveGender(blob, brandGender) {
+  const textWomen = /\b(women|womens|women's|ladies|girls|female)\b/.test(blob);
+  const textMen   = /\b(men|mens|men's|gents|gentlemen|boys|male)\b/.test(blob);
+  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|baby)\b/.test(blob);
+
+  if (textMen && !textWomen) return 'men';
+  if (textKids && !textWomen) return 'kids';
+  if (brandGender && ['women', 'men', 'kids', 'unisex'].includes(brandGender)) return brandGender;
+  if (textWomen) return 'women';
+  // Default for a women-only catalog. IMPORTANT: do NOT fall back to the legacy
+  // substring-based inferGender() here — it matches 'men' inside 'women' and would
+  // wrongly drop women's items whose tags contain the word "women".
   return 'women';
 }
 
