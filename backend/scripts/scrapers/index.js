@@ -196,7 +196,9 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
           const reason = qa.hard.map(i => i.detail).join('; ');
           logger.warn(`[QA] hard issue — ${product.brand} "${product.name}": ${reason}`);
 
-          if (!dryRun) {
+          // LLM repair only when AI is enabled (SKIP_AI disables it, as for enrichment).
+          const skipAi = String(process.env.SCRAPER_SKIP_AI || '').toLowerCase() === 'true';
+          if (!dryRun && !skipAi) {
             const repaired = await tryRepairWithLLM(
               product, brandConfig, reason, 'clothing', normalizeProduct,
             );

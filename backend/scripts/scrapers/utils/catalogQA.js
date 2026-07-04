@@ -177,16 +177,34 @@ function checkColor(product) {
   };
 }
 
+const WORD_NUM = { one: 1, two: 2, three: 3, four: 4 };
+
+/**
+ * Piece count from a STRUCTURED phrase only — a bare "N PC" is unreliable because
+ * these descriptions open with an embroidery breakdown ("1 PC Embroidered Front,
+ * 2 PC Sleeves, 1 PC Border …") that is NOT the number of garments. We trust:
+ *   - a bare count in the clean TITLE, or
+ *   - "Unstitched N-Piece" / "N Pc Outfit" / "N Piece Suit" in the description.
+ */
+function structuredPieceCount(name, desc) {
+  const title = (name || '').toLowerCase();
+  let m = title.match(/\b([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\b/) || title.match(/\b(one|two|three|four)[\s-]piece\b/);
+  if (m) return WORD_NUM[m[1]] || parseInt(m[1], 10);
+  const head = (desc || '').toLowerCase().slice(0, 120);
+  m =
+    head.match(/\bunstitched\s+([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\b/) ||
+    head.match(/\b([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\s+(?:outfit|suit|stitched|unstitched)\b/) ||
+    head.match(/\b(one|two|three|four)[\s-]piece\s+(?:outfit|suit)\b/);
+  if (m) return WORD_NUM[m[1]] || parseInt(m[1], 10);
+  return null;
+}
+
 function checkPieceCount(product) {
-  const text = `${product.description ?? ''} ${product.name ?? ''}`.toLowerCase();
   const total = product.pieceDetails?.totalCount;
   if (!total) return null;
 
-  const m = text.match(/\b([1-4])\s*-?\s*p(?:ie)?c(?:e|s)?\b/);
-  if (!m) return null;
-
-  const mentioned = parseInt(m[1], 10);
-  if (mentioned !== total) {
+  const mentioned = structuredPieceCount(product.name, product.description);
+  if (mentioned && mentioned !== total) {
     return {
       severity: 'hard',
       type: 'PIECE_COUNT',

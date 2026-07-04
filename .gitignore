@@ -33,3 +33,15 @@ lerna-debug.log*
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Generated catalog exports & audit reports (data artifacts)
+backend/exports/
+
+# Scratch / temporary scripts and outputs
+**/_tmp_*
+backend/_tmp_shoetest.mjs
+backend/_tmp_verify.mjs
+
+# Scraper HTML samples / debug dumps
+backend/scripts/scrapers/_*.html
+backend/test-output.txt

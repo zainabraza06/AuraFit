@@ -112,15 +112,19 @@ function checkClothing(p, idx) {
 }
 
 function checkShoe(p, idx) {
-  // Check the SAME signal the parser uses — name + tags — not the marketing
-  // description (which can say "perfect for kids" on an adult women's shoe).
-  const signal = `${p.name || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
+  // Mirror the parser: name + CLEAN (digit-free) tags. Tags with digits are
+  // merchandising codes ("B20-Girl B") whose gender words are meaningless, so
+  // they must not be flagged.
+  const name = (p.name || '').toLowerCase();
+  const cleanTags = (p.tags || []).filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+  const signal = `${name} ${cleanTags}`;
+  const women = /\b(women|womens|ladies)\b/.test(signal);
   const issues = [];
-  if (p.gender === 'women' && /\bmen'?s\b/.test(signal) && !/\bwomen/.test(signal)) {
+  if (p.gender === 'women' && /\b(men|mens|men's|gents)\b/.test(signal) && !women) {
     issues.push(`GENDER: field='women' but name/tags say men's`);
   }
-  if (/\b(girls?|boys?|kids?|child|junior|toddler)\b/.test(signal)) {
-    issues.push(`GENDER: kids term in name/tags (field=${p.gender})`);
+  if (p.gender === 'women' && /\b(girls?|boys?|kids?|child|junior|toddler)\b/.test(signal) && !women) {
+    issues.push(`GENDER: field='women' but name/tags say kids`);
   }
   return issues.length ? { section: 'shoes', idx, ...p, issues } : null;
 }

@@ -54,7 +54,9 @@ export const logger = {
   info: (msg, meta) => log('INFO', msg, meta),
   warn: (msg, meta) => log('WARN', msg, meta),
   error: (msg, meta) => log('ERROR', msg, meta),
-  success: (msg, meta) => log('SUCCESS', msg, meta)
+  success: (msg, meta) => log('SUCCESS', msg, meta),
+  // Verbose diagnostics — silent unless SCRAPER_DEBUG is set (avoids noise).
+  debug: (msg, meta) => { if (process.env.SCRAPER_DEBUG) log('DEBUG', msg, meta); }
 };
 
 export default logger;

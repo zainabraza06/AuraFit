@@ -478,7 +478,7 @@ export function normalizeProduct(raw, brandConfig) {
   const fashionType = inferFashionType(textBlob, resolvedSubCategory);
   const pattern     = inferPattern(textBlob);
   const season      = inferSeason(textBlob);
-  const gender = resolveGender(textBlob, brandConfig.gender);
+  const gender = resolveGender(titleLc, raw.tags || [], brandConfig.gender);
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse
   // failure and sent through the LLM repair path.
@@ -643,19 +643,26 @@ function inferGender(blob) {
  * a clear "men"/"boys"/"kids" signal in the text must be honoured (and dropped
  * downstream) rather than silently forced to 'women'.
  */
-function resolveGender(blob, brandGender) {
-  const textWomen = /\b(women|womens|women's|ladies|female)\b/.test(blob);
-  const textMen   = /\b(men|mens|men's|gents|gentlemen|male)\b/.test(blob);
-  // 'girls'/'boys' denote kids in a fashion catalog, not young women/men.
-  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/.test(blob);
+const G_WOMEN = /\b(women|womens|women's|ladies|female)\b/;
+const G_MEN   = /\b(men|mens|men's|gents|gentlemen|male)\b/;
+const G_KIDS  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/;
 
-  if (textMen && !textWomen) return 'men';
-  if (textKids && !textWomen) return 'kids';
+function resolveGender(nameLc, tags, brandGender) {
+  // 1. The NAME is the most reliable signal.
+  const nameWomen = G_WOMEN.test(nameLc);
+  if (G_MEN.test(nameLc) && !nameWomen) return 'men';
+  if (G_KIDS.test(nameLc) && !nameWomen) return 'kids';
+
+  // 2. CLEAN (digit-free) tags are real category tags; tags with digits are
+  //    merchandising codes ("B20-Girl B") whose gender words are meaningless.
+  const cleanTags = (Array.isArray(tags) ? tags : [])
+    .filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+  const tagWomen = G_WOMEN.test(cleanTags);
+  if (G_MEN.test(cleanTags) && !tagWomen) return 'men';
+  if (G_KIDS.test(cleanTags) && !tagWomen) return 'kids';
+
+  // 3. Collection default, then any women signal, then default (women-only catalog).
   if (brandGender && ['women', 'men', 'kids', 'unisex'].includes(brandGender)) return brandGender;
-  if (textWomen) return 'women';
-  // Default for a women-only catalog. IMPORTANT: do NOT fall back to the legacy
-  // substring-based inferGender() here — it matches 'men' inside 'women' and would
-  // wrongly drop women's items whose tags contain the word "women".
   return 'women';
 }
 
@@ -663,6 +670,7 @@ function resolveGender(blob, brandGender) {
 // bare "silk"/"cotton". Covers the fabrics seen across all 8 brands.
 const FABRICS = [
   'cotton filament','cotton net','cotton silk','cotton viscose','raw silk','tissue silk',
+  'poly tissue silk',
   'poly slub','poly munar','poly munaar','poly lawn','two way slub','two tone','yarn dyed','viscose slub',
   'lurex jacquard','self jacquard','irish linen','dobby lawn','zari lawn','bamber chiffon','munaar lurex',
   'khaddar','karandi','masoori','susi','doria','dobby','marina','jamawar','banarsi','katan',
@@ -740,6 +748,11 @@ function inferFabric(titleLc, descLc) {
 /** Public helper: derive fabric from a product's name + description. */
 export function deriveFabric(name, description) {
   return inferFabric((name || '').toLowerCase(), (description || '').toLowerCase());
+}
+
+/** Public helper: derive gender from a product's name + tags (women-only QA). */
+export function deriveGender(name, tags) {
+  return resolveGender((name || '').toLowerCase(), tags || [], undefined);
 }
 
 /** The description's "Color: X" label value (e.g. "Baby Pink", "Olive Grey"), or null. */

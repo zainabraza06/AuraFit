@@ -86,19 +86,28 @@ function inferShoeType(titleLc, tagsLc, configSub) {
   return scanShoeType(titleLc) || scanShoeType(tagsLc) || BUCKET_DEFAULT_TYPE[configSub] || 'other';
 }
 
-function inferGenderShoe(blob, brandGender) {
-  // Explicit product-text signals win over the collection's default gender —
-  // this matters when a collection JSON falls back to a site-wide product pool
-  // that can contain men's / kids' items despite a women-only collection config.
-  const textWomen = /\b(women|womens|women's|ladies|female)\b/.test(blob);
-  const textMen   = /\b(men|mens|men's|gents|gentlemen|male)\b/.test(blob);
-  // 'girls'/'boys' denote kids in a fashion catalog, not young women/men.
-  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/.test(blob);
+const GT_WOMEN = /\b(women|womens|women's|ladies|female)\b/;
+const GT_MEN   = /\b(men|mens|men's|gents|gentlemen|male)\b/;
+const GT_KIDS  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/;
 
-  if (textMen && !textWomen) return 'men';
-  if (textKids && !textWomen) return 'kids';
+function inferGenderShoe(nameLc, tags, brandGender) {
+  // 1. The NAME is the most reliable signal.
+  const nameWomen = GT_WOMEN.test(nameLc);
+  if (GT_MEN.test(nameLc) && !nameWomen) return 'men';
+  if (GT_KIDS.test(nameLc) && !nameWomen) return 'kids';
+
+  // 2. CLEAN (digit-free) tags are real category tags ("Men Slippers", "Kids
+  //    Shoes", "Girls Footwear"). Tags containing digits are merchandising codes
+  //    ("B20-Girl B", "BW11340") and their gender words are meaningless — ignore.
+  const cleanTags = (Array.isArray(tags) ? tags : [])
+    .filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+  const tagWomen = GT_WOMEN.test(cleanTags);
+  if (GT_MEN.test(cleanTags) && !tagWomen) return 'men';
+  if (GT_KIDS.test(cleanTags) && !tagWomen) return 'kids';
+
+  // 3. Collection default, then any women signal, then default.
   if (brandGender && ['women', 'men', 'kids', 'unisex'].includes(brandGender)) return brandGender;
-  if (textWomen) return 'women';
+  if (nameWomen || tagWomen) return 'women';
   return 'women';
 }
 
@@ -179,7 +188,7 @@ export function normalizeShoeProduct(raw, brandConfig) {
 
   const subCategory = brandConfig.subCategory || 'other';
   const shoeType = inferShoeType(titleLc, tagsLc, subCategory);
-  const gender = inferGenderShoe(cleanBlob, brandConfig.gender);
+  const gender = inferGenderShoe(titleLc, raw.tags || [], brandConfig.gender);
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse
   // failure and sent through the LLM repair path.
@@ -233,6 +242,11 @@ export function normalizeShoeProduct(raw, brandConfig) {
       name, price, images, shoeType, occasion, description: raw.description, primaryColor, sizes, gender
     })
   };
+}
+
+/** Public helper: derive gender from a shoe's name + tags (women-only QA). */
+export function deriveShoeGender(name, tags) {
+  return inferGenderShoe((name || '').toLowerCase(), tags || [], undefined);
 }
 
 export function validateShoeProduct(p) {
