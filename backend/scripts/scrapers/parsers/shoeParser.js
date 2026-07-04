@@ -100,7 +100,8 @@ function inferGenderShoe(nameLc, tags, brandGender) {
   //    Shoes", "Girls Footwear"). Tags containing digits are merchandising codes
   //    ("B20-Girl B", "BW11340") and their gender words are meaningless — ignore.
   const cleanTags = (Array.isArray(tags) ? tags : [])
-    .filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+    .filter((t) => !/\d/.test(t) && !/size|chart|guide|care|wash|dhldes|desc/i.test(t))
+    .join(' ').toLowerCase();
   const tagWomen = GT_WOMEN.test(cleanTags);
   if (GT_MEN.test(cleanTags) && !tagWomen) return 'men';
   if (GT_KIDS.test(cleanTags) && !tagWomen) return 'kids';

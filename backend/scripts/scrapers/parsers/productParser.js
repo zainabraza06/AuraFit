@@ -656,7 +656,8 @@ function resolveGender(nameLc, tags, brandGender) {
   // 2. CLEAN (digit-free) tags are real category tags; tags with digits are
   //    merchandising codes ("B20-Girl B") whose gender words are meaningless.
   const cleanTags = (Array.isArray(tags) ? tags : [])
-    .filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+    .filter((t) => !/\d/.test(t) && !/size|chart|guide|care|wash|dhldes|desc/i.test(t))
+    .join(' ').toLowerCase();
   const tagWomen = G_WOMEN.test(cleanTags);
   if (G_MEN.test(cleanTags) && !tagWomen) return 'men';
   if (G_KIDS.test(cleanTags) && !tagWomen) return 'kids';

@@ -116,7 +116,9 @@ function checkShoe(p, idx) {
   // merchandising codes ("B20-Girl B") whose gender words are meaningless, so
   // they must not be flagged.
   const name = (p.name || '').toLowerCase();
-  const cleanTags = (p.tags || []).filter((t) => !/\d/.test(t)).join(' ').toLowerCase();
+  const cleanTags = (p.tags || [])
+    .filter((t) => !/\d/.test(t) && !/size|chart|guide|care|wash|dhldes|desc/i.test(t))
+    .join(' ').toLowerCase();
   const signal = `${name} ${cleanTags}`;
   const women = /\b(women|womens|ladies)\b/.test(signal);
   const issues = [];
