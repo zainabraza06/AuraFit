@@ -385,24 +385,10 @@ export const CLOTHING_BRANDS = [
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // J. (JUNAID JAMSHED) — junaidjamshed.com  (Shopify) — Women only
+  // NOTE: J. (Junaid Jamshed) was removed — its women's-clothing collection handles
+  // 404, and the site-wide fallback surfaces mostly fragrances/cosmetics (correctly
+  // rejected by the non-clothing filter), so it yielded 0 women's clothing.
   // ════════════════════════════════════════════════════════════════════════════
-  {
-    brand: 'J.',
-    baseUrl: 'https://www.junaidjamshed.com',
-    adapter: 'ShopifyGenericAdapter',
-    category: 'clothing',
-    // J. is a large men+women+kids store; when a women collection handle 404s and
-    // the scraper falls back to the site-wide /products.json, filter to women's
-    // items so the pool isn't dominated by menswear (which we'd drop anyway).
-    shopifyKeywords: ['women', 'womens', "women's", 'ladies', 'kurti', 'girls'],
-    collections: [
-      { path: '/collections/womens-kurta', subCategory: 'kurta', occasion: ['casual', 'office', 'eid'], style: ['printed', 'minimal'], gender: 'women' },
-      { path: '/collections/womens-2-piece-suit', subCategory: '2-piece', occasion: ['casual', 'party'], style: ['printed', 'elegant'], gender: 'women' },
-      { path: '/collections/womens-3-piece-suit', subCategory: '3-piece', occasion: ['party', 'eid'], style: ['embroidered', 'elegant'], gender: 'women' },
-      { path: '/collections/womens-unstitched', subCategory: 'unstitched-3-piece', occasion: ['casual', 'eid'], style: ['printed'], gender: 'women' }
-    ]
-  },
 
   // ════════════════════════════════════════════════════════════════════════════
   // KHAADI — pk.khaadi.com  (Salesforce Commerce Cloud / Demandware, not Shopify)

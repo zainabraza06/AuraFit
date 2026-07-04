@@ -109,6 +109,10 @@ export const COLOR_ALIASES = {
   // Base families that are also their own shade word
   red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow', pink: 'Pink',
   purple: 'Purple', orange: 'Orange', white: 'White',
+  // Common single-token variant-option spellings (no space) → family
+  seagreen: 'Green', skyblue: 'Blue', navyblue: 'Blue', royalblue: 'Blue',
+  offwhite: 'White', hotpink: 'Pink', babypink: 'Pink', rosegold: 'Gold',
+  seablue: 'Blue', mehroun: 'Red', mustered: 'Yellow',
   // Multicolor (explicit only — print words are handled as patterns, not colors)
   multi: 'Multicolor', multicolor: 'Multicolor', 'multi-color': 'Multicolor',
   'multi colour': 'Multicolor', multicolour: 'Multicolor', 'multi color': 'Multicolor'

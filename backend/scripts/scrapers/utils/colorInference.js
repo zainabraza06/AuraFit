@@ -51,10 +51,13 @@ function buildSegments(input) {
     const text = Array.isArray(val) ? val.join(' ') : (val || '');
     if (text && String(text).trim()) seg.push({ text: String(text).toLowerCase(), priority });
   };
+  // Priority (lower = more trusted). The Shopify variant COLOR OPTION is the most
+  // reliable colour source and must beat a poetic print-name in the title
+  // (e.g. a "Coral Reef" print whose variant option is "Green" is Green).
   push(input.options, 0);
-  push(input.title, 0);
-  push(input.tags, 1);
-  push(input.description, 2);
+  push(input.title, 1);
+  push(input.tags, 2);
+  push(input.description, 3);
   return seg;
 }
 
@@ -78,16 +81,23 @@ export function inferColors(input) {
     return { ...FALLBACK, colors: [...FALLBACK.colors], exactColors: [...FALLBACK.exactColors] };
   }
 
+  // Deprioritize "Multicolor": a generic "Multi" variant option should never
+  // hide a concrete shade named elsewhere (e.g. a printed "Cosmos Blue" suit is
+  // Blue, not Multicolor). Only fall back to Multicolor when NO specific shade
+  // was found anywhere.
+  const specific = matches.filter((m) => m.family !== 'Multicolor');
+  const use = specific.length ? specific : matches;
+
   // Order: most trustworthy source first, then earliest in text, then more
   // specific (longer) shade first so "brick red" beats a bare "red".
-  matches.sort(
+  use.sort(
     (a, b) => a.priority - b.priority || a.index - b.index || b.shade.length - a.shade.length
   );
 
   // One representative shade per family, keeping the ranked order.
   const seenFamily = new Set();
   const ordered = [];
-  for (const m of matches) {
+  for (const m of use) {
     if (!seenFamily.has(m.family)) {
       seenFamily.add(m.family);
       ordered.push(m);

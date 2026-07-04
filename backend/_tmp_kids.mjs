@@ -1,0 +1,14 @@
+import dotenv from 'dotenv'; import path from 'path';
+dotenv.config({ path: path.resolve('.env') });
+import connectDB from './config/db.js';
+import Shoe from './models/ShoeProduct.js';
+import Clothing from './models/ClothingProduct.js';
+await connectDB();
+const re = /\b(girls?|boys?|kids?|child|children|junior|toddler|infant|school shoe)\b/i;
+const s = (await Shoe.find({}, 'name brand gender').lean()).filter(p => re.test(p.name));
+const c = (await Clothing.find({}, 'name brand gender').lean()).filter(p => re.test(p.name));
+console.log('Shoe kids-ish leaked:', s.length);
+s.slice(0,10).forEach(p=>console.log('  -', p.brand, '|', p.name));
+console.log('Clothing kids-ish leaked:', c.length);
+c.slice(0,10).forEach(p=>console.log('  -', p.brand, '|', p.name));
+process.exit(0);

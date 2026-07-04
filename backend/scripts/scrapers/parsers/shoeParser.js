@@ -69,20 +69,31 @@ const BUCKET_DEFAULT_TYPE = {
  * (Description is intentionally excluded — copy like "flat comfortable insole" on a
  * heel used to corrupt the type.)
  */
-function inferShoeType(cleanBlob, configSub) {
+function scanShoeType(txt) {
   for (const { kw, val } of SHOE_TYPE_RULES) {
-    if (kw.some((k) => cleanBlob.includes(k))) return val;
+    if (kw.some((k) => txt.includes(k))) return val;
   }
-  return BUCKET_DEFAULT_TYPE[configSub] || 'other';
+  return null;
+}
+
+/**
+ * Title-first: the silhouette noun in the product NAME (e.g. "Formal Sandal",
+ * "Court Shoes", "Slipper") is the true type and must win over a tag/description
+ * attribute like "wedge"/"heel". Tags are only a fallback; then the collection
+ * bucket default.
+ */
+function inferShoeType(titleLc, tagsLc, configSub) {
+  return scanShoeType(titleLc) || scanShoeType(tagsLc) || BUCKET_DEFAULT_TYPE[configSub] || 'other';
 }
 
 function inferGenderShoe(blob, brandGender) {
   // Explicit product-text signals win over the collection's default gender —
   // this matters when a collection JSON falls back to a site-wide product pool
   // that can contain men's / kids' items despite a women-only collection config.
-  const textWomen = /\b(women|womens|women's|ladies|girls|female)\b/.test(blob);
-  const textMen   = /\b(men|mens|men's|gents|gentlemen|boys|male)\b/.test(blob);
-  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant)\b/.test(blob);
+  const textWomen = /\b(women|womens|women's|ladies|female)\b/.test(blob);
+  const textMen   = /\b(men|mens|men's|gents|gentlemen|male)\b/.test(blob);
+  // 'girls'/'boys' denote kids in a fashion catalog, not young women/men.
+  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/.test(blob);
 
   if (textMen && !textWomen) return 'men';
   if (textKids && !textWomen) return 'kids';
@@ -150,8 +161,10 @@ export function normalizeShoeProduct(raw, brandConfig) {
   if (!name || name.length < 2) return null;
 
   const blob = [name, raw.description || '', ...(raw.tags || [])].join(' ').toLowerCase();
-  // Clean signal for silhouette & gender: the product's own title + tags, no copy.
-  const cleanBlob = [name, ...(raw.tags || [])].join(' ').toLowerCase();
+  // Clean signals for silhouette & gender: the product's own title and tags, no copy.
+  const titleLc = name.toLowerCase();
+  const tagsLc = (raw.tags || []).join(' ').toLowerCase();
+  const cleanBlob = `${titleLc} ${tagsLc}`;
   if (SHOE_NEGATIVE.some((n) => blob.includes(n))) return null;
 
   const price = raw.price;
@@ -165,7 +178,7 @@ export function normalizeShoeProduct(raw, brandConfig) {
   if (!productUrl.startsWith('http')) return null;
 
   const subCategory = brandConfig.subCategory || 'other';
-  const shoeType = inferShoeType(cleanBlob, subCategory);
+  const shoeType = inferShoeType(titleLc, tagsLc, subCategory);
   const gender = inferGenderShoe(cleanBlob, brandConfig.gender);
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse

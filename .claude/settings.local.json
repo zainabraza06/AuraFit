@@ -25,7 +25,8 @@
       "Bash(mv /e/MERN/PROJECTS/Fashion/_tmp_shopify.mjs ./_tmp_shopify.mjs)",
       "Bash(node _tmp_shopify.mjs)",
       "Bash(node _tmp_analyze.mjs)",
-      "Bash(node _tmp_fieldaudit.mjs)"
+      "Bash(node _tmp_fieldaudit.mjs)",
+      "Bash(node _tmp_verify.mjs)"
     ]
   }
 }

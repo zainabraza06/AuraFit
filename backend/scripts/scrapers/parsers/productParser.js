@@ -188,21 +188,44 @@ const GENERIC_SUIT_SUBCATS = new Set([
   'unstitched-1-piece', 'unstitched-2-piece', 'unstitched-3-piece'
 ]);
 
-/**
- * When the title overrides the collection's piece count / stitching, realign the
- * subCategory label so it stays coherent (e.g. a "2-piece" collection item whose
- * title says "3 Piece Unstitched" becomes 'unstitched-3-piece'). Only touches the
- * generic suit buckets; kurta/pants/dupatta/festive/bridal/etc. keep their label.
- */
-function reconcileSubCategory(subCategory, pieceType, stitchedType) {
-  if (!GENERIC_SUIT_SUBCATS.has(subCategory)) return subCategory;
-  const n = PIECE_COUNT[pieceType];
-  if (!n) return subCategory;
+/** Explicit piece count stated in the product TITLE, or null. */
+function explicitPieceFromTitle(titleLc) {
+  if (/\b4[- ]?piece\b|four[- ]piece/.test(titleLc) || titleLc.includes('4pc')) return '4-piece';
+  if (/\b3[- ]?piece\b|three[- ]piece/.test(titleLc) || titleLc.includes('3pc')) return '3-piece';
+  if (/\b2[- ]?piece\b|two[- ]piece/.test(titleLc) || titleLc.includes('2pc')) return '2-piece';
+  if (/\b1[- ]?piece\b|one[- ]piece\b/.test(titleLc) || titleLc.includes('1pc')) return '1-piece';
+  if (/\bpant\s*coat\b|\bcoat\s*pant\b|three[\s-]piece\s+suit/.test(titleLc)) return '3-piece';
+  return null;
+}
+
+function suitSubCategory(n, stitchedType) {
   if (stitchedType === 'unstitched') {
-    return n === 1 ? 'unstitched-1-piece' : `unstitched-${n}-piece`;
+    if (n <= 1) return 'unstitched-1-piece';
+    if (n === 2) return 'unstitched-2-piece';
+    if (n === 3) return 'unstitched-3-piece';
+    return 'unstitched-4-piece';
   }
   // Stitched single piece has no '1-piece' subCategory in the schema → 'kurta'.
+  // Stitched 2/3/4-piece are all valid enum values.
   return n === 1 ? 'kurta' : `${n}-piece`;
+}
+
+/**
+ * Realign the subCategory so it stays coherent with the resolved piece count /
+ * stitching:
+ *   - When the TITLE explicitly states a piece count, that is authoritative and
+ *     reclassifies even a single-garment bucket (e.g. a "2 Piece Suit" listed in a
+ *     'kurta' collection becomes '2-piece').
+ *   - Otherwise only the generic suit buckets follow a stitching override (e.g. a
+ *     '2-piece' collection item whose title says "Unstitched" → 'unstitched-2-piece').
+ *   - kurta/pants/dupatta/festive/bridal/western/co-ord keep their label.
+ */
+function reconcileSubCategory(subCategory, pieceType, stitchedType, titleHasExplicitCount) {
+  const n = PIECE_COUNT[pieceType];
+  if (!n) return subCategory;
+  if (titleHasExplicitCount) return suitSubCategory(n, stitchedType);
+  if (GENERIC_SUIT_SUBCATS.has(subCategory)) return suitSubCategory(n, stitchedType);
+  return subCategory;
 }
 
 // Distinctive silhouettes whose presence in the TITLE is trustworthy enough to
@@ -249,7 +272,7 @@ function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical) {
 
   let includes = SUIT_PIECES[count] || [];
   if (stitchedType === 'unstitched') {
-    includes = includes.map((p) => (['shirt', 'trouser', 'dupatta'].includes(p) ? `fabric-${p}` : p));
+    includes = includes.map((p) => (['shirt', 'trouser', 'dupatta', 'inner'].includes(p) ? `fabric-${p}` : p));
   }
   return { includes: [...includes], totalCount: count };
 }
@@ -347,10 +370,11 @@ export function normalizeProduct(raw, brandConfig) {
   const titleLc      = name.toLowerCase();
   const canonical0   = canonicalFor(subCategory);
   const stitchedType = inferStitchedType(titleLc, canonical0);
-  const pieceType    = inferPieceType(titleLc, canonical0);
-  // Keep subCategory coherent with a title-driven override of a generic suit
-  // bucket (e.g. title "3 Piece … Unstitched" in a 2-piece collection).
-  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType);
+  const titlePieces  = explicitPieceFromTitle(titleLc);
+  const pieceType    = titlePieces || canonical0.pieceType;
+  // Keep subCategory coherent: an explicit title count reclassifies even a
+  // single-garment collection (e.g. "2 Piece Suit" in a 'kurta' collection).
+  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType, !!titlePieces);
   const canonical    = canonicalFor(resolvedSubCategory);
   const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical);
 
@@ -363,7 +387,7 @@ export function normalizeProduct(raw, brandConfig) {
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse
   // failure and sent through the LLM repair path.
-  const fabric      = inferFabric(textBlob);
+  const fabric      = inferFabric(titleLc, textBlob);
   const trendTags   = dedupe(inferFromMap(textBlob, TREND_TAG_MAP));
   const sleeveType  = inferFirstFromMap(textBlob, SLEEVE_MAP);
   const neckline    = inferFirstFromMap(textBlob, NECKLINE_MAP);
@@ -476,14 +500,7 @@ function inferStitchedType(titleLc, canonical) {
 function inferPieceType(titleLc, canonical) {
   // An explicit piece count in the TITLE is authoritative and overrides the
   // collection default (handles mislabeled/site-wide-fallback items).
-  if (/\b4[- ]?piece\b|four[- ]piece/.test(titleLc) || titleLc.includes('4pc')) return '4-piece';
-  if (/\b3[- ]?piece\b|three[- ]piece/.test(titleLc) || titleLc.includes('3pc')) return '3-piece';
-  if (/\b2[- ]?piece\b|two[- ]piece/.test(titleLc) || titleLc.includes('2pc')) return '2-piece';
-  if (/\b1[- ]?piece\b|one[- ]piece\b/.test(titleLc) || titleLc.includes('1pc')) return '1-piece';
-  if (/\bpant\s*coat\b|\bcoat\s*pant\b|three[\s-]piece\s+suit/.test(titleLc)) return '3-piece';
-
-  // No explicit count in the title — use the collection's piece count.
-  return canonical?.pieceType;
+  return explicitPieceFromTitle(titleLc) || canonical?.pieceType;
 }
 
 function inferDressStyle(blob, canonical) {
@@ -533,9 +550,10 @@ function inferGender(blob) {
  * downstream) rather than silently forced to 'women'.
  */
 function resolveGender(blob, brandGender) {
-  const textWomen = /\b(women|womens|women's|ladies|girls|female)\b/.test(blob);
-  const textMen   = /\b(men|mens|men's|gents|gentlemen|boys|male)\b/.test(blob);
-  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|baby)\b/.test(blob);
+  const textWomen = /\b(women|womens|women's|ladies|female)\b/.test(blob);
+  const textMen   = /\b(men|mens|men's|gents|gentlemen|male)\b/.test(blob);
+  // 'girls'/'boys' denote kids in a fashion catalog, not young women/men.
+  const textKids  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/.test(blob);
 
   if (textMen && !textWomen) return 'men';
   if (textKids && !textWomen) return 'kids';
@@ -547,16 +565,27 @@ function resolveGender(blob, brandGender) {
   return 'women';
 }
 
-function inferFabric(blob) {
-  const fabrics = [
-    'lawn','chiffon','georgette','cotton','silk','velvet','khaddar','karandi',
-    'linen','organza','net','crepe','satin','jacquard','raw silk','tissue',
-    'banarsi','zari','muslin','voile','cambric','viscose','polyester'
-  ];
-  for (const f of fabrics) {
-    if (blob.includes(f)) return f.charAt(0).toUpperCase() + f.slice(1);
+const FABRICS = [
+  'khaddar','karandi','raw silk','lawn','chiffon','georgette','cotton','silk','velvet',
+  'linen','organza','net','crepe','satin','jacquard','tissue',
+  'banarsi','zari','muslin','voile','cambric','viscose','polyester'
+];
+
+function scanFabric(txt) {
+  for (const f of FABRICS) {
+    if (txt.includes(f)) return f.charAt(0).toUpperCase() + f.slice(1);
   }
   return undefined;
+}
+
+/**
+ * Fabric is title-first: the fabric named in the product TITLE (e.g. "Khaddar
+ * Suit") is authoritative and must beat a stray fabric word in the marketing copy
+ * (a "silky finish" mention shouldn't override khaddar). Falls back to the wider
+ * text only when the title names no fabric.
+ */
+function inferFabric(titleLc, blob) {
+  return scanFabric(titleLc) || scanFabric(blob);
 }
 
 // ─── Size normalizer ─────────────────────────────────────────────────────────

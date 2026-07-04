@@ -1,0 +1,12 @@
+import dotenv from 'dotenv'; import path from 'path';
+dotenv.config({ path: path.resolve('.env') });
+import connectDB from './config/db.js';
+import Shoe from './models/ShoeProduct.js';
+import Clothing from './models/ClothingProduct.js';
+await connectDB();
+console.log('=== Shoe: exact shade vs canonical family (sample) ===');
+const s = await Shoe.find({ primaryColor: { $ne: 'Multicolor' } }, 'name primaryExactColor exactColors primaryColor colors colorFamily').limit(12).lean();
+for (const p of s) console.log(`${(p.name||'').slice(0,34).padEnd(34)} exact=${(p.primaryExactColor||'').padEnd(10)} family=${(p.primaryColor||'').padEnd(8)} colorFamily=${p.colorFamily}  colors=${JSON.stringify(p.colors)} exactColors=${JSON.stringify(p.exactColors)}`);
+console.log('\n=== distinct exact shades stored (shoes) ===');
+console.log((await Shoe.distinct('primaryExactColor')).sort().join(', '));
+process.exit(0);

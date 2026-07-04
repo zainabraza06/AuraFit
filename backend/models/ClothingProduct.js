@@ -33,7 +33,7 @@ const ClothingProductSchema = new mongoose.Schema(
       enum: [
         '2-piece', '3-piece', '4-piece',
         'kurta', 'pants', 'shalwar', 'dupatta',
-        'unstitched-1-piece', 'unstitched-2-piece', 'unstitched-3-piece',
+        'unstitched-1-piece', 'unstitched-2-piece', 'unstitched-3-piece', 'unstitched-4-piece',
         'festive', 'bridal', 'western', 'co-ord', 'other',
         'mens-kurta', 'mens-shirt-tops', 'mens-formal-wear', 'mens-western-sets',
         'mens-unstitched-2-piece', 'mens-unstitched-3-piece', 'mens-waistcoat', 'mens-shalwar-kameez'
