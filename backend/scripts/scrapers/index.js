@@ -26,6 +26,9 @@ import ScraperLog from '../../models/ScraperLog.js';
 import logger from './utils/logger.js';
 
 import { CLOTHING_BRANDS } from './config/clothingBrands.js';
+import { checkConsistency } from './utils/catalogQA.js';
+import { tryRepairWithLLM } from './utils/productRepair.js';
+import { normalizeProduct } from './parsers/productParser.js';
 
 // ─── Adapter registry ─────────────────────────────────────────────────────────
 import { BeechtreeAdapter }   from './adapters/BeechtreeAdapter.js';
@@ -170,12 +173,42 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
 
     const collectionResults = await adapter.scrapeAll();
     let ins = 0, upd = 0, unchanged = 0, skp = 0, fail = 0;
+    let qaHard = 0, qaSoft = 0, qaRepaired = 0;
     const seenUrls = new Set();
 
     for (const result of collectionResults) {
       if (result.strategy === 'failed') { fail++; continue; }
 
-      for (const product of result.products) {
+      for (let product of result.products) {
+        // ── Inline QA consistency check ──────────────────────────────────────
+        const qa = checkConsistency(product);
+
+        if (qa.soft.length > 0) {
+          qaSoft += qa.soft.length;
+          logger.debug(
+            `[QA] soft on ${product.productUrl}: ` +
+            qa.soft.map(i => i.detail).join(' | '),
+          );
+        }
+
+        if (qa.hard.length > 0) {
+          qaHard += qa.hard.length;
+          const reason = qa.hard.map(i => i.detail).join('; ');
+          logger.warn(`[QA] hard issue — ${product.brand} "${product.name}": ${reason}`);
+
+          if (!dryRun) {
+            const repaired = await tryRepairWithLLM(
+              product, brandConfig, reason, 'clothing', normalizeProduct,
+            );
+            if (repaired) {
+              product = repaired;
+              qaRepaired++;
+              logger.info(`[QA] repaired: ${product.productUrl}`);
+            }
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         if (dryRun) {
           logger.info(`[DRY] ${product.name} | ${product.pieceType} | ${product.stitchedType} | ${product.dressStyle} | ${product.pattern} | PKR ${product.price}`);
           ins++;
@@ -211,18 +244,20 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
     totalStockOut  += stockOut;
 
     brandResults.push({
-      brand:     brandConfig.brand,
-      url:       brandConfig.baseUrl,
-      inserted:  ins,
-      updated:   upd,
+      brand:      brandConfig.brand,
+      url:        brandConfig.baseUrl,
+      inserted:   ins,
+      updated:    upd,
       unchanged,
-      skipped:   skp,
-      failed:    fail,
+      skipped:    skp,
+      failed:     fail,
       stockOut,
-      strategy:  collectionResults[0]?.strategy || 'unknown'
+      strategy:   collectionResults[0]?.strategy || 'unknown',
+      qa:         { hard: qaHard, soft: qaSoft, repaired: qaRepaired },
     });
 
-    logger.success(`✓ ${brandConfig.brand}: +${ins} new, ~${upd} updated, =${unchanged} unchanged, ↓${stockOut} out-of-stock, ✗${fail} failed`);
+    const qaNote = qaHard > 0 ? ` | QA: ${qaHard} hard (${qaRepaired} repaired), ${qaSoft} soft` : '';
+    logger.success(`✓ ${brandConfig.brand}: +${ins} new, ~${upd} updated, =${unchanged} unchanged, ↓${stockOut} out-of-stock, ✗${fail} failed${qaNote}`);
   }
 
   const durationMs = Date.now() - startTime;
@@ -248,6 +283,12 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
   logger.info('\n════════════════════════════════════════');
   logger.success(`Scrape Complete in ${(durationMs / 1000).toFixed(1)}s`);
   logger.info(`New: ${totalInserted} | Updated: ${totalUpdated} | Unchanged: ${totalUnchanged} | Out-of-stock: ${totalStockOut} | Failed: ${totalFailed}`);
+  const totalQaHard     = brandResults.reduce((s, b) => s + (b.qa?.hard     ?? 0), 0);
+  const totalQaSoft     = brandResults.reduce((s, b) => s + (b.qa?.soft     ?? 0), 0);
+  const totalQaRepaired = brandResults.reduce((s, b) => s + (b.qa?.repaired ?? 0), 0);
+  if (totalQaHard > 0 || totalQaSoft > 0) {
+    logger.info(`QA: ${totalQaHard} hard issues (${totalQaRepaired} repaired by LLM), ${totalQaSoft} soft warnings`);
+  }
   logger.info('════════════════════════════════════════\n');
 
   return { totalInserted, totalUpdated, totalUnchanged, totalSkipped, totalFailed, totalStockOut, durationMs };

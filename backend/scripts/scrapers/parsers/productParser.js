@@ -188,13 +188,102 @@ const GENERIC_SUIT_SUBCATS = new Set([
   'unstitched-1-piece', 'unstitched-2-piece', 'unstitched-3-piece'
 ]);
 
-/** Explicit piece count stated in the product TITLE, or null. */
+// ─── Structured title/description parsing ───────────────────────────────────
+// Pakistani brand pages are semi-structured: titles list the garments
+// ("RTS | SHIRT & TROUSER") and descriptions carry explicit labels
+// ("Unstitched 2-Piece", "2 Pc Outfit", "Color: Grey", "Fabric: Lawn",
+// "What You'll Get: Shirt+Trouser"). These are RELIABLE signals — not marketing
+// noise — so we parse them.
+
+const WORD_NUM = { one: 1, two: 2, three: 3, four: 4 };
+
+/**
+ * Explicit "N Piece / N Pc" (digit or word) in a TITLE. Titles are clean product
+ * names, so a bare count is trustworthy here.
+ */
+function explicitPieceCount(txt) {
+  const d = txt.match(/\b([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\b/);
+  if (d) return Number(d[1]);
+  const w = txt.match(/\b(one|two|three|four)[\s-]piece\b/);
+  if (w) return WORD_NUM[w[1]];
+  return null;
+}
+
+/**
+ * Piece count from a DESCRIPTION — stricter than the title version. Only trusts a
+ * count in a structured garment phrase ("Unstitched 2-Piece", "2 Pc Outfit",
+ * "3 Piece Suit"). This avoids the embroidery-breakdown trap where descriptions
+ * open with "1 PC Embroidered Front, 2 PC Sleeves, 1 PC Border …" (component
+ * counts, not the number of garments).
+ */
+function explicitPieceCountDesc(head) {
+  let m = head.match(/\bunstitched\s+([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\b/);
+  if (m) return Number(m[1]);
+  m = head.match(/\b([1-4])\s*[- ]?\s*(?:pc|pcs|piece|pieces)\s+(?:outfit|suit|stitched|unstitched)\b/);
+  if (m) return Number(m[1]);
+  m = head.match(/\b(one|two|three|four)[\s-]piece\s+(?:outfit|suit)\b/);
+  if (m) return WORD_NUM[m[1]];
+  return null;
+}
+
+const GARMENT_GROUPS = [
+  { label: 'shirt',   re: /\b(shirt|kameez|kurta|kurti|angrakha|frock|tunic|top)s?\b/ },
+  { label: 'trouser', re: /\b(trouser|pant|culotte|shalwar|salwar|pajama|pyjama|bottom|short)s?\b/ },
+  { label: 'dupatta', re: /\b(dupatta|dopatta|duppata|shawl|stole)s?\b/ },
+  { label: 'inner',   re: /\b(inner|slip|lining)s?\b/ }
+];
+
+/** Ordered garment labels present in a short enumeration segment. */
+function garmentsIn(seg) {
+  const out = [];
+  for (const g of GARMENT_GROUPS) if (g.re.test(seg)) out.push(g.label);
+  return out;
+}
+
+/**
+ * Pull the garment enumeration from the most reliable place: the part of the
+ * TITLE after a "|" (Alkaram-style "RTS | SHIRT, TROUSER & DUPATTA"), else a
+ * "What You'll Get:" / "N Pc Outfit - …" segment in the description.
+ */
+function garmentList(titleLc, descLc) {
+  const titleSeg = titleLc.includes('|') ? titleLc.split('|').pop() : titleLc;
+  let g = garmentsIn(titleSeg);
+  if (g.length) return g;
+  // Only trust an explicit garment-list segment ("What You'll Get: …" / "Outfit -
+  // …"), never a bare "N PC" which is often an embroidery-component breakdown.
+  const w =
+    descLc.match(/what you'?ll get\s*:?\s*([^.]{0,70})/) ||
+    descLc.match(/\boutfit\s*[-–]\s*([^.]{0,70})/);
+  if (w) { g = garmentsIn(w[1]); if (g.length) return g; }
+  return [];
+}
+
+/**
+ * Resolve piece count from the strongest available signal:
+ *   explicit "N Piece" in title → explicit in description head → garment count.
+ * Also returns the garment list and whether the signal is strong enough to
+ * reclassify a single-garment collection bucket.
+ */
+function resolvePieceSignal(titleLc, descLc) {
+  const descHead = descLc.slice(0, 120); // structured labels sit at the very start
+  const explicitTitle = explicitPieceCount(titleLc);
+  const explicitDesc = explicitPieceCountDesc(descHead);
+  const garments = garmentList(titleLc, descLc);
+
+  let count = explicitTitle || explicitDesc || (garments.length || null);
+  // A single non-shirt garment (standalone dupatta/trouser/shalwar) must not be
+  // treated as a suit and reclassified.
+  const singleNonShirt = garments.length === 1 && garments[0] !== 'shirt';
+  const strong = !!(explicitTitle || explicitDesc || (garments.length >= 2)) && !singleNonShirt;
+
+  return { count: count || null, garments, strong };
+}
+
+/** Explicit piece count stated in the product TITLE, or null (string form). */
 function explicitPieceFromTitle(titleLc) {
-  if (/\b4[- ]?piece\b|four[- ]piece/.test(titleLc) || titleLc.includes('4pc')) return '4-piece';
-  if (/\b3[- ]?piece\b|three[- ]piece/.test(titleLc) || titleLc.includes('3pc')) return '3-piece';
-  if (/\b2[- ]?piece\b|two[- ]piece/.test(titleLc) || titleLc.includes('2pc')) return '2-piece';
-  if (/\b1[- ]?piece\b|one[- ]piece\b/.test(titleLc) || titleLc.includes('1pc')) return '1-piece';
-  if (/\bpant\s*coat\b|\bcoat\s*pant\b|three[\s-]piece\s+suit/.test(titleLc)) return '3-piece';
+  const n = explicitPieceCount(titleLc);
+  if (n) return `${n}-piece`;
+  if (/\bpant\s*coat\b|\bcoat\s*pant\b/.test(titleLc)) return '3-piece';
   return null;
 }
 
@@ -220,10 +309,10 @@ function suitSubCategory(n, stitchedType) {
  *     '2-piece' collection item whose title says "Unstitched" → 'unstitched-2-piece').
  *   - kurta/pants/dupatta/festive/bridal/western/co-ord keep their label.
  */
-function reconcileSubCategory(subCategory, pieceType, stitchedType, titleHasExplicitCount) {
+function reconcileSubCategory(subCategory, pieceType, stitchedType, strongSignal) {
   const n = PIECE_COUNT[pieceType];
   if (!n) return subCategory;
-  if (titleHasExplicitCount) return suitSubCategory(n, stitchedType);
+  if (strongSignal) return suitSubCategory(n, stitchedType);
   if (GENERIC_SUIT_SUBCATS.has(subCategory)) return suitSubCategory(n, stitchedType);
   return subCategory;
 }
@@ -258,7 +347,7 @@ const SUIT_PIECES = {
  * dupatta). Special single-garment subCategories keep their canonical list.
  * Unstitched suits use fabric-* tokens.
  */
-function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical) {
+function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical, garments = []) {
   if (SPECIAL_COMPOSITION.has(subCategory)) {
     const includes = [...canonical.includes];
     return { includes, totalCount: PIECE_COUNT[pieceType] || includes.length || undefined };
@@ -270,7 +359,10 @@ function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical) {
     return { includes: [], totalCount: undefined };
   }
 
-  let includes = SUIT_PIECES[count] || [];
+  // Prefer the actual garment enumeration when it matches the count (captures
+  // shirt+dupatta vs the default shirt+trouser); otherwise standard composition.
+  let base = garments.length === count && garments.includes('shirt') ? garments : (SUIT_PIECES[count] || []);
+  let includes = base;
   if (stitchedType === 'unstitched') {
     includes = includes.map((p) => (['shirt', 'trouser', 'dupatta', 'inner'].includes(p) ? `fabric-${p}` : p));
   }
@@ -333,13 +425,18 @@ export function normalizeProduct(raw, brandConfig) {
   // ── Stock check ──
   if (raw.isAvailable === false) return null;
 
-  // ── Text blob for inference ──
+  // ── Text blobs for inference ──
   const textBlob = [name, raw.description || '', (raw.tags || []).join(' '),
                     (raw.variantOptions || []).join(' ')].join(' ').toLowerCase();
+  const titleLc = name.toLowerCase();
+  const descLc  = (raw.description || '').toLowerCase();
 
-  // ── Colors (source-prioritized: variant color option & title over copy) ──
+  // ── Colors — most trusted first: the description's "Color:" label and the
+  // Shopify variant colour option, then title, tags, copy. ──
+  const descColor = colorFromDesc(descLc);
+  const optionColors = [descColor, ...(Array.isArray(raw.variantOptions) ? raw.variantOptions : [])].filter(Boolean);
   const { primaryColor, colors, primaryExactColor, exactColors } = inferColors({
-    options: raw.variantOptions,
+    options: optionColors,
     title: name,
     tags: raw.tags,
     description: raw.description
@@ -362,21 +459,19 @@ export function normalizeProduct(raw, brandConfig) {
   const styles      = dedupe([...configStyle,    ...inferFromMap(textBlob, STYLE_MAP)]);
   const subCategory = inferSubCategory(textBlob, configSubCategory);
 
-  // ── Piece system (title-authoritative, config fallback) ──
-  // The product TITLE is a clean, reliable signal and overrides the collection
-  // when they disagree (e.g. a "3 Piece … (Unstitched)" suit pulled via a
-  // site-wide fallback into a collection configured as 2-piece). The noisy
-  // DESCRIPTION is never used for these structural fields.
-  const titleLc      = name.toLowerCase();
+  // ── Piece system (structured title/description signals, config fallback) ──
+  // Titles list the garments ("RTS | SHIRT & TROUSER") and descriptions carry
+  // explicit labels ("Unstitched 2-Piece", "2 Pc Outfit"). These reliable signals
+  // override the collection when they disagree; loose marketing prose is ignored.
   const canonical0   = canonicalFor(subCategory);
-  const stitchedType = inferStitchedType(titleLc, canonical0);
-  const titlePieces  = explicitPieceFromTitle(titleLc);
-  const pieceType    = titlePieces || canonical0.pieceType;
-  // Keep subCategory coherent: an explicit title count reclassifies even a
-  // single-garment collection (e.g. "2 Piece Suit" in a 'kurta' collection).
-  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType, !!titlePieces);
+  const stitchedType = inferStitchedType(titleLc, descLc, canonical0);
+  const pieceSignal  = resolvePieceSignal(titleLc, descLc);
+  const pieceType    = pieceSignal.count ? `${pieceSignal.count}-piece` : canonical0.pieceType;
+  // Keep subCategory coherent with a strong piece/stitch signal (e.g. a
+  // "SHIRT & TROUSER" 2-piece listed in a 'kurta'/generic collection).
+  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType, pieceSignal.strong);
   const canonical    = canonicalFor(resolvedSubCategory);
-  const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical);
+  const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical, pieceSignal.garments);
 
   // ── Style / pattern / fashion ──
   const dressStyle  = inferDressStyle(textBlob, canonical);
@@ -387,7 +482,7 @@ export function normalizeProduct(raw, brandConfig) {
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse
   // failure and sent through the LLM repair path.
-  const fabric      = inferFabric(titleLc, textBlob);
+  const fabric      = inferFabric(titleLc, descLc);
   const trendTags   = dedupe(inferFromMap(textBlob, TREND_TAG_MAP));
   const sleeveType  = inferFirstFromMap(textBlob, SLEEVE_MAP);
   const neckline    = inferFirstFromMap(textBlob, NECKLINE_MAP);
@@ -486,21 +581,20 @@ function inferSubCategory(blob, configDefault) {
   return configDefault || 'other';
 }
 
-function inferStitchedType(titleLc, canonical) {
+function inferStitchedType(titleLc, descLc, canonical) {
+  const descHead = descLc.slice(0, 90);
   // Explicit title signals win (checked most-specific first — note 'unstitched'
-  // and 'semi-stitched' both contain the substring 'stitched').
-  if (titleLc.includes('semi-stitched') || titleLc.includes('semi stitched')) return 'semi-stitched';
-  if (titleLc.includes('unstitched') || titleLc.includes('un-stitched')) return 'unstitched';
-  if (/\b(stitched|pret|ready[ -]?to[ -]?wear|rtw)\b/.test(titleLc)) return 'stitched';
+  // and 'semi-stitched' both contain the substring 'stitched'). 'RTS' = Ready To
+  // Stitch (unstitched); 'RTW'/'pret'/'N Pc Outfit' = ready to wear (stitched).
+  if (/semi[\s-]?stitched/.test(titleLc)) return 'semi-stitched';
+  if (/\bunstitched\b|un-stitched|\brts\b|ready[ -]?to[ -]?stitch/.test(titleLc)) return 'unstitched';
+  if (/\bstitched\b|\brtw\b|ready[ -]?to[ -]?wear|\bpret\b|\bpc\s+outfit\b/.test(titleLc)) return 'stitched';
+  // Then the description's leading label ("Unstitched 3-Piece …" / "2 Pc Outfit …").
+  if (/unstitched/.test(descHead)) return 'unstitched';
+  if (/\bstitched\b|\bpc\s+outfit\b/.test(descHead)) return 'stitched';
   // Otherwise trust the collection (unstitched-* / stitched pret buckets).
   if (canonical && canonical.stitched) return canonical.stitched;
   return 'stitched';
-}
-
-function inferPieceType(titleLc, canonical) {
-  // An explicit piece count in the TITLE is authoritative and overrides the
-  // collection default (handles mislabeled/site-wide-fallback items).
-  return explicitPieceFromTitle(titleLc) || canonical?.pieceType;
 }
 
 function inferDressStyle(blob, canonical) {
@@ -565,27 +659,95 @@ function resolveGender(blob, brandGender) {
   return 'women';
 }
 
+// Multi-word entries first so "raw silk"/"cotton net"/"cotton silk" win over
+// bare "silk"/"cotton". Covers the fabrics seen across all 8 brands.
 const FABRICS = [
-  'khaddar','karandi','raw silk','lawn','chiffon','georgette','cotton','silk','velvet',
-  'linen','organza','net','crepe','satin','jacquard','tissue',
-  'banarsi','zari','muslin','voile','cambric','viscose','polyester'
+  'cotton filament','cotton net','cotton silk','cotton viscose','raw silk','tissue silk',
+  'poly slub','poly munar','poly munaar','poly lawn','two way slub','two tone','yarn dyed','viscose slub',
+  'lurex jacquard','self jacquard','irish linen','dobby lawn','zari lawn','bamber chiffon','munaar lurex',
+  'khaddar','karandi','masoori','susi','doria','dobby','marina','jamawar','banarsi','katan',
+  'munaar','munar','lurex','lawn','chiffon','georgette','velvet','organza','cambric','jacquard','herringbone',
+  'linen','crepe','satin','tissue','muslin','voile','viscose','pashmina','net',
+  'polyester','poly','cotton','silk','zari'
 ];
 
+const titleCase = (s) => s.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+/**
+ * Find the fabric that appears EARLIEST in the text (so the base fabric wins over
+ * an embellishment thread — "Polyester Zari" → Polyester); at the same position
+ * the longest phrase wins ("Cotton Net" over "Cotton").
+ */
 function scanFabric(txt) {
+  let best = null, bestIdx = Infinity, bestLen = 0;
   for (const f of FABRICS) {
-    if (txt.includes(f)) return f.charAt(0).toUpperCase() + f.slice(1);
+    const i = txt.indexOf(f);
+    if (i === -1) continue;
+    if (i < bestIdx || (i === bestIdx && f.length > bestLen)) {
+      best = f; bestIdx = i; bestLen = f.length;
+    }
   }
-  return undefined;
+  return best ? titleCase(best) : undefined;
+}
+
+// Treatment words that can prefix a fabric label ("Dyed Embroidered Lawn" → Lawn).
+const NON_FABRIC_LABEL = /^(dyed|printed|embroidered|plain|solid|self|digital)$/i;
+
+/**
+ * The description's FIRST "Fabric: X" label is the shirt (primary) fabric and is
+ * the most reliable source for these brands. Value is captured up to the next
+ * known label. Returns a cleaned fabric string or null.
+ */
+function fabricFromDesc(descLc) {
+  const m = descLc.match(
+    /fabric\s*:\s*([a-z][a-z ]{1,26}?)\s*(?:dupatta|trouser|shirt|bottom|colou?r|cut|slip|design|what|care|season|occasion|details|neckline|\bfit\b|$)/
+  );
+  if (!m) return null;
+  let words = m[1].trim().replace(/\s+/g, ' ').split(' ');
+  // Strip ONLY leading treatment words — keep interior words so multi-word
+  // fabrics survive ("Yarn Dyed Cotton Silk" must not become "Yarn Cotton Silk").
+  while (words.length && NON_FABRIC_LABEL.test(words[0])) words.shift();
+  const val = words.join(' ').trim();
+  return val ? titleCase(val) : null;
 }
 
 /**
- * Fabric is title-first: the fabric named in the product TITLE (e.g. "Khaddar
- * Suit") is authoritative and must beat a stray fabric word in the marketing copy
- * (a "silky finish" mention shouldn't override khaddar). Falls back to the wider
- * text only when the title names no fabric.
+ * Fabric stated in the description PROSE as "… <fabric> fabric" (e.g. Gul Ahmed
+ * "Crafted in breezy tissue silk fabric"). Uses the FIRST such mention (the shirt
+ * fabric is named first) and only accepts it if it resolves to a known fabric —
+ * this beats a leading blend-qualifier in the title ("Poly Tissue Silk" → Poly).
  */
-function inferFabric(titleLc, blob) {
-  return scanFabric(titleLc) || scanFabric(blob);
+function fabricFromDescBody(descLc) {
+  const re = /\b([a-z]+(?:\s+[a-z]+){0,2})\s+fabric\b/g;
+  let m;
+  while ((m = re.exec(descLc))) {
+    const f = scanFabric(m[1]);
+    if (f) return f;
+  }
+  return null;
+}
+
+/**
+ * Fabric resolution, most-reliable first:
+ *   "Fabric:" label  →  "<fabric> fabric" prose  →  TITLE fabric word  →  wider text.
+ * Marketing prose is never scanned loosely for a bare fabric word — only the two
+ * explicit forms above are trusted.
+ */
+function inferFabric(titleLc, descLc) {
+  return fabricFromDesc(descLc) || fabricFromDescBody(descLc) || scanFabric(titleLc) || scanFabric(descLc);
+}
+
+/** Public helper: derive fabric from a product's name + description. */
+export function deriveFabric(name, description) {
+  return inferFabric((name || '').toLowerCase(), (description || '').toLowerCase());
+}
+
+/** The description's "Color: X" label value (e.g. "Baby Pink", "Olive Grey"), or null. */
+function colorFromDesc(descLc) {
+  const m = descLc.match(
+    /\bcolou?r\s*:\s*([a-z][a-z ()]{1,22}?)\s*(?:fabric|shirt|cut|slip|dupatta|trouser|bottom|design|what|care|season|occasion|details|neckline|\bfit\b|$)/
+  );
+  return m ? m[1].trim() : null;
 }
 
 // ─── Size normalizer ─────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
     "scrape:khaadi-test": "node scripts/scrapers/testKhaadiFetch.js",
     "scrape:fresh": "node scripts/clearDB.js && node scripts/scrapers/index.js",
     "export:catalog": "node scripts/exportCatalog.js",
+    "audit:catalog": "node scripts/auditCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "test": "node --test"
   },
