@@ -142,11 +142,18 @@ function inferHeelHeight(blob) {
 }
 
 function inferClosure(blob) {
-  if (/lace|lacing/.test(blob)) return 'lace-up';
-  if (/buckle|strap/.test(blob)) return 'buckle';
-  if (/zip|zipper/.test(blob)) return 'zip';
-  if (/velcro/.test(blob)) return 'velcro';
-  if (/elastic/.test(blob)) return 'elastic';
+  // Specific mechanisms first. A bare "strap" is NOT a buckle — slingback, ankle,
+  // and mary-jane straps often close with velcro/elastic — so only a real
+  // "buckle" maps to buckle, and slip-on/velcro/elastic are detected explicitly.
+  if (/hook[-\s]?and[-\s]?loop|hook\s*&\s*loop|velcro/.test(blob)) return 'velcro';
+  if (/lace[-\s]?up|laces|lacing/.test(blob)) return 'lace-up';
+  if (/zipper|\bzip\b/.test(blob)) return 'zip';
+  // An explicit "slip-on" statement is authoritative — a decorative "buckle"
+  // ornament on a slip-on shoe must not label it a buckle closure.
+  if (/slip[-\s]?on|pull[-\s]?on/.test(blob)) return 'slip-on';
+  if (/sling[-\s]?back|elastic|elasticated|elasticised/.test(blob)) return 'elastic';
+  if (/\bbuckle/.test(blob)) return 'buckle';
+  if (/\bmule\b|back open|back-open|moccasin|loafer|ballet|\bpump|court shoe|slipper|khussa|chappal|peshawari|kolhapuri/.test(blob)) return 'slip-on';
   return 'slip-on';
 }
 

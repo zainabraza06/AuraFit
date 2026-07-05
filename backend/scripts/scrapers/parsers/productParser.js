@@ -227,11 +227,16 @@ function explicitPieceCountDesc(head) {
 }
 
 const GARMENT_GROUPS = [
-  { label: 'shirt',   re: /\b(shirt|kameez|kurta|kurti|angrakha|frock|tunic|top)s?\b/ },
+  { label: 'shirt',   re: /\b(shirt|kameez|kurta|kurti|angrakha|frock|tunic|top|abaya|gown)s?\b/ },
   { label: 'trouser', re: /\b(trouser|pant|culotte|shalwar|salwar|pajama|pyjama|bottom|short)s?\b/ },
-  { label: 'dupatta', re: /\b(dupatta|dopatta|duppata|shawl|stole)s?\b/ },
-  { label: 'inner',   re: /\b(inner|slip|lining)s?\b/ }
+  { label: 'dupatta', re: /\b(dupatta|dopatta|duppata|shawl|stole|scarf|scarves)s?\b/ },
+  { label: 'inner',   re: /\b(inner|slip|lining|camisole)s?\b/ }
 ];
+
+// A single standalone bottom / dupatta gets its own subCategory rather than the
+// collection default (fixes "RTW | TROUSER" or "Cotton Dyed Trouser" that inherit
+// a 'kurta' bucket and list [shirt]).
+const SINGLE_GARMENT_SUBCAT = { trouser: 'pants', shalwar: 'shalwar', dupatta: 'dupatta' };
 
 /** Ordered garment labels present in a short enumeration segment. */
 function garmentsIn(seg) {
@@ -361,12 +366,17 @@ function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical, ga
 
   // Prefer the actual garment enumeration when it matches the count (captures
   // shirt+dupatta vs the default shirt+trouser); otherwise standard composition.
-  let base = garments.length === count && garments.includes('shirt') ? garments : (SUIT_PIECES[count] || []);
-  let includes = base;
+  let includes = garments.length === count && garments.includes('shirt')
+    ? [...garments]
+    : [...(SUIT_PIECES[count] || [])];
+  // A slip / inner listed in the garment enumeration is a bonus piece the brand
+  // doesn't count in the "N-piece" total — record it in includes without changing
+  // totalCount (e.g. "3 PIECE … Shirt+Slip+Pant+Dupatta").
+  if (garments.includes('inner') && !includes.includes('inner')) includes.push('inner');
   if (stitchedType === 'unstitched') {
     includes = includes.map((p) => (['shirt', 'trouser', 'dupatta', 'inner'].includes(p) ? `fabric-${p}` : p));
   }
-  return { includes: [...includes], totalCount: count };
+  return { includes, totalCount: count };
 }
 
 // ─── Color family derivation ──────────────────────────────────────────────────
@@ -386,6 +396,8 @@ const NEGATIVE_KEYWORDS = [
   'wallet','handbag','tote bag','shoulder bag','crossbody',
   'clutch bag','backpack','satchel','phone case','sunglasses','necklace',
   'earring','bracelet','ring','phone cover',
+  // Belts (accessory, not a garment) — ' belt ' avoids matching "belted" dresses.
+  'belts',' belt ',
   // Fragrance
   'perfume','fragrance','cologne','eau de toilette','body mist','deodorant',
   // Shoes (filtering from clothing scraper)
@@ -463,13 +475,23 @@ export function normalizeProduct(raw, brandConfig) {
   // Titles list the garments ("RTS | SHIRT & TROUSER") and descriptions carry
   // explicit labels ("Unstitched 2-Piece", "2 Pc Outfit"). These reliable signals
   // override the collection when they disagree; loose marketing prose is ignored.
-  const canonical0   = canonicalFor(subCategory);
-  const stitchedType = inferStitchedType(titleLc, descLc, canonical0);
   const pieceSignal  = resolvePieceSignal(titleLc, descLc);
+  // A single standalone bottom / dupatta overrides the collection bucket — but
+  // ONLY for an actual 1-piece item. A multi-piece "3 Piece Suit with … Dupatta"
+  // names just the dupatta in its title; it must NOT be reclassified as a dupatta.
+  const soleGarment =
+    pieceSignal.garments.length === 1 && (pieceSignal.count == null || pieceSignal.count === 1)
+      ? pieceSignal.garments[0]
+      : null;
+  const baseSubCategory =
+    soleGarment && SINGLE_GARMENT_SUBCAT[soleGarment] ? SINGLE_GARMENT_SUBCAT[soleGarment] : subCategory;
+
+  const canonical0   = canonicalFor(baseSubCategory);
+  const stitchedType = inferStitchedType(titleLc, descLc, canonical0);
   const pieceType    = pieceSignal.count ? `${pieceSignal.count}-piece` : canonical0.pieceType;
   // Keep subCategory coherent with a strong piece/stitch signal (e.g. a
   // "SHIRT & TROUSER" 2-piece listed in a 'kurta'/generic collection).
-  const resolvedSubCategory = reconcileSubCategory(subCategory, pieceType, stitchedType, pieceSignal.strong);
+  const resolvedSubCategory = reconcileSubCategory(baseSubCategory, pieceType, stitchedType, pieceSignal.strong);
   const canonical    = canonicalFor(resolvedSubCategory);
   const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical, pieceSignal.garments);
 
@@ -675,7 +697,7 @@ const FABRICS = [
   'poly slub','poly munar','poly munaar','poly lawn','two way slub','two tone','yarn dyed','viscose slub',
   'lurex jacquard','self jacquard','irish linen','dobby lawn','zari lawn','bamber chiffon','munaar lurex',
   'khaddar','karandi','masoori','susi','doria','dobby','marina','jamawar','banarsi','katan',
-  'munaar','munar','lurex','lawn','chiffon','georgette','velvet','organza','cambric','jacquard','herringbone',
+  'leno karha','leno','munaar','munar','lurex','lawn','chiffon','georgette','velvet','organza','cambric','jacquard','herringbone',
   'linen','crepe','satin','tissue','muslin','voile','viscose','pashmina','net',
   'polyester','poly','cotton','silk','zari'
 ];
