@@ -44,10 +44,25 @@ export const searchApi = {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (email: string, password: string) => api.post('/auth/login', { email, password }),
-  register: (name: string, email: string, password: string) => api.post('/auth/register', { name, email, password }),
+  register: (name: string, email: string, password: string, picture?: File | null) => {
+    if (picture) {
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('email', email);
+      fd.append('password', password);
+      fd.append('image', picture);
+      return api.post('/auth/register', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    }
+    return api.post('/auth/register', { name, email, password });
+  },
   me: () => api.get('/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
-    api.put('/auth/change-password', { currentPassword, newPassword })
+    api.put('/auth/change-password', { currentPassword, newPassword }),
+  updateProfilePicture: (picture: File) => {
+    const fd = new FormData();
+    fd.append('image', picture);
+    return api.put('/auth/profile-picture', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  }
 };
 
 // ─── Favorites ───────────────────────────────────────────────────────────────

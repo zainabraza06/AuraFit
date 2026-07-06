@@ -14,10 +14,31 @@ const FAMILY_MAP = {
 
 const NEG = ['unstitched', 'lawn suit', 'kurta fabric', 'bedsheet'];
 
+/**
+ * Hard reject: names that clearly belong to another vertical. Jewelry collections on
+ * shoe-first brands (e.g. Stylo) leak footwear, bags, and beauty items — the product
+ * NAME is the reliable signal, so guard on it. Matched with word boundaries.
+ */
+const NON_JEWELRY_NAME = new RegExp(
+  '\\b(' +
+    // footwear
+    'sandal|sandals|slipper|slippers|chappal|chappals|khussa|kolhapuri|peshawari|' +
+    'heel|heels|pump|pumps|sneaker|sneakers|jogger|joggers|shoe|shoes|boot|boots|' +
+    'loafer|loafers|mule|mules|wedge|wedges|court\\s*shoe|flip[-\\s]?flop|footwear|' +
+    // bags & leather goods
+    'bag|bags|clutch|purse|purses|wallet|backpack|tote|handbag|satchel|pouch|belt|belts|' +
+    // apparel / textile
+    'kurta|kurti|shirt|trouser|dupatta|shawl|stole|scarf|abaya|hijab|suit|saree|lehenga|' +
+    // beauty / misc
+    'perfume|fragrance|lipstick|makeup|nail\\s*polish|sunglass|sunglasses|watch|watches' +
+  ')\\b',
+  'i'
+);
+
 const TYPE_RULES = [
   { kw: ['jhumka', 'jhumki'], val: 'jhumka' },
   { kw: ['chandbali'], val: 'chandbali' },
-  { kw: ['stud earring', ' studs'], val: 'stud' },
+  { kw: ['stud earring', 'studs'], val: 'stud' },
   { kw: ['hoop'], val: 'hoop' },
   { kw: ['earring', 'ear ring'], val: 'earring' },
   { kw: ['choker'], val: 'choker' },
@@ -37,9 +58,19 @@ const TYPE_RULES = [
   { kw: ['cufflink'], val: 'cufflinks' }
 ];
 
-function inferJewelryType(blob) {
-  for (const { kw, val } of TYPE_RULES) {
-    if (kw.some((k) => blob.includes(k))) return val;
+function escapeRx(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Type detection on the NAME first (reliable), then description/tags. Word-boundary
+ * matching so "ring" no longer matches inside "earring"/"during"/"spring".
+ */
+function inferJewelryType(name, blob) {
+  for (const source of [name, blob]) {
+    for (const { kw, val } of TYPE_RULES) {
+      if (kw.some((k) => new RegExp(`\\b${escapeRx(k)}`, 'i').test(source))) return val;
+    }
   }
   return 'other';
 }
@@ -58,6 +89,8 @@ export function normalizeJewelryProduct(raw, brandConfig) {
   if (!raw || !brandConfig) return null;
   const name = (raw.title || raw.name || '').trim();
   if (!name || name.length < 2) return null;
+  // Reject non-jewelry that leaks in from mixed-catalog collections (name is authoritative).
+  if (NON_JEWELRY_NAME.test(name)) return null;
   const blob = [name, raw.description || '', ...(raw.tags || [])].join(' ').toLowerCase();
   if (NEG.some((n) => blob.includes(n))) return null;
 
@@ -72,7 +105,7 @@ export function normalizeJewelryProduct(raw, brandConfig) {
   const { primaryColor, colors, primaryExactColor, exactColors } = inferColors(blob);
   const colorFamily = FAMILY_MAP[primaryColor] || 'multicolor';
 
-  const jewelryType = inferJewelryType(blob);
+  const jewelryType = inferJewelryType(name.toLowerCase(), blob);
   const jewelryCategory = jewelryCategoryFrom(jewelryType);
 
   const gender =

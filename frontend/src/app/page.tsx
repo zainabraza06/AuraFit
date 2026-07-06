@@ -270,6 +270,24 @@ export default function HomePage() {
                         </a>
                       </div>
                     )}
+                    {/* Paired jewellery */}
+                    {chatResult.results[0].jewelry?.length > 0 && (
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                        <p style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.65rem' }}>✦ Jewellery to Pair</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {chatResult.results[0].jewelry.slice(0, 3).map((j: any) => (
+                            <a key={j.product._id} href={j.product.productUrl || '#'} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+                              <img src={j.product.imageUrl || j.product.images?.[0] || '/placeholder.jpg'} alt={j.product.name} style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-accent)', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+                              <div style={{ minWidth: 0 }}>
+                                <p style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>{j.product.name}</p>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--accent-light)', marginBottom: '0.2rem' }}>PKR {j.product.price?.toLocaleString()}</p>
+                                {j.reason && <p style={{ fontSize: '0.7rem', color: 'var(--accent-teal)', fontStyle: 'italic', lineHeight: 1.4 }}>{j.reason}</p>}
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -326,6 +344,21 @@ export default function HomePage() {
                                     {r.shoe.reason && <p style={{ fontSize: '0.67rem', color: 'var(--accent-teal)', fontStyle: 'italic', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.shoe.reason}</p>}
                                   </div>
                                 </a>
+                              </div>
+                            )}
+                            {/* Paired jewellery */}
+                            {r.jewelry?.length > 0 && (
+                              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.65rem' }}>
+                                <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.45rem' }}>✦ Jewellery</p>
+                                {r.jewelry.slice(0, 2).map((j: any) => (
+                                  <a key={j.product._id} href={j.product.productUrl || '#'} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', display: 'flex', gap: '0.55rem', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                    <img src={j.product.imageUrl || j.product.images?.[0] || '/placeholder.jpg'} alt={j.product.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+                                    <div style={{ minWidth: 0 }}>
+                                      <p style={{ fontSize: '0.73rem', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.product.name}</p>
+                                      {j.reason && <p style={{ fontSize: '0.67rem', color: 'var(--accent-teal)', fontStyle: 'italic', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.reason}</p>}
+                                    </div>
+                                  </a>
+                                ))}
                               </div>
                             )}
                             <a href={r.product.productUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ marginTop: 'auto', textAlign: 'center' }}>Shop →</a>

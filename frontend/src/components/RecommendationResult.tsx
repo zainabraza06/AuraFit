@@ -31,6 +31,40 @@ function MatchBadge({ matchQuality }: { matchQuality: any }) {
   );
 }
 
+function PairedJewelry({ jewelry, size = 'full' }: { jewelry: any[]; size?: 'full' | 'compact' }) {
+  const items = (jewelry || []).filter((j) => j?.product).slice(0, 3);
+  if (!items.length) return null;
+  const thumb = size === 'compact' ? 40 : 54;
+  return (
+    <div>
+      <p style={{ fontSize: size === 'compact' ? '0.62rem' : '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+        ✦ Jewellery to Pair
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        {items.map((j, i) => (
+          <a key={j.product._id || i} href={j.product.productUrl || '#'} target="_blank" rel="noopener noreferrer"
+            style={{ textDecoration: 'none', display: 'flex', gap: '0.55rem', alignItems: 'center', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', padding: '0.4rem', transition: 'border-color 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-accent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+          >
+            <img
+              src={j.product.imageUrl || j.product.images?.[0] || '/placeholder.jpg'}
+              alt={j.product.name}
+              style={{ width: thumb, height: thumb, objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }}
+              onError={e => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.product.name}</p>
+              <p style={{ fontSize: '0.7rem', color: 'var(--accent-light)', fontWeight: 600 }}>PKR {j.product.price?.toLocaleString()}</p>
+              {j.reason && <p style={{ fontSize: '0.62rem', color: 'var(--accent-teal)', fontStyle: 'italic', lineHeight: 1.3 }}>{j.reason}</p>}
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CategoryChips({ product }: { product: any }) {
   return (
     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
@@ -80,6 +114,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
   const topResult  = results[0];
   const heroDress  = topResult?.product;
   const heroShoe   = topResult?.shoe;
+  const heroJewelry = topResult?.jewelry;
   const restResults = results.slice(1);
 
   // ── Compact mode: slim card for chat widget ──────────────────────────────────
@@ -156,6 +191,8 @@ export default function RecommendationResult({ data, compact = false }: { data: 
             </a>
           </div>
         )}
+
+        {heroJewelry?.length > 0 && <PairedJewelry jewelry={heroJewelry} size="compact" />}
 
         {results.length > 1 && (
           <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'center' }}>+{results.length - 1} more results on the main page ↗</p>
@@ -300,6 +337,8 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                   </div>
                 )}
 
+                {heroJewelry?.length > 0 && <PairedJewelry jewelry={heroJewelry} />}
+
                 {heroDress.productUrl && (
                   <a href={heroDress.productUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>
                     Shop on {heroDress.brand} →
@@ -378,6 +417,8 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                             </div>
                           </a>
                         )}
+
+                        {r.jewelry?.length > 0 && <PairedJewelry jewelry={r.jewelry} size="compact" />}
 
                         {p.productUrl && (
                           <a href={p.productUrl} target="_blank" rel="noopener noreferrer"

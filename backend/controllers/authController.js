@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { isCloudinaryConfigured, uploadBufferToCloudinary } from '../services/cloudinary.js';
 
 function generateToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -19,12 +20,59 @@ export async function register(req, res) {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
     const user = await User.create({ name, email, password });
+
+    // Optional profile picture uploaded with the registration form (multipart).
+    if (req.file && isCloudinaryConfigured()) {
+      try {
+        const { url } = await uploadBufferToCloudinary(req.file.buffer, {
+          folder: 'aurafit/avatars',
+          publicId: `user_${user._id}`
+        });
+        user.profilePicture = url;
+        await user.save();
+      } catch (e) {
+        // Non-fatal: account is created even if the avatar upload fails.
+        console.warn('[register] avatar upload failed:', e.message);
+      }
+    }
+
     res.status(201).json({
       user: user.toJSON(),
       token: generateToken(user._id)
     });
   } catch {
     res.status(500).json({ error: 'Registration failed' });
+  }
+}
+
+/**
+ * Upload or replace the current user's profile picture (protected).
+ * Accepts a single `image` file (multipart/form-data).
+ */
+export async function updateProfilePicture(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please attach an image file' });
+    }
+    if (!isCloudinaryConfigured()) {
+      return res.status(503).json({
+        error: 'Image hosting not configured',
+        hint: 'Add CLOUDINARY_URL (or CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET) to backend/.env'
+      });
+    }
+    const { url } = await uploadBufferToCloudinary(req.file.buffer, {
+      folder: 'aurafit/avatars',
+      publicId: `user_${req.user._id}`
+    });
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { profilePicture: url },
+      { new: true }
+    ).select('-password');
+    res.json({ user, profilePicture: url });
+  } catch (err) {
+    console.error('Profile picture upload error:', err);
+    res.status(500).json({ error: 'Failed to upload profile picture' });
   }
 }
 

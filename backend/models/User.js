@@ -10,6 +10,10 @@ const UserSchema = new mongoose.Schema(
     // Role-based access: "user" | "admin"
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
 
+    // Optional profile picture (Cloudinary URL). Doubles as the default
+    // "person" image for AI tools like Virtual Try-On.
+    profilePicture: { type: String, default: '' },
+
     // Style preferences (set during onboarding)
     preferences: {
       occasions: [{ type: String }],
