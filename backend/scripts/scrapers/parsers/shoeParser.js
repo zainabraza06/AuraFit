@@ -257,6 +257,12 @@ export function deriveShoeGender(name, tags) {
   return inferGenderShoe((name || '').toLowerCase(), tags || [], undefined);
 }
 
+/** Public helper: re-derive shoeType from a shoe's name + tags + subCategory. */
+export function deriveShoeType(name, tags, subCategory) {
+  const tagsLc = (tags || []).join(' ').toLowerCase();
+  return inferShoeType((name || '').toLowerCase(), tagsLc, subCategory || 'other');
+}
+
 export function validateShoeProduct(p) {
   if (!p) return { valid: false, reason: 'null' };
   for (const f of REQUIRED) {

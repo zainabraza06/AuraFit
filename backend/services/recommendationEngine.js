@@ -23,6 +23,8 @@ import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi, intentPrintToPatterns } from './productCompat.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
 import { rankProductsWithAI, planNextRelaxation } from './aiService.js';
+import { deriveDressStyle, deriveFabric } from '../scripts/scrapers/parsers/productParser.js';
+import { deriveShoeGender, deriveShoeType } from '../scripts/scrapers/parsers/shoeParser.js';
 import {
   planAccessorySearchFromContext,
   stripAccessoryPlanForClient
@@ -342,7 +344,7 @@ const SELECT_CLOTHING =
   'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion season style tags imageUrl images productUrl description gender metadataScore embedding';
 
 const SELECT_SHOE =
-  'name brand price images primaryColor colors occasion shoeType subCategory gender productUrl style embedding';
+  'name brand price images primaryColor primaryExactColor colors occasion shoeType subCategory gender tags productUrl style embedding';
 const SELECT_JEWELRY =
   'name brand price images primaryColor colors occasion jewelryType jewelryCategory metalFinish stoneWork gender productUrl description tags';
 const SELECT_WATCH =
@@ -434,17 +436,50 @@ function scoreAccessoryAgainstIntent(p, intent) {
   return s;
 }
 
+// Honest accessory reason — states matches and mismatches, never over-claims.
 function accessoryMatchReason(p, intent) {
-  const bits = [];
-  if (intent.colorFamily && intent.colorFamily !== 'Any' && p.primaryColor === intent.colorFamily) {
-    bits.push('color');
+  const matched = [];
+  const missed = [];
+  if (intent.colorFamily && intent.colorFamily !== 'Any') {
+    if (p.primaryColor === intent.colorFamily) matched.push(`${p.primaryColor} colour`);
+    else missed.push(`colour is ${p.primaryExactColor || p.primaryColor || 'unknown'}, not ${intent.colorFamily}`);
   }
   const occI = (intent.occasion || []).map((o) => String(o).toLowerCase());
-  if (occI.length && (p.occasion || []).some((o) => occI.includes(String(o).toLowerCase()))) {
-    bits.push('occasion');
+  if (occI.length) {
+    const shared = (p.occasion || []).filter((o) => occI.includes(String(o).toLowerCase()));
+    if (shared.length) matched.push(`${shared.slice(0, 2).join('/')} occasion`);
+    else missed.push(`for ${(p.occasion || []).slice(0, 2).join('/') || 'general'} wear, not ${occI.join('/')}`);
   }
-  if (!bits.length) return 'From our catalog matching your filters.';
-  return `Strong ${bits.join(' & ')} match for your search.`;
+  if (intent.maxBudget > 0 && typeof p.price === 'number') {
+    if (p.price <= intent.maxBudget) matched.push(`within PKR ${intent.maxBudget}`);
+    else missed.push(`PKR ${p.price}, over your PKR ${intent.maxBudget}`);
+  }
+  if (missed.length && matched.length) return `Matches ${matched.join(', ')}; but ${missed.join(', ')}.`;
+  if (missed.length) return `Closest we have — ${missed.join(', ')}.`;
+  if (matched.length) return `Matches your search: ${matched.join(', ')}.`;
+  return 'From our catalog matching your filters.';
+}
+
+// Self-heal shoe field drift (gender/shoeType) and drop non-women from results.
+async function healShoeDrift(rawDocs) {
+  const ops = [];
+  const kept = [];
+  for (const d of rawDocs) {
+    const g = deriveShoeGender(d.name, d.tags);
+    if (g === 'men' || g === 'kids') {
+      ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: { gender: g } } } });
+      continue; // not women's — exclude from this women's catalog
+    }
+    const st = deriveShoeType(d.name, d.tags, d.subCategory);
+    if (st && st !== 'other' && st !== d.shoeType) { d.shoeType = st; ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: { shoeType: st } } } }); }
+    kept.push(d);
+  }
+  if (ops.length) {
+    try { await ShoeProduct.bulkWrite(ops, { ordered: false }); }
+    catch (e) { console.warn('[healShoeDrift] bulkWrite failed:', e.message); }
+    logRecommendationEvent({ event: 'self_heal_shoes', corrected: ops.length });
+  }
+  return kept;
 }
 
 /**
@@ -476,6 +511,10 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
     delete relaxed.$or;
     raw = await Model.find(relaxed).select(select).limit(limitFetch).lean();
   }
+
+  // Self-heal shoe field drift (gender / shoeType) + drop any men's/kids' that
+  // slipped through, exactly like the clothing flow.
+  if (catalog === 'shoes') raw = await healShoeDrift(raw);
 
   const scored = raw
     .map((p) => ({ p, s: scoreAccessoryAgainstIntent(p, intent) }))
@@ -522,8 +561,44 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
 // least-important filter, tell the shopper to raise their budget, accept, or stop.
 // Falls back to the deterministic fetchCandidatesDeterministic() if the LLM is unavailable.
 const RELAXABLE = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
+const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
 const TARGET_RESULTS = 8;
 const MAX_ROUNDS = 4;
+
+// ─── Self-healing: re-derive drift-prone fields from each product's own text and
+// write corrections back to the DB. The catalog heals through normal usage — a
+// "Tunic" mislabeled dressStyle=lehenga is fixed the first time a search touches it.
+async function healClothingDrift(rawDocs) {
+  const ops = [];
+  for (const d of rawDocs) {
+    const set = {};
+    const ds = deriveDressStyle(d.name, d.subCategory);
+    if ((ds || null) !== (d.dressStyle || null)) { set.dressStyle = ds; d.dressStyle = ds; }
+    const fab = deriveFabric(d.name, d.description);
+    if (fab && fab !== d.fabric) { set.fabric = fab; d.fabric = fab; }
+    if (Object.keys(set).length) ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: set } } });
+  }
+  if (ops.length) {
+    try { await ClothingProduct.bulkWrite(ops, { ordered: false }); }
+    catch (e) { console.warn('[healClothingDrift] bulkWrite failed:', e.message); }
+    logRecommendationEvent({ event: 'self_heal_clothing', corrected: ops.length });
+  }
+  return ops.length;
+}
+
+// Fetch a candidate pool, heal field drift in-place + in the DB, then re-apply a
+// DISTINCTIVE dressStyle filter (a product healed away from 'lehenga' must drop out
+// of a lehenga search this same request).
+async function fetchHealedPool(intent, dropped, colorMode) {
+  const raw = await ClothingProduct.find(buildDBQuery(intent, dropped, colorMode))
+    .select(SELECT_CLOTHING).limit(100).lean();
+  await healClothingDrift(raw);
+  let pool = raw.map(formatClothingForApi);
+  if (!dropped.has('dressStyle') && intent.dressStyle && DISTINCTIVE_STYLES.includes(intent.dressStyle)) {
+    pool = pool.filter((p) => p.dressStyle === intent.dressStyle);
+  }
+  return pool;
+}
 
 async function countFor(intent, dropped, colorMode) {
   return ClothingProduct.countDocuments(buildDBQuery(intent, dropped, colorMode));
@@ -549,10 +624,12 @@ async function agenticRelax(intent) {
   const relaxedFields = [];
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const pool = (await ClothingProduct.find(buildDBQuery(intent, dropped, colorMode))
-      .select(SELECT_CLOTHING).limit(100).lean()).map(formatClothingForApi);
+    const pool = await fetchHealedPool(intent, dropped, colorMode);
 
-    if (pool.length >= TARGET_RESULTS) {
+    // Show WHAT IS FOUND — accept the tightest level that has ANY matches, however
+    // few. We never pad a 3-result query up to 10 by relaxing; we only step down
+    // when a level returns zero.
+    if (pool.length >= 1) {
       return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
     }
 
@@ -625,8 +702,7 @@ async function agenticRelax(intent) {
   }
 
   // Rounds exhausted — return whatever the current filters yield (best effort).
-  const pool = (await ClothingProduct.find(buildDBQuery(intent, dropped, colorMode))
-    .select(SELECT_CLOTHING).limit(100).lean()).map(formatClothingForApi);
+  const pool = await fetchHealedPool(intent, dropped, colorMode);
   return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
 }
 
