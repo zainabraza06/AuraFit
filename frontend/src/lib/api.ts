@@ -119,7 +119,10 @@ export const tryonApi = {
   generate: (formData: FormData) => api.post('/tryon', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000 // VTON can take up to 2 minutes
-  })
+  }),
+  /** Try-on from image URLs — profile picture (person) + product image (clothing) */
+  generateFromUrls: (personUrl: string, clothingUrl: string, description?: string) =>
+    api.post('/tryon', { personUrl, clothingUrl, description }, { timeout: 120000 })
 };
 
 // ─── Vector / Semantic Search ──────────────────────────────────────────────────

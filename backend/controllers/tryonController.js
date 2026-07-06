@@ -7,8 +7,20 @@ export async function virtualTryon(req, res) {
     const personFile  = req.files?.['person']?.[0];
     const clothingFile = req.files?.['clothing']?.[0];
 
-    if (!personFile || !clothingFile) {
-      return res.status(400).json({ error: 'Both person and clothing images are required.' });
+    // Two ways to supply images:
+    //  1. multipart file uploads (person / clothing) — used by the /try-on page
+    //  2. direct URLs in the JSON body (personUrl / clothingUrl) — used by the
+    //     "Try On Yourself" button on product cards (profile pic + product image).
+    const httpUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+    const personUrl   = personFile   ? null : (req.body.personUrl || null);
+    const clothingUrl = clothingFile ? null : (req.body.clothingUrl || null);
+
+    const hasPerson   = !!personFile   || httpUrl(personUrl);
+    const hasClothing = !!clothingFile || httpUrl(clothingUrl);
+    if (!hasPerson || !hasClothing) {
+      return res.status(400).json({
+        error: 'A person image (or profile picture) and a clothing image are required.'
+      });
     }
 
     const REPLICATE_API_TOKEN = process.env.REPLICATE_API_KEY;
@@ -22,8 +34,9 @@ export async function virtualTryon(req, res) {
     const { default: Replicate } = await import('replicate');
     const replicate = new Replicate({ auth: REPLICATE_API_TOKEN });
 
-    const personDataUrl   = bufferToDataUrl(personFile.buffer, personFile.mimetype);
-    const clothingDataUrl = bufferToDataUrl(clothingFile.buffer, clothingFile.mimetype);
+    // Replicate IDM-VTON accepts both data URLs and public https URLs.
+    const personDataUrl   = personFile   ? bufferToDataUrl(personFile.buffer, personFile.mimetype)   : personUrl;
+    const clothingDataUrl = clothingFile ? bufferToDataUrl(clothingFile.buffer, clothingFile.mimetype) : clothingUrl;
 
     console.log('[TryOn] Running IDM-VTON on Replicate...');
 

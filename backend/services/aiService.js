@@ -49,7 +49,13 @@ User asked for: "${intent.originalMessage || intent.intentSummary}"
 What the user wants:
   ${specifiedParts || 'General browsing — rank by overall quality and appeal'}${priorityNote}
 
-Rank the ${products.length} products below from BEST (rank 1) to WORST match. Read each description carefully — the description often contains details not in the other fields. Give a concise, specific reason for each ranking (one sentence, mention what matched or what's slightly off).
+Rank the ${products.length} products below from BEST (rank 1) to WORST match. Read each description carefully — the description often contains details (fabric drape, embellishment weight, neckline/sleeves, work density, lining, season) not present in the other fields. Give a concise, specific reason for each ranking (one sentence, mention what matched or what's slightly off).
+
+Apply world-standard fashion styling protocol when the user's request leaves room for judgement — infer these cues from the DESCRIPTION, not just the tags:
+  • Occasion & formality: heavy embroidery / zari / embellished fabrics (organza, net, velvet, jamawar) suit weddings, mehndi, parties & Eid; lawn / cotton / cambric with light or no work suit casual & daytime; structured, minimal pieces suit office/formal.
+  • Season & fabric: lawn, cotton, cambric, chiffon → summer; velvet, khaddar, linen, wool, jacquard → winter. Penalise season-inappropriate fabrics when the user named a season.
+  • Colour theory: for a stated occasion, favour tonal harmony and classic Pakistani wedding palettes (maroon, deep red, bottle green, royal blue, gold) for bridal/festive; pastels & neutrals for daytime; avoid clashing loud combinations.
+  • Silhouette & completeness: complete, well-proportioned outfits rank above single pieces.
 IMPORTANT: If the user asked for a specific garment type (suit, lehenga, frock, maxi etc.), rank complete outfits of that type at the top. Rank dupattas, scarves, individual pieces, or accessories very low even if other attributes match.
 
 ${productList}

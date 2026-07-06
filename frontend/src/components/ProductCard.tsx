@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { favoritesApi } from '@/lib/api';
+import TryOnButton from './TryOnButton';
 
 interface Product {
   _id?: string;
@@ -168,6 +169,11 @@ export default function ProductCard({ product, showBadge, width, favoritedOverri
       >
         {isFav ? '♥' : '♡'}
       </button>
+
+      {/* Try-On button (outside link to prevent navigation) — top-left over the image */}
+      <div style={{ position: 'absolute', left: '0.6rem', top: '0.6rem', zIndex: 5 }}>
+        <TryOnButton productImage={imageUrl} productName={product.name} />
+      </div>
     </div>
   );
 }

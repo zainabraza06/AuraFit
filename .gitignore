@@ -20,6 +20,12 @@ build/
 .env.development
 .env.local
 .env.test
+.env.bak*
+*.bak
+
+# Stray local test scratch files
+backend/test_gemini.js
+backend/test-output.txt
 
 # Logs
 logs
