@@ -95,6 +95,49 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
   return { rankings: products.map((p, i) => ({ product: p, rank: i + 1, reason: null })), catalogNote: null };
 }
 
+/**
+ * planNextRelaxation — the agentic step decision.
+ * Given the user's request, what's still filtered, and the ACTUAL catalog counts
+ * for each possible next move, the LLM decides ONE honest next action.
+ * @returns {{action:'relax'|'accept'|'raise_budget'|'stop', constraint?:string, message:string}}
+ */
+export async function planNextRelaxation(ctx) {
+  const relaxLines = Object.entries(ctx.relaxOptions || {})
+    .map(([k, v]) => `  - drop "${k}" → ${v} results`)
+    .join('\n') || '  (no further constraints to relax)';
+
+  const user = `Shopper asked: "${ctx.message}"
+Active filters (all applied now): ${ctx.active.join(', ') || 'none'}
+Already relaxed this session: ${ctx.dropped.join(', ') || 'none'}
+Budget ceiling: ${ctx.maxBudget ? 'PKR ' + ctx.maxBudget : 'none'}
+
+Right now, ${ctx.current} products match ALL active filters${ctx.maxBudget ? ' within budget' : ''}.
+If I relax ONE more filter, the count becomes:
+${relaxLines}
+${ctx.maxBudget ? `Keeping all current filters but LIFTING the budget ceiling → ${ctx.budgetLift} results (cheapest PKR ${ctx.cheapest ?? 'n/a'}).` : ''}
+
+Decide the single best next action so the shopper gets the closest honest match:
+- "accept": current results are already enough (aim for ≈8+) or the best achievable — stop and show them.
+- "relax": drop ONE named filter (choose the LEAST important to this shopper; keep what they clearly care about). Return it in "constraint".
+- "raise_budget": good matches exist ONLY above the budget — never show over-budget silently; tell them to raise it.
+- "stop": nothing reasonable exists even relaxed — say so honestly.
+Return JSON only: {"action":"...","constraint":"<if relax>","message":"<one honest sentence to the shopper about what you did and why>"}`;
+
+  try {
+    const { text } = await completeJsonWithProviderFallback({
+      system: 'You are AuraFit\'s honest retrieval planner. Output one JSON object only.',
+      user,
+      temperature: 0.1
+    });
+    const p = JSON.parse(extractJson(text));
+    const action = ['relax', 'accept', 'raise_budget', 'stop'].includes(p.action) ? p.action : 'accept';
+    return { action, constraint: p.constraint || null, message: typeof p.message === 'string' ? p.message.trim() : '' };
+  } catch (e) {
+    console.warn('[planNextRelaxation] failed:', e.message);
+    return null; // caller falls back to deterministic relaxation
+  }
+}
+
 const VALID_DRESS_STYLES = ['saree','lehenga','frock','maxi','shalwar-kameez','kurta','co-ord','palazzo','western'];
 
 /**

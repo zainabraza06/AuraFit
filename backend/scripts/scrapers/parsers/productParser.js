@@ -530,7 +530,7 @@ export function normalizeProduct(raw, brandConfig) {
   const pieceDetails = resolvePieceDetails(resolvedSubCategory, pieceType, stitchedType, canonical, pieceSignal.garments);
 
   // ── Style / pattern / fashion ──
-  const dressStyle  = inferDressStyle(textBlob, canonical);
+  const dressStyle  = inferDressStyle(titleLc, canonical);
   const fashionType = inferFashionType(textBlob, resolvedSubCategory);
   const pattern     = inferPattern(textBlob);
   const season      = inferSeason(textBlob);
@@ -653,11 +653,13 @@ function inferStitchedType(titleLc, descLc, canonical) {
   return 'stitched';
 }
 
-function inferDressStyle(blob, canonical) {
-  // Only distinctive silhouettes may override the collection's default
-  // (a genuine lehenga/saree/gown/abaya inside a "3-piece" collection).
+function inferDressStyle(titleLc, canonical) {
+  // Only a distinctive silhouette in the TITLE overrides the collection default.
+  // Scanning the description caused mislabels — a "Tunic"/"Kurta"/"Suit" whose copy
+  // merely says "pairs with a lehenga/sharara" was wrongly tagged dressStyle=lehenga
+  // (which then surfaced cheap suits under a "bridal lehenga" search).
   for (const { kw, val } of DISTINCTIVE_DRESS_STYLE) {
-    if (kw.some((k) => blob.includes(k))) return val;
+    if (kw.some((k) => titleLc.includes(k))) return val;
   }
   return canonical?.dressStyle;
 }
@@ -810,6 +812,11 @@ export function deriveFabric(name, description) {
 /** Public helper: derive gender from a product's name + tags (women-only QA). */
 export function deriveGender(name, tags) {
   return resolveGender((name || '').toLowerCase(), tags || [], undefined);
+}
+
+/** Public helper: re-derive dressStyle from a product's name + its subCategory. */
+export function deriveDressStyle(name, subCategory) {
+  return inferDressStyle((name || '').toLowerCase(), canonicalFor(subCategory));
 }
 
 /** The description's "Color: X" label value (e.g. "Baby Pink", "Olive Grey"), or null. */

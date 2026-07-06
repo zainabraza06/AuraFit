@@ -22,7 +22,7 @@ import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi, intentPrintToPatterns } from './productCompat.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
-import { rankProductsWithAI } from './aiService.js';
+import { rankProductsWithAI, planNextRelaxation } from './aiService.js';
 import {
   planAccessorySearchFromContext,
   stripAccessoryPlanForClient
@@ -287,19 +287,17 @@ function buildDBQuery(intent, dropped, colorMode) {
     if (patterns.length) query.pattern = { $in: patterns };
   }
   if (!dropped.has('dressStyle') && intent.dressStyle) {
+    // A DISTINCTIVE silhouette must match strictly — a "bridal lehenga" search must
+    // NOT return bridal shalwar-kameez suits just because they share the occasion.
+    const DISTINCTIVE = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
     const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
-    if (isBridalSearch) {
-      // Many bridal products store subCategory='bridal' rather than dressStyle — match either
-      query.$or = [
-        { dressStyle: intent.dressStyle },
-        { subCategory: { $in: ['bridal', 'festive'] } }
-      ];
+    if (DISTINCTIVE.includes(intent.dressStyle)) {
+      query.dressStyle = intent.dressStyle;
     } else if (intent.dressStyle === 'shalwar-kameez') {
-      // Unstitched suits are often stored with empty dressStyle but correct subCategory
-      query.$or = [
-        { dressStyle: 'shalwar-kameez' },
-        { subCategory: { $regex: /suit|kameez|unstitched/i } }
-      ];
+      // The generic suit is often stored via subCategory rather than dressStyle.
+      query.$or = isBridalSearch
+        ? [{ dressStyle: 'shalwar-kameez' }, { subCategory: { $in: ['bridal', 'festive'] } }]
+        : [{ dressStyle: 'shalwar-kameez' }, { subCategory: { $regex: /suit|kameez|unstitched/i } }];
     } else {
       query.dressStyle = intent.dressStyle;
     }
@@ -518,7 +516,121 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
   };
 }
 
-async function fetchCandidates(intent) {
+// ─── Agentic retrieval loop ──────────────────────────────────────────────────
+// Iteratively refines the search: each round the LLM sees the ACTUAL catalog
+// counts for every possible next move and decides ONE honest step — relax the
+// least-important filter, tell the shopper to raise their budget, accept, or stop.
+// Falls back to the deterministic fetchCandidatesDeterministic() if the LLM is unavailable.
+const RELAXABLE = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
+const TARGET_RESULTS = 8;
+const MAX_ROUNDS = 4;
+
+async function countFor(intent, dropped, colorMode) {
+  return ClothingProduct.countDocuments(buildDBQuery(intent, dropped, colorMode));
+}
+
+function relaxLabel(intent, c) {
+  if (c === 'pieces') return intent.pieces ? `${intent.pieces}-piece` : 'piece count';
+  if (c === 'print') return intent.print || 'print/work';
+  if (c === 'stitching') return intent.stitching || 'stitching';
+  if (c === 'dressStyle') return intent.dressStyle || 'dress style';
+  if (c === 'occasion') return (intent.occasion || []).join('/') || 'occasion';
+  if (c === 'fabric') return intent.fabric || 'fabric';
+  if (c === 'season') return intent.season || 'season';
+  if (c === 'color') return intent.colorExact || intent.colorFamily || 'colour';
+  return c;
+}
+
+async function agenticRelax(intent) {
+  const specified = getSpecifiedConstraints(intent);
+  const dropped = new Set();
+  let colorMode = specified.has('colorExact') ? 'exact' : specified.has('colorFamily') ? 'family' : 'none';
+  const trace = [];
+  const relaxedFields = [];
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const pool = (await ClothingProduct.find(buildDBQuery(intent, dropped, colorMode))
+      .select(SELECT_CLOTHING).limit(100).lean()).map(formatClothingForApi);
+
+    if (pool.length >= TARGET_RESULTS) {
+      return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
+    }
+
+    // Candidate next moves (only constraints the user actually specified & not yet dropped).
+    const relaxOptions = {};
+    for (const c of RELAXABLE) {
+      if (specified.has(c) && !dropped.has(c)) relaxOptions[relaxLabel(intent, c)] = await countFor(intent, new Set([...dropped, c]), colorMode);
+    }
+    if (colorMode !== 'none') {
+      const nextMode = colorMode === 'exact' && specified.has('colorFamily') ? 'family' : 'none';
+      relaxOptions[`colour (${relaxLabel(intent, 'color')})`] = await countFor(intent, dropped, nextMode);
+    }
+    // Budget probe — keep all current filters, lift only the price ceiling.
+    let budgetLift = null, cheapest = null;
+    if (intent.maxBudget > 0) {
+      const bq = buildDBQuery(intent, new Set([...dropped, 'budget']), colorMode);
+      budgetLift = await ClothingProduct.countDocuments(bq);
+      const cheap = await ClothingProduct.find(bq).select('price').sort({ price: 1 }).limit(1).lean();
+      cheapest = cheap[0]?.price ?? null;
+    }
+
+    const activeLabels = [...specified]
+      .filter((c) => !dropped.has(c) && c !== 'colorExact' && c !== 'colorFamily')
+      .map((c) => relaxLabel(intent, c));
+    if (colorMode !== 'none') activeLabels.unshift(relaxLabel(intent, 'color'));
+
+    const decision = await planNextRelaxation({
+      message: intent.originalMessage || intent.intentSummary || 'a fashion search',
+      active: activeLabels,
+      dropped: relaxedFields,
+      maxBudget: intent.maxBudget || 0,
+      current: pool.length,
+      relaxOptions,
+      budgetLift,
+      cheapest,
+      round
+    });
+
+    // LLM unavailable → deterministic fallback for the rest.
+    if (!decision) return fetchCandidatesDeterministic(intent);
+
+    trace.push(decision);
+
+    if (decision.action === 'accept' || decision.action === 'stop') {
+      return { products: pool, relaxedFields, trace, relaxationMessage: decision.message || buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
+    }
+    if (decision.action === 'raise_budget') {
+      return {
+        products: [], relaxedFields, trace,
+        message: decision.message,
+        budgetBlock: { maxBudget: intent.maxBudget, cheapest, activeLabels }
+      };
+    }
+    // relax the chosen constraint (match against our labels)
+    const target = RELAXABLE.find((c) => specified.has(c) && !dropped.has(c) &&
+      String(decision.constraint || '').toLowerCase().includes(relaxLabel(intent, c).toLowerCase().split(' ')[0]));
+    if (String(decision.constraint || '').toLowerCase().includes('colo') && colorMode !== 'none') {
+      colorMode = colorMode === 'exact' && specified.has('colorFamily') ? 'family' : 'none';
+      relaxedFields.push(colorMode === 'family' ? 'exact color → showing color family' : 'color');
+    } else if (target) {
+      dropped.add(target);
+      relaxedFields.push(target);
+    } else {
+      // couldn't map the LLM's choice — drop the least-important remaining one
+      const fallback = RELAXABLE.find((c) => specified.has(c) && !dropped.has(c));
+      if (fallback) { dropped.add(fallback); relaxedFields.push(fallback); }
+      else if (colorMode !== 'none') { colorMode = 'none'; relaxedFields.push('color'); }
+      else break;
+    }
+  }
+
+  // Rounds exhausted — return whatever the current filters yield (best effort).
+  const pool = (await ClothingProduct.find(buildDBQuery(intent, dropped, colorMode))
+    .select(SELECT_CLOTHING).limit(100).lean()).map(formatClothingForApi);
+  return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
+}
+
+async function fetchCandidatesDeterministic(intent) {
   const specified = getSpecifiedConstraints(intent);
   const relaxOrder = buildUnifiedRelaxOrder(intent.constraintPriority || []);
 
@@ -698,25 +810,16 @@ export async function getOutfitForQuery(intent) {
   }
 
   // 1. Fetch candidates via progressive relaxation
-  const { products, relaxationMessage, budgetBlock } = await fetchCandidates(intent);
+  const { products, relaxationMessage, budgetBlock, trace } = await agenticRelax(intent);
 
   if (!products.length) {
-    // Budget is the blocker: matches exist for these filters, just above the ceiling.
-    let message = "We couldn't find any products matching your request in our catalog.";
-    if (budgetBlock) {
-      const label = (c) => {
-        if (c === 'pieces') return intent.pieces ? `${intent.pieces}-piece` : null;
-        if (c === 'print') return intent.print;
-        if (c === 'stitching') return intent.stitching;
-        if (c === 'dressStyle') return intent.dressStyle;
-        if (c === 'occasion') return (intent.occasion || []).join('/');
-        if (c === 'fabric') return intent.fabric;
-        return null;
-      };
-      const colorWord = budgetBlock.colorKept ? (intent.colorExact || intent.colorFamily) : null;
-      const what = [colorWord, ...budgetBlock.keptConstraints.map(label)].filter(Boolean).join(' ');
-      message = `No ${what || 'matching'} outfit found under PKR ${budgetBlock.maxBudget.toLocaleString()}. The closest match starts at PKR ${budgetBlock.cheapest.toLocaleString()} — raise your budget to see it.`;
-    }
+    // The agentic planner's own honest sentence (it saw the real counts / cheapest
+    // price), with a plain fallback.
+    const message =
+      relaxationMessage ||
+      (budgetBlock
+        ? `No match under PKR ${budgetBlock.maxBudget.toLocaleString()}${budgetBlock.cheapest ? ` — the closest starts at PKR ${budgetBlock.cheapest.toLocaleString()}; raise your budget to see it` : ''}.`
+        : "We couldn't find anything matching your request in our catalog.");
     return {
       results: [],
       accessoryOnly: false,
@@ -825,6 +928,7 @@ export async function getOutfitForQuery(intent) {
       message: relaxationMessage
     },
     relaxationMessage,
+    refinementTrace: (trace || []).map((t) => ({ action: t.action, constraint: t.constraint || null, note: t.message })),
     catalogNote: catalogNote || null,   // LLM-generated mismatch banner (null = good match)
     catalogExtractionHealth,
     intentEcho: {
