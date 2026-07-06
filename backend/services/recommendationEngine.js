@@ -399,28 +399,61 @@ async function fetchAccessoryPools(intent, plan = null) {
   return { shoes, jewelry, watches };
 }
 
-/** Mongo filter for dedicated shoe / jewelry / watch catalog search (no clothing). */
-function buildAccessoryOnlyDbQuery(intent) {
-  const genderFilter =
-    intent.gender && intent.gender !== 'unisex'
-      ? { gender: { $in: [intent.gender, 'unisex'] } }
-      : {};
-  const budget =
-    intent.maxBudget > 0 ? { price: { $lte: Math.round(intent.maxBudget * 1.35) } } : {};
-  const q = { ...genderFilter, ...budget, inStock: { $ne: false } };
+// Map a user's shoe-type word → the specific shoeType values it should match.
+// (Matches shoeType only — it's title-derived and reliable; subCategory buckets
+// like 'ethnic' are too broad and drag in unrelated silhouettes.)
+const SHOE_TYPE_MATCH = [
+  { kw: ['heel', 'heels', 'stiletto', 'stilettos', 'court'], types: ['heel', 'stiletto', 'block-heel', 'court-shoe', 'pump'] },
+  { kw: ['pump', 'pumps'], types: ['pump', 'court-shoe', 'heel'] },
+  { kw: ['wedge', 'wedges'], types: ['wedge', 'platform'] },
+  { kw: ['sandal', 'sandals'], types: ['sandal', 'slide'] },
+  { kw: ['khussa', 'khussay', 'kolhapuri', 'peshawari', 'kohati'], types: ['khussa', 'kolhapuri', 'peshawari', 'kohati'] },
+  { kw: ['sneaker', 'sneakers', 'jogger', 'joggers', 'trainer', 'running', 'athletic'], types: ['sneaker', 'trainer', 'jogger', 'running'] },
+  { kw: ['flat', 'flats', 'ballet', 'ballerina', 'loafer', 'loafers', 'moccasin'], types: ['flat', 'ballet-flat', 'loafer', 'moccasin', 'espadrille'] },
+  { kw: ['mule', 'mules', 'back open', 'back-open'], types: ['mule'] },
+  { kw: ['slipper', 'slippers', 'chappal', 'chappals'], types: ['slipper', 'chappal', 'flip-flop'] },
+  { kw: ['boot', 'boots', 'ankle boot', 'chelsea'], types: ['boot', 'ankle-boot', 'chelsea-boot', 'long-boot', 'combat'] }
+];
 
-  if (intent.colorFamily && intent.colorFamily !== 'Any') {
+/** Add a type filter (shoeType or jewelryType) for a dedicated accessory search. */
+function accessoryTypeFilter(catalog, accessoryType) {
+  if (!accessoryType) return null;
+  const t = String(accessoryType).toLowerCase();
+  if (catalog === 'shoes') {
+    const m = SHOE_TYPE_MATCH.find((r) => r.kw.some((k) => t.includes(k)));
+    if (m) return { shoeType: { $in: m.types } };
+  } else if (catalog === 'jewelry') {
+    const map = { earring: 'ear', jhumka: 'ear', necklace: 'neck', choker: 'neck', ring: 'hand', bracelet: 'wrist', bangle: 'wrist', anklet: 'wrist', bridal: 'bridal', tikka: 'head' };
+    const key = Object.keys(map).find((k) => t.includes(k));
+    if (key) return { $or: [{ jewelryType: { $regex: new RegExp(escapeRegex(t), 'i') } }, { subCategory: map[key] }] };
+  } else if (catalog === 'watches') {
+    return { watchType: { $regex: new RegExp(escapeRegex(t), 'i') } };
+  }
+  return null;
+}
+
+/**
+ * Mongo filter for a dedicated shoe / jewelry / watch search (no clothing).
+ * `dropped` may contain 'color', 'occasion', 'type' — budget & gender stay hard.
+ */
+function buildAccessoryOnlyDbQuery(intent, catalog, dropped = new Set()) {
+  const q = { inStock: { $ne: false } };
+  if (intent.gender && intent.gender !== 'unisex') q.gender = { $in: [intent.gender, 'unisex'] };
+  if (intent.maxBudget > 0) q.price = { $lte: intent.maxBudget };            // hard ceiling
+  if (!dropped.has('color') && intent.colorFamily && intent.colorFamily !== 'Any') {
     q.primaryColor = intent.colorFamily;
   }
 
-  if (intent.occasion?.length) {
-    q.$or = [
-      { occasion: { $in: intent.occasion } },
-      { occasion: { $exists: false } },
-      { occasion: { $size: 0 } }
-    ];
+  const ands = [];
+  if (!dropped.has('type')) {
+    const tf = accessoryTypeFilter(catalog, intent.accessoryType);
+    if (tf) ands.push(tf);
   }
-
+  if (!dropped.has('occasion') && intent.occasion?.length) {
+    ands.push({ $or: [{ occasion: { $in: intent.occasion } }, { occasion: { $exists: false } }, { occasion: { $size: 0 } }] });
+  }
+  if (ands.length === 1) Object.assign(q, ands[0]);
+  else if (ands.length > 1) q.$and = ands;
   return q;
 }
 
@@ -490,7 +523,6 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
   bumpMetric('accessory_only_query');
   logRecommendationEvent({ event: 'accessory_only_flow', searchCatalog: catalog });
 
-  const baseQuery = buildAccessoryOnlyDbQuery(intent);
   const limitFetch = 100;
   const limitOut = 30;
 
@@ -499,22 +531,21 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
   const select =
     catalog === 'shoes' ? SELECT_SHOE : catalog === 'jewelry' ? SELECT_JEWELRY : SELECT_WATCH;
 
-  let raw = await Model.find(baseQuery).select(select).limit(limitFetch).lean();
-
-  if (raw.length < 12 && baseQuery.primaryColor) {
-    const relaxed = { ...baseQuery };
-    delete relaxed.primaryColor;
-    raw = await Model.find(relaxed).select(select).limit(limitFetch).lean();
+  // Relax least-important first, keeping the TYPE (heels/khussa/…) longest. Budget
+  // stays a hard ceiling. Stop at the tightest level that has any matches.
+  const relaxSteps = [
+    { drop: new Set(), label: null },
+    { drop: new Set(['color']), label: 'colour' },
+    { drop: new Set(['color', 'occasion']), label: 'occasion' },
+    { drop: new Set(['color', 'occasion', 'type']), label: intent.accessoryType || 'type' }
+  ];
+  let raw = [];
+  let relaxedLabel = null;
+  for (const step of relaxSteps) {
+    let batch = await Model.find(buildAccessoryOnlyDbQuery(intent, catalog, step.drop)).select(select).limit(limitFetch).lean();
+    if (catalog === 'shoes') batch = await healShoeDrift(batch);
+    if (batch.length) { raw = batch; relaxedLabel = step.drop.size ? step.label : null; break; }
   }
-  if (raw.length < 8 && baseQuery.$or) {
-    const relaxed = { ...baseQuery };
-    delete relaxed.$or;
-    raw = await Model.find(relaxed).select(select).limit(limitFetch).lean();
-  }
-
-  // Self-heal shoe field drift (gender / shoeType) + drop any men's/kids' that
-  // slipped through, exactly like the clothing flow.
-  if (catalog === 'shoes') raw = await healShoeDrift(raw);
 
   const scored = raw
     .map((p) => ({ p, s: scoreAccessoryAgainstIntent(p, intent) }))
@@ -531,7 +562,11 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
     outfitCompletions: []
   }));
 
-  const tier = results.length >= 20 ? 'exact' : results.length >= 8 ? 'close' : results.length ? 'similar' : 'none';
+  const tier = !relaxedLabel && results.length ? 'exact' : results.length >= 8 ? 'close' : results.length ? 'similar' : 'none';
+  const noun = catalog === 'shoes' ? (intent.accessoryType || 'footwear') : catalog === 'jewelry' ? (intent.accessoryType || 'jewellery') : 'watches';
+  const relaxationMessage = relaxedLabel
+    ? `No exact ${intent.accessoryType || ''} match — relaxed ${relaxedLabel}. Showing the closest ${noun} we have.`
+    : null;
 
   return {
     accessoryOnly: true,
@@ -541,10 +576,10 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
       tier,
       totalFound: results.length,
       message: results.length
-        ? null
-        : "We couldn't find any matching items in our catalog for this search."
+        ? relaxationMessage
+        : `We couldn't find any ${intent.maxBudget ? `${noun} under PKR ${intent.maxBudget.toLocaleString()}` : noun} matching your search.`
     },
-    relaxationMessage: null,
+    relaxationMessage,
     catalogExtractionHealth: { avgLexicalAlignment: 1, perItem: [] },
     intentEcho: {
       constraintPriority: intent.constraintPriority || [],

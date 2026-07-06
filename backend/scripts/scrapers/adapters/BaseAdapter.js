@@ -103,7 +103,7 @@ export class BaseAdapter {
     // SKIP_AI disables the LLM repair path too (not just enrichment).
     const useLlmRepair = this._repairWithLlm && !skipAi;
     // This catalog is women-only for the clothing & shoe verticals.
-    const womenOnly = this._vertical === 'clothing' || this._vertical === 'shoes';
+    const womenOnly = this._vertical === 'clothing' || this._vertical === 'shoes' || this._vertical === 'jewelry';
     let droppedGender = 0;
 
     for (const raw of rawProducts) {

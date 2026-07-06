@@ -32,6 +32,10 @@ Return ONLY a valid JSON object with these exact fields:
     "Wedding look is everything, color flexible" → ["occasion", "dressStyle", "stitching", "pieces", "fabric", "print", "season", "color"]
     "Embroidered lawn 3-piece kurta for summer" → ["print", "dressStyle", "pieces", "fabric", "season", "occasion", "stitching", "color"]
     "Casual unstitched 2-piece" → ["stitching", "pieces", "dressStyle", "fabric", "print", "season", "occasion", "color"]
+- accessoryType: For a shoes/jewelry/watch search ONLY, the specific type the user named, else null.
+  Shoes: one of heels, pumps, stilettos, wedges, sandals, khussa, kolhapuri, peshawari, sneakers, joggers, flats, ballet, loafers, mules, slippers, chappal, boots, court, oxford.
+  Jewelry: one of earrings, jhumka, necklace, choker, rings, bracelet, bangles, anklet, bridal-set, tikka.
+  Watches: one of analog, digital, smartwatch, chronograph. Use the closest single word the user said; null if they named no specific type.
 - intentSummary: One concise sentence.
 - aiAnalysis: 2-3 sentences of fashion advice.
 - searchCatalog: REQUIRED. Where the user is shopping:

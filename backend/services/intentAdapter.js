@@ -206,6 +206,7 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
     gender: ['women', 'men', 'kids', 'unisex'].includes(raw.gender) ? raw.gender : 'women',
     dressType: raw.dressType && raw.dressType !== 'null' ? String(raw.dressType).toLowerCase().trim() : null,
     dressStyle: dressStyleRaw || null,
+    accessoryType: raw.accessoryType && raw.accessoryType !== 'null' ? String(raw.accessoryType).toLowerCase().trim() : null,
     maxBudget: typeof raw.maxBudget === 'number' ? raw.maxBudget : 0,
     season,
     constraintPriority,
