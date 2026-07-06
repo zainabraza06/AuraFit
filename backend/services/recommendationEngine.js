@@ -264,12 +264,14 @@ function buildDBQuery(intent, dropped, colorMode) {
     name: { $not: NON_OUTFIT_PATTERN }
   };
 
-  // Hard constraints — always applied (gender, budget)
+  // Hard constraints — always applied, NEVER relaxed (gender, budget).
   if (intent.gender && intent.gender !== 'women' && intent.gender !== 'unisex') {
     query.gender = intent.gender;
   }
-  if (intent.maxBudget > 0) {
-    query.price = { $lte: intent.maxBudget * 1.2 };
+  // "under 5k" is a hard ceiling: we never silently show over-budget items. If
+  // nothing fits, the caller tells the user to raise their budget instead.
+  if (intent.maxBudget > 0 && !dropped.has('budget')) {
+    query.price = { $lte: intent.maxBudget };
   }
 
   // Soft constraints — removed one by one during relaxation
@@ -552,31 +554,60 @@ async function fetchCandidates(intent) {
     }
   }
 
+  // Return the TIGHTEST level that already has enough results, rather than the
+  // largest pool. Because 'color' relaxes LAST, this keeps the user's colour (and
+  // other constraints) as long as possible — no more returning teal for a black
+  // query just to pad the count.
+  const MIN_RESULTS = 8;
   let bestProducts = [];
   let relaxationMessage = null;
   let relaxedFields = [];
+  let budgetBlock = null;
 
   for (const level of levels) {
     const query = buildDBQuery(intent, level.dropped, level.colorMode);
     const poolRaw = await ClothingProduct.find(query).select(SELECT_CLOTHING).limit(100).lean();
     const pool = poolRaw.map(formatClothingForApi);
 
-    if (pool.length > bestProducts.length) {
+    const relaxedForLevel = [...level.dropped];
+    if (level.label === 'colorExact') relaxedForLevel.push('exact color → showing color family');
+    else if (level.label === 'color') relaxedForLevel.push('color');
+
+    if (pool.length >= MIN_RESULTS) {          // tightest sufficient level — stop here
       bestProducts = pool;
-      relaxedFields = [...level.dropped];
-      if (level.label === 'colorExact') {
-        relaxedFields.push('exact color → showing color family');
-      } else if (level.label === 'color') {
-        relaxedFields.push('color');
-      }
+      relaxedFields = relaxedForLevel;
+      break;
+    }
+    if (pool.length > bestProducts.length) {   // best-effort for very rare queries
+      bestProducts = pool;
+      relaxedFields = relaxedForLevel;
     }
 
-    if (pool.length >= 20) break; // enough to rank — don't over-relax
+    // Budget-block check: this constraint set has NOTHING under budget. If the SAME
+    // filters DO have matches once the budget ceiling is lifted, the budget is the
+    // real blocker — stop relaxing further and tell the user to raise it, rather
+    // than dropping the garment constraints they care about.
+    if (intent.maxBudget > 0 && pool.length === 0) {
+      const noBudgetQuery = buildDBQuery(intent, new Set([...level.dropped, 'budget']), level.colorMode);
+      const overBudget = await ClothingProduct.find(noBudgetQuery)
+        .select('price').sort({ price: 1 }).limit(1).lean();
+      if (overBudget.length) {
+        budgetBlock = {
+          maxBudget: intent.maxBudget,
+          cheapest: overBudget[0].price,
+          keptConstraints: [...specified].filter((c) => !relaxedForLevel.includes(c) && c !== 'colorExact' && c !== 'colorFamily'),
+          colorKept: level.colorMode !== 'none'
+        };
+        bestProducts = [];        // honest: no results under budget for these filters
+        relaxedFields = relaxedForLevel;
+        break;
+      }
+    }
   }
 
   relaxationMessage = buildRelaxationMessage(intent, relaxedFields);
 
-  return { products: bestProducts, relaxationMessage, specified };
+  return { products: bestProducts, relaxationMessage, relaxedFields, specified, budgetBlock };
 }
 
 // ─── Quick local intent-match score (used to pre-sort before AI) ─────────────
@@ -597,6 +628,66 @@ function scoreAgainstIntent(product, intent) {
   return score;
 }
 
+// ─── Honest per-item match explanation ───────────────────────────────────────
+/**
+ * Compares a product against exactly what the user specified and returns an
+ * HONEST reason string plus matched/missed lists. This is the source of truth for
+ * "why is this shown" — it never claims a colour/attribute the product doesn't have
+ * (fixes teal items displayed with a "black" reason).
+ */
+function describeMatch(product, intent) {
+  const matched = [];
+  const missed = [];
+  const norm = (x) => (x === 'semi-stitched' ? 'stitched' : x);
+
+  const wantExact = intent.colorExact ? String(intent.colorExact) : null;
+  const wantFam = intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null;
+  if (wantExact || wantFam) {
+    const got = product.primaryExactColor || product.primaryColor || 'unknown';
+    if (wantExact && got.toLowerCase() === wantExact.toLowerCase()) matched.push(`${got} (exact colour)`);
+    else if (wantFam && product.primaryColor === wantFam) matched.push(`${product.primaryColor} colour`);
+    else missed.push(`colour is ${got}, not ${wantExact || wantFam}`);
+  }
+  if (intent.pieces) {
+    const pc = product.pieces ?? product.pieceDetails?.totalCount;
+    if (pc === intent.pieces) matched.push(`${pc}-piece`);
+    else missed.push(`${pc ?? '?'}-piece, not ${intent.pieces}-piece`);
+  }
+  if (intent.stitching) {
+    const st = product.stitching || product.stitchedType;
+    if (norm(st) === norm(intent.stitching)) matched.push(intent.stitching);
+    else missed.push(`${st || '?'}, not ${intent.stitching}`);
+  }
+  if (intent.dressStyle) {
+    if (product.dressStyle === intent.dressStyle) matched.push(intent.dressStyle);
+    else if (product.dressStyle) missed.push(`${product.dressStyle}, not ${intent.dressStyle}`);
+  }
+  if (intent.print) {
+    const pr = product.print || product.pattern;
+    if (pr && String(pr).includes(intent.print)) matched.push(`${intent.print} work`);
+    else if (pr) missed.push(`${pr}, not ${intent.print}`);
+  }
+  if (intent.fabric) {
+    if (product.fabric && product.fabric.toLowerCase().includes(String(intent.fabric).toLowerCase())) matched.push(product.fabric);
+  }
+  if (intent.occasion?.length) {
+    const want = intent.occasion.map((x) => String(x).toLowerCase());
+    const shared = (product.occasion || []).filter((o) => want.includes(String(o).toLowerCase()));
+    if (shared.length) matched.push(`${shared.slice(0, 2).join('/')} occasion`);
+  }
+  if (intent.maxBudget > 0 && typeof product.price === 'number') {
+    if (product.price <= intent.maxBudget) matched.push(`within PKR ${intent.maxBudget}`);
+    else missed.push(`PKR ${product.price}, over your PKR ${intent.maxBudget}`);
+  }
+
+  let text;
+  if (missed.length && matched.length) text = `Matches ${matched.join(', ')}; but ${missed.join(', ')}.`;
+  else if (missed.length) text = `Closest we have — ${missed.join(', ')}.`;
+  else if (matched.length) text = `Matches your request: ${matched.join(', ')}.`;
+  else text = 'A general match from our catalog.';
+  return { text, matched, missed };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC: Chat-based "Style Me" outfit builder
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -607,14 +698,34 @@ export async function getOutfitForQuery(intent) {
   }
 
   // 1. Fetch candidates via progressive relaxation
-  const { products, relaxationMessage } = await fetchCandidates(intent);
+  const { products, relaxationMessage, budgetBlock } = await fetchCandidates(intent);
 
   if (!products.length) {
+    // Budget is the blocker: matches exist for these filters, just above the ceiling.
+    let message = "We couldn't find any products matching your request in our catalog.";
+    if (budgetBlock) {
+      const label = (c) => {
+        if (c === 'pieces') return intent.pieces ? `${intent.pieces}-piece` : null;
+        if (c === 'print') return intent.print;
+        if (c === 'stitching') return intent.stitching;
+        if (c === 'dressStyle') return intent.dressStyle;
+        if (c === 'occasion') return (intent.occasion || []).join('/');
+        if (c === 'fabric') return intent.fabric;
+        return null;
+      };
+      const colorWord = budgetBlock.colorKept ? (intent.colorExact || intent.colorFamily) : null;
+      const what = [colorWord, ...budgetBlock.keptConstraints.map(label)].filter(Boolean).join(' ');
+      message = `No ${what || 'matching'} outfit found under PKR ${budgetBlock.maxBudget.toLocaleString()}. The closest match starts at PKR ${budgetBlock.cheapest.toLocaleString()} — raise your budget to see it.`;
+    }
     return {
       results: [],
       accessoryOnly: false,
       searchCatalog: 'clothing',
-      matchQuality: { tier: 'none', message: "We couldn't find any products matching your request in our catalog." },
+      matchQuality: {
+        tier: budgetBlock ? 'over-budget' : 'none',
+        message,
+        budgetBlock: budgetBlock ? { maxBudget: budgetBlock.maxBudget, cheapest: budgetBlock.cheapest } : null
+      },
       relaxationMessage: null,
       catalogExtractionHealth: { avgLexicalAlignment: 1, perItem: [] },
       intentEcho: {
@@ -675,10 +786,17 @@ export async function getOutfitForQuery(intent) {
     const outfitCompletions =
       i < 3 ? await suggestOutfitCompletions(dress, intent, accessoryPlan) : [];
 
+    // Honest reason: the factual match wins whenever an attribute differs, so a
+    // relaxed (e.g. teal) item can never be shown with a "black" reason. The AI's
+    // stylistic sentence is only used when every specified attribute actually matches.
+    const match = describeMatch(dress, intent);
+    const matchReason = r.reason && match.missed.length === 0 ? r.reason : match.text;
+
     results.push({
       product: dress,
       rank: r.rank,
-      matchReason: r.reason,
+      matchReason,
+      matchDetails: { matched: match.matched, missed: match.missed },
       shoe: shoePick
         ? {
             product: shoePick.product,

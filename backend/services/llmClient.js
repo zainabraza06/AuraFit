@@ -15,6 +15,48 @@ import { logger } from '../utils/logger.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
+
+// ─── Mistral (primary) — free tier is ~1 request/second, so throttle globally ──
+let _mistralNextAt = 0;
+async function mistralThrottle() {
+  const now = Date.now();
+  const wait = Math.max(0, _mistralNextAt - now);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  _mistralNextAt = Date.now() + 1100; // ≥1.1s between calls
+}
+
+function hasMistral() {
+  const k = process.env.MISTRAL_API_KEY;
+  return k && k !== 'your_mistral_api_key_here';
+}
+
+async function callMistral(system, user, temperature = 0.1) {
+  await mistralThrottle();
+  const model = process.env.MISTRAL_MODEL || 'mistral-small-latest';
+  const { data } = await axios.post(
+    MISTRAL_URL,
+    {
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature,
+      response_format: { type: 'json_object' }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+  const text = data?.choices?.[0]?.message?.content;
+  if (!text) throw new Error('Mistral empty response');
+  return text;
+}
 
 /** @returns {string[]} Gemini model ids for JSON completions (env override: GEMINI_FALLBACK_MODELS=comma,separated) */
 function geminiJsonFallbackChain() {
@@ -103,6 +145,22 @@ export async function completeJsonWithProviderFallback(opts) {
   const { system, user, temperature = 0.1 } = opts;
   const combined = `${system}\n\n${user}`;
 
+  if (hasMistral()) {
+    if (!canUseLlmProvider('mistral')) {
+      bumpMetric('llm_mistral_skipped_cooldown');
+      logRecommendationEvent({ event: 'llm_provider_skipped', provider: 'mistral' });
+    } else {
+      try {
+        const text = await callMistral(system, user, temperature);
+        recordLlmProviderSuccess('mistral');
+        return { text: text.trim(), provider: 'mistral' };
+      } catch (e) {
+        recordLlmProviderFailure('mistral');
+        console.warn('[llmClient] Mistral failed:', e.message);
+      }
+    }
+  }
+
   if (
     process.env.OPENROUTER_API_KEY &&
     process.env.OPENROUTER_API_KEY !== 'your_openrouter_api_key_here'
@@ -168,6 +226,22 @@ export async function completeJsonWithProviderFallback(opts) {
 export async function parseIntentWithProviderOrder(message, prompt) {
   const system = `${prompt}\nReturn ONLY a valid JSON object.`;
   const user = message;
+
+  if (hasMistral()) {
+    if (!canUseLlmProvider('mistral')) {
+      bumpMetric('llm_mistral_skipped_cooldown');
+    } else {
+      try {
+        const text = await callMistral(system, user, 0.1);
+        recordLlmProviderSuccess('mistral');
+        console.log('Intent parsed by: Mistral');
+        return JSON.parse(stripFences(text));
+      } catch (e) {
+        recordLlmProviderFailure('mistral');
+        console.warn('Mistral intent parse failed:', e.message);
+      }
+    }
+  }
 
   if (
     process.env.OPENROUTER_API_KEY &&
