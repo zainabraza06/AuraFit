@@ -165,9 +165,9 @@ const SUBCATEGORY_CANONICAL = {
   'pants':              { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['trouser'],                         dressStyle: 'trouser' },
   'shalwar':            { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['shalwar'],                         dressStyle: 'trouser' },
   'dupatta':            { pieceType: '1-piece', definitePieces: true,  stitched: 'stitched',   includes: ['dupatta'],                         dressStyle: 'other' },
-  'unstitched-1-piece': { pieceType: '1-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt'],                    dressStyle: 'shalwar-kameez' },
-  'unstitched-2-piece': { pieceType: '2-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt', 'fabric-trouser'],  dressStyle: 'shalwar-kameez' },
-  'unstitched-3-piece': { pieceType: '3-piece', definitePieces: true,  stitched: 'unstitched', includes: ['fabric-shirt', 'fabric-trouser', 'fabric-dupatta'], dressStyle: 'shalwar-kameez' },
+  'unstitched-1-piece': { pieceType: '1-piece', definitePieces: true,  stitched: 'unstitched', includes: ['shirt'],                           dressStyle: 'shalwar-kameez' },
+  'unstitched-2-piece': { pieceType: '2-piece', definitePieces: true,  stitched: 'unstitched', includes: ['shirt', 'trouser'],                dressStyle: 'shalwar-kameez' },
+  'unstitched-3-piece': { pieceType: '3-piece', definitePieces: true,  stitched: 'unstitched', includes: ['shirt', 'trouser', 'dupatta'],     dressStyle: 'shalwar-kameez' },
   'co-ord':             { pieceType: '2-piece', definitePieces: true,  stitched: 'stitched',   includes: ['top', 'bottom'],                   dressStyle: 'co-ord' },
   'western':            { pieceType: '1-piece', definitePieces: false, stitched: 'stitched',   includes: ['top'],                             dressStyle: 'western' },
   // Ambiguous merchandising buckets — let text decide piece count / stitching.
@@ -228,10 +228,12 @@ function explicitPieceCountDesc(head) {
 
 const GARMENT_GROUPS = [
   { label: 'shirt',   re: /\b(shirt|kameez|kurta|kurti|angrakha|frock|tunic|top|abaya|gown)s?\b/ },
-  { label: 'trouser', re: /\b(trouser|pant|culotte|shalwar|salwar|pajama|pyjama|bottom|short)s?\b/ },
+  { label: 'blouse',  re: /\b(bustier|choli|blouse)s?\b/ },
+  { label: 'trouser', re: /\b(trouser|pant|culotte|shalwar|salwar|pajama|pyjama|bottom|short|lehenga|sharara|gharara)s?\b/ },
   { label: 'dupatta', re: /\b(dupatta|dopatta|duppata|shawl|stole|scarf|scarves)s?\b/ },
   { label: 'inner',   re: /\b(inner|slip|lining|camisole)s?\b/ }
 ];
+const GARMENT_ORDER = ['shirt', 'blouse', 'trouser', 'dupatta', 'inner'];
 
 // A single standalone bottom / dupatta gets its own subCategory rather than the
 // collection default (fixes "RTW | TROUSER" or "Cotton Dyed Trouser" that inherit
@@ -246,40 +248,73 @@ function garmentsIn(seg) {
 }
 
 /**
- * Pull the garment enumeration from the most reliable place: the part of the
- * TITLE after a "|" (Alkaram-style "RTS | SHIRT, TROUSER & DUPATTA"), else a
- * "What You'll Get:" / "N Pc Outfit - …" segment in the description.
+ * Parse the AUTHORITATIVE composition from an explicit list in the text:
+ *   "What You'll Get: Shirt+Dupatta ( Pants Not Included )"  → [shirt, dupatta]
+ *   "Separates: Shirt, Bustier, Trouser & Dupatta"           → [shirt, blouse, trouser, dupatta]
+ *   "2 Pc Outfit - Shirt & Shalwar"                          → [shirt, trouser]
+ * Honours "( … Not Included )" negation and "Paired With …" additions. Returns the
+ * ordered garment list, or null when no explicit list is present.
  */
-function garmentList(titleLc, descLc) {
-  const titleSeg = titleLc.includes('|') ? titleLc.split('|').pop() : titleLc;
-  let g = garmentsIn(titleSeg);
-  if (g.length) return g;
-  // Only trust an explicit garment-list segment ("What You'll Get: …" / "Outfit -
-  // …"), never a bare "N PC" which is often an embroidery-component breakdown.
-  const w =
-    descLc.match(/what you'?ll get\s*:?\s*([^.]{0,70})/) ||
-    descLc.match(/\boutfit\s*[-–]\s*([^.]{0,70})/);
-  if (w) { g = garmentsIn(w[1]); if (g.length) return g; }
-  return [];
+const NEG_CLAUSE = /\([^)]*\bnot\s+in\w*ed\b[^)]*\)/gi; // "( Pants Not Included )" (typo-tolerant)
+
+function parseComposition(titleLc, descLc) {
+  const m =
+    descLc.match(/what you'?ll get\s*:?\s*(.*?)(?:\bfit\s*:|\bmodel\b|$)/) ||
+    descLc.match(/\bseparates\s*:?\s*(.*?)(?:\bfabric\b|\bnote\b|\bcolou?r\s*:|$)/) ||
+    descLc.match(/\boutfit\s*[-–]\s*(.*?)(?:\bfabric\b|\bfit\b|$)/);
+  if (!m) return null;
+
+  let seg = m[1] || '';
+  // Garments named inside a "(… Not Included)" clause are EXCLUDED.
+  const excluded = new Set();
+  for (const nc of seg.match(NEG_CLAUSE) || []) for (const g of garmentsIn(nc)) excluded.add(g);
+  seg = seg.replace(NEG_CLAUSE, ' ');
+
+  const set = new Set(garmentsIn(seg));
+  // "Paired With …" elsewhere in the copy names additional included pieces.
+  const pw = descLc.match(/paired with\s+([^.]{0,60})/);
+  if (pw) for (const g of garmentsIn(pw[1])) set.add(g);
+  for (const g of excluded) set.delete(g);
+
+  const garments = GARMENT_ORDER.filter((g) => set.has(g));
+  return garments.length ? garments : null;
 }
 
 /**
- * Resolve piece count from the strongest available signal:
- *   explicit "N Piece" in title → explicit in description head → garment count.
- * Also returns the garment list and whether the signal is strong enough to
- * reclassify a single-garment collection bucket.
+ * Merge the TITLE-after-"|" enumeration with a "What You'll Get:" / "Outfit -"
+ * segment. Used only as a fallback when there's no authoritative composition.
+ */
+function garmentList(titleLc, descLc) {
+  const titleSeg = titleLc.includes('|') ? titleLc.split('|').pop() : titleLc;
+  const fromTitle = garmentsIn(titleSeg);
+  const w =
+    descLc.match(/what you'?ll get\s*:?\s*([^.]{0,70})/) ||
+    descLc.match(/\boutfit\s*[-–]\s*([^.]{0,70})/);
+  const fromDesc = w ? garmentsIn(w[1]) : [];
+  return GARMENT_ORDER.filter((g) => fromTitle.includes(g) || fromDesc.includes(g));
+}
+
+/**
+ * Resolve piece count + garments. An explicit "What You'll Get"/"Separates" list
+ * is AUTHORITATIVE (it literally states the contents, incl. exclusions); otherwise
+ * fall back to explicit "N Piece" in title/description, then the merged garment
+ * enumeration. Piece count excludes a bonus slip/inner.
  */
 function resolvePieceSignal(titleLc, descLc) {
+  const composition = parseComposition(titleLc, descLc);
+  if (composition) {
+    const mainCount = composition.filter((g) => g !== 'inner').length || 1;
+    return { count: mainCount, garments: composition, strong: true };
+  }
+
   const descHead = descLc.slice(0, 120); // structured labels sit at the very start
   const explicitTitle = explicitPieceCount(titleLc);
   const explicitDesc = explicitPieceCountDesc(descHead);
   const garments = garmentList(titleLc, descLc);
 
-  let count = explicitTitle || explicitDesc || (garments.length || null);
-  // A single non-shirt garment (standalone dupatta/trouser/shalwar) must not be
-  // treated as a suit and reclassified.
+  const count = explicitTitle || explicitDesc || (garments.length || null);
   const singleNonShirt = garments.length === 1 && garments[0] !== 'shirt';
-  const strong = !!(explicitTitle || explicitDesc || (garments.length >= 2)) && !singleNonShirt;
+  const strong = !!(explicitTitle || explicitDesc || garments.length >= 2) && !singleNonShirt;
 
   return { count: count || null, garments, strong };
 }
@@ -373,9 +408,8 @@ function resolvePieceDetails(subCategory, pieceType, stitchedType, canonical, ga
   // doesn't count in the "N-piece" total — record it in includes without changing
   // totalCount (e.g. "3 PIECE … Shirt+Slip+Pant+Dupatta").
   if (garments.includes('inner') && !includes.includes('inner')) includes.push('inner');
-  if (stitchedType === 'unstitched') {
-    includes = includes.map((p) => (['shirt', 'trouser', 'dupatta', 'inner'].includes(p) ? `fabric-${p}` : p));
-  }
+  // Plain garment tokens (shirt/trouser/dupatta/inner) regardless of stitching —
+  // the stitchedType field already conveys stitched vs unstitched.
   return { includes, totalCount: count };
 }
 
@@ -731,7 +765,7 @@ const NON_FABRIC_LABEL = /^(dyed|printed|embroidered|plain|solid|self|digital)$/
  */
 function fabricFromDesc(descLc) {
   const m = descLc.match(
-    /fabric\s*:\s*([a-z][a-z ]{1,26}?)\s*(?:dupatta|trouser|shirt|bottom|colou?r|cut|slip|design|what|care|season|occasion|details|neckline|\bfit\b|$)/
+    /fabric\s*:\s*([a-z][a-z ]{1,26}?)\s*(?:\(|dupatta|trouser|shirt|bottom|colou?r|cut|slip|design|what|care|season|occasion|details|neckline|composition|material|note|weight|\bfit\b|$)/
   );
   if (!m) return null;
   let words = m[1].trim().replace(/\s+/g, ' ').split(' ');
