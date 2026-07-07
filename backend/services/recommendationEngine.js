@@ -373,6 +373,7 @@ async function fetchAccessoryPools(intent, plan = null) {
     });
     shoes = await ShoeProduct.find(base).select(SELECT_SHOE).limit(100).lean();
   }
+  shoes = await healShoeDrift(shoes);
 
   let jewelry = await JewelryProduct.find(jewelryNarrow || base).select(SELECT_JEWELRY).limit(90).lean();
   if (jewelryNarrow && jewelry.length < 8) {
@@ -501,7 +502,13 @@ function accessoryMatchReason(p, intent) {
   return 'From our catalog matching your filters.';
 }
 
-// Self-heal shoe field drift (gender/shoeType) and drop non-women from results.
+// Casual-silhouette shoeTypes whose title/construction implies everyday wear —
+// used to backfill a missing 'casual' occasion tag (collection-level occasion
+// metadata sometimes tags these as eid/wedding/mehndi purely from the source
+// collection page, contradicting the product's own name/construction).
+const CASUAL_SHOE_TYPES = new Set(['sneaker', 'trainer', 'jogger', 'running', 'flat', 'slipper', 'chappal', 'slide', 'flip-flop']);
+
+// Self-heal shoe field drift (gender/shoeType/missing-casual-occasion) and drop non-women from results.
 async function healShoeDrift(rawDocs) {
   const ops = [];
   const kept = [];
@@ -511,8 +518,22 @@ async function healShoeDrift(rawDocs) {
       ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: { gender: g } } } });
       continue; // not women's — exclude from this women's catalog
     }
+    const set = {};
     const st = deriveShoeType(d.name, d.tags, d.subCategory);
-    if (st && st !== 'other' && st !== d.shoeType) { d.shoeType = st; ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: { shoeType: st } } } }); }
+    if (st && st !== 'other' && st !== d.shoeType) { d.shoeType = st; set.shoeType = st; }
+
+    // Additive only — never removes existing occasion tags, just fills an
+    // evidenced gap so honest occasion-match scoring isn't starved.
+    const occ = (d.occasion || []).map((o) => String(o).toLowerCase());
+    const nameIsCasual = /\bcasual\b/i.test(d.name || '');
+    const typeIsCasual = CASUAL_SHOE_TYPES.has(d.shoeType);
+    if ((nameIsCasual || typeIsCasual) && !occ.includes('casual')) {
+      const newOcc = [...(d.occasion || []), 'casual'];
+      d.occasion = newOcc;
+      set.occasion = newOcc;
+    }
+
+    if (Object.keys(set).length) ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: set } } });
     kept.push(d);
   }
   if (ops.length) {
@@ -726,7 +747,12 @@ async function agenticRelax(intent) {
     trace.push(decision);
 
     if (decision.action === 'accept' || decision.action === 'stop') {
-      return { products: pool, relaxedFields, trace, relaxationMessage: decision.message || buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
+      // pool is empty here (the >=1 check above already returned otherwise) — never
+      // echo an LLM message implying results were shown when there are none.
+      const honestMessage = pool.length
+        ? (decision.message || buildRelaxationMessage(intent, relaxedFields))
+        : "We couldn't find anything matching your request, even after relaxing every filter we could.";
+      return { products: pool, relaxedFields, trace, relaxationMessage: honestMessage, budgetBlock: null };
     }
     if (decision.action === 'raise_budget') {
       return {
@@ -914,6 +940,7 @@ function describeMatch(product, intent) {
     const want = intent.occasion.map((x) => String(x).toLowerCase());
     const shared = (product.occasion || []).filter((o) => want.includes(String(o).toLowerCase()));
     if (shared.length) matched.push(`${shared.slice(0, 2).join('/')} occasion`);
+    else missed.push(`for ${(product.occasion || []).slice(0, 2).join('/') || 'general'} wear, not ${want.join('/')}`);
   }
   if (intent.maxBudget > 0 && typeof product.price === 'number') {
     if (product.price <= intent.maxBudget) matched.push(`within PKR ${intent.maxBudget}`);
