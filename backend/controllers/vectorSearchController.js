@@ -1,6 +1,13 @@
 import ClothingProduct from '../models/ClothingProduct.js';
+import ShoeProduct from '../models/ShoeProduct.js';
+import JewelryProduct from '../models/JewelryProduct.js';
+import WatchProduct from '../models/WatchProduct.js';
 import { getTextEmbedding } from '../services/huggingface.js';
-import { buildClothingEmbeddingText } from '../services/embeddingText.js';
+import {
+  buildClothingEmbeddingText,
+  buildShoeEmbeddingText,
+  buildJewelryEmbeddingText
+} from '../services/embeddingText.js';
 import {
   analyzeSearchQuery,
   buildSemanticQueryText,
@@ -32,9 +39,38 @@ function cosineSimilarity(a, b) {
   return denom ? dot / denom : 0;
 }
 
+const CATALOGS = [
+  {
+    key: 'clothing',
+    Model: ClothingProduct,
+    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl'
+  },
+  {
+    key: 'shoes',
+    Model: ShoeProduct,
+    fields: 'embedding name brand category subCategory shoeType description tags colors price gender images primaryColor occasion style productUrl'
+  },
+  {
+    key: 'jewelry',
+    Model: JewelryProduct,
+    fields: 'embedding name brand category jewelryType jewelryCategory description tags colors price gender images primaryColor occasion style productUrl'
+  },
+  {
+    key: 'watches',
+    Model: WatchProduct,
+    fields: 'embedding name brand category watchType description tags colors price gender images primaryColor occasion style productUrl'
+  }
+];
+
+/**
+ * Semantic search across ALL catalogs (clothing, shoes, jewelry, watches) merged
+ * by score — so a query like "black heels" surfaces shoes even though the same
+ * endpoint also serves clothing description-based results like "lawn suit".
+ * Pass ?catalog=shoes (or clothing/jewelry/watches) to restrict to one.
+ */
 export async function semanticSearch(req, res) {
   try {
-    const { q = '', limit = 20, category, gender } = req.query;
+    const { q = '', limit = 20, category, gender, catalog } = req.query;
     if (!q.trim()) return res.status(400).json({ error: 'Query is required' });
 
     if (!process.env.HUGGING_FACE_API_KEY) {
@@ -49,33 +85,25 @@ export async function semanticSearch(req, res) {
     const queryForEmbedding = buildSemanticQueryText(signals);
     const queryEmbedding = await getEmbedding(queryForEmbedding);
 
-    const matchQuery = { embedding: { $exists: true, $ne: [] } };
-    if (category) matchQuery.category = category;
-    attachGenderFilter(matchQuery, gender ?? signals.genderHint);
+    const wantCatalogs = catalog
+      ? CATALOGS.filter((c) => c.key === String(catalog).toLowerCase())
+      : CATALOGS;
 
-    const products = await ClothingProduct.find(matchQuery, {
-      embedding: 1,
-      name: 1,
-      brand: 1,
-      category: 1,
-      subCategory: 1,
-      dressStyle: 1,
-      description: 1,
-      tags: 1,
-      colors: 1,
-      price: 1,
-      gender: 1,
-      images: 1,
-      primaryColor: 1,
-      occasion: 1,
-      style: 1,
-      productUrl: 1
-    })
-      .limit(500)
-      .lean();
+    const perCatalogResults = await Promise.all(
+      wantCatalogs.map(async ({ key, Model, fields }) => {
+        const matchQuery = { embedding: { $exists: true, $ne: [] } };
+        if (category && key === 'clothing') matchQuery.category = category;
+        attachGenderFilter(matchQuery, gender ?? signals.genderHint);
+        const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
+        const docs = await Model.find(matchQuery, selectObj).limit(400).lean();
+        return docs.map((d) => ({ ...d, _catalog: key }));
+      })
+    );
+
+    const products = perCatalogResults.flat();
 
     if (products.length === 0) {
-      return res.json({ results: [], message: 'No products with embeddings found. Run POST /api/search/embed-all first.' });
+      return res.json({ results: [], message: 'No products with embeddings found. Run the embedding scripts first.' });
     }
 
     const qlen = signals.raw.length;
@@ -97,8 +125,9 @@ export async function semanticSearch(req, res) {
     const lim = Number(limit);
     const scored = ranked.slice(0, lim);
 
-    const results = scored.map(({ embedding, _cosine, _facet, _score, ...p }) => ({
+    const results = scored.map(({ embedding, _cosine, _facet, _score, _catalog, ...p }) => ({
       ...p,
+      catalog: _catalog,
       relevanceScore: parseFloat(_score.toFixed(4)),
       semanticCosine: parseFloat(_cosine.toFixed(4)),
       facetScore: parseFloat(_facet.toFixed(4))
@@ -108,6 +137,7 @@ export async function semanticSearch(req, res) {
       query: q,
       engine: 'HuggingFace all-MiniLM-L6-v2',
       hybridRanking: true,
+      crossCatalog: !catalog,
       relaxedFloor: relaxed,
       count: results.length,
       results
@@ -118,31 +148,37 @@ export async function semanticSearch(req, res) {
   }
 }
 
+const EMBED_BUILDERS = {
+  clothing: { Model: ClothingProduct, build: buildClothingEmbeddingText },
+  shoes: { Model: ShoeProduct, build: buildShoeEmbeddingText },
+  jewelry: { Model: JewelryProduct, build: buildJewelryEmbeddingText }
+};
+
 export async function embedAll(req, res) {
   try {
     if (!process.env.HUGGING_FACE_API_KEY) {
       return res.status(503).json({ error: 'HUGGING_FACE_API_KEY not set' });
     }
 
-    const { limit = 50 } = req.body;
-    const products = await ClothingProduct.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] })
-      .select(
-        'name brand subCategory fabric primaryColor style occasion colors description dressStyle pattern stitchedType pieceType tags trendTags colorFamily gender'
-      )
+    const { limit = 50, catalog = 'clothing' } = req.body;
+    const entry = EMBED_BUILDERS[catalog] || EMBED_BUILDERS.clothing;
+    const { Model, build } = entry;
+
+    const products = await Model.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] })
       .limit(Number(limit))
       .lean();
 
     if (products.length === 0) {
-      return res.json({ message: 'All clothing products already have embeddings!', updated: 0 });
+      return res.json({ message: `All ${catalog} products already have embeddings!`, updated: 0 });
     }
 
     let updated = 0, failed = 0;
     for (const product of products) {
       try {
-        const text = buildClothingEmbeddingText(product);
+        const text = build(product);
         const embedding = await getEmbedding(text);
         if (embedding?.length) {
-          await ClothingProduct.findByIdAndUpdate(product._id, { embedding });
+          await Model.findByIdAndUpdate(product._id, { embedding });
           updated++;
         }
         await new Promise(r => setTimeout(r, 300));
@@ -152,10 +188,10 @@ export async function embedAll(req, res) {
       }
     }
 
-    const remaining = await ClothingProduct.countDocuments({
+    const remaining = await Model.countDocuments({
       $or: [{ embedding: { $exists: false } }, { embedding: [] }]
     });
-    res.json({ message: 'Embedding complete', updated, failed, remaining });
+    res.json({ message: 'Embedding complete', catalog, updated, failed, remaining });
   } catch (err) {
     res.status(500).json({ error: 'Embedding failed', details: err.message });
   }

@@ -1,21 +1,84 @@
 import ClothingProduct from '../models/ClothingProduct.js';
+import ShoeProduct from '../models/ShoeProduct.js';
+import JewelryProduct from '../models/JewelryProduct.js';
+import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi } from '../services/productCompat.js';
 import { attachGenderFilter } from '../utils/catalogQuery.js';
 
-async function runClothingFind(query, sortObj, skip, limitNum, withTextScore = false) {
-  const proj = withTextScore ? { score: { $meta: 'textScore' }, embedding: 0 } : { embedding: 0 };
-  let q = ClothingProduct.find(query, proj).skip(skip).limit(limitNum);
-  if (withTextScore) q = q.sort({ score: { $meta: 'textScore' } });
-  else q = q.sort(sortObj);
-  const raw = await q.lean();
-  return raw.map(formatClothingForApi);
+const CATALOGS = [
+  { key: 'clothing', Model: ClothingProduct, format: formatClothingForApi },
+  { key: 'shoes', Model: ShoeProduct, format: (p) => ({ ...p, category: p.category || 'shoes' }) },
+  { key: 'jewelry', Model: JewelryProduct, format: (p) => ({ ...p, category: p.category || 'jewelry' }) },
+  { key: 'watches', Model: WatchProduct, format: (p) => ({ ...p, category: p.category || 'watches' }) }
+];
+
+function buildFilters({ color, occasion, minPrice, maxPrice, gender }) {
+  const f = {};
+  attachGenderFilter(f, gender);
+  if (color) {
+    f.$or = [
+      { primaryColor: { $regex: color, $options: 'i' } },
+      { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
+    ];
+  }
+  if (occasion) f.occasion = { $in: Array.isArray(occasion) ? occasion : [occasion] };
+  if (minPrice || maxPrice) {
+    f.price = {};
+    if (minPrice) f.price.$gte = Number(minPrice);
+    if (maxPrice) f.price.$lte = Number(maxPrice);
+  }
+  return f;
 }
 
+/**
+ * Runs a keyword search against one catalog: $text search first, falling back to
+ * regex over name/brand/tags/description if $text finds nothing (short/partial words).
+ */
+async function searchOneCatalog({ key, Model, format }, q, filters, fetchLimit) {
+  const base = { ...filters };
+  let docs = [];
+  if (q) {
+    const textQuery = { ...base, $text: { $search: q } };
+    docs = await Model.find(textQuery, { score: { $meta: 'textScore' }, embedding: 0 })
+      .sort({ score: { $meta: 'textScore' } })
+      .limit(fetchLimit)
+      .lean();
+    if (docs.length === 0) {
+      const regexQuery = {
+        ...base,
+        $and: [
+          {
+            $or: [
+              { name: { $regex: q, $options: 'i' } },
+              { brand: { $regex: q, $options: 'i' } },
+              { tags: { $elemMatch: { $regex: q, $options: 'i' } } },
+              { description: { $regex: q, $options: 'i' } }
+            ]
+          }
+        ]
+      };
+      docs = await Model.find(regexQuery, { embedding: 0 })
+        .sort({ metadataScore: -1, scrapedAt: -1 })
+        .limit(fetchLimit)
+        .lean();
+    }
+  } else {
+    docs = await Model.find(base, { embedding: 0 }).sort({ scrapedAt: -1 }).limit(fetchLimit).lean();
+  }
+  return docs.map((d) => ({ ...format(d), catalog: key, _score: d.score ?? 0 }));
+}
+
+/**
+ * GET /api/search — keyword search across ALL catalogs (clothing, shoes, jewelry,
+ * watches), merged and ranked together. Pass ?catalog=clothing (or shoes/jewelry/
+ * watches) to restrict to one; ?category=clothing is kept as a legacy alias.
+ */
 export async function search(req, res) {
   try {
     const {
       q = '',
       category,
+      catalog,
       color,
       occasion,
       minPrice,
@@ -25,90 +88,35 @@ export async function search(req, res) {
       gender
     } = req.query;
 
-    const query = {};
+    const query = q.trim();
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(48, Math.max(1, parseInt(limit)));
 
-    if (q.trim().length > 0) {
-      query.$text = { $search: q };
-    }
+    const restrictKey = catalog || (category === 'clothing' ? 'clothing' : null);
+    const targets = restrictKey ? CATALOGS.filter((c) => c.key === restrictKey) : CATALOGS;
 
-    if (category === 'clothing') query.category = 'clothing';
+    const filters = buildFilters({ color, occasion, minPrice, maxPrice, gender });
+    // Fetch enough from each catalog to cover this page after merge + sort.
+    const fetchLimit = pageNum * limitNum + 24;
 
-    attachGenderFilter(query, gender);
+    const perCatalog = await Promise.all(
+      targets.map((c) => searchOneCatalog(c, query, filters, fetchLimit))
+    );
+    let merged = perCatalog.flat();
 
-    if (color) {
-      query.$or = [
-        { primaryColor: { $regex: color, $options: 'i' } },
-        { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
-      ];
-    }
-    if (occasion) query.occasion = { $in: Array.isArray(occasion) ? occasion : [occasion] };
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-
-    const skip = (pageNum - 1) * limitNum;
-    const sortObj = { scrapedAt: -1 };
-    let products;
-    let total;
-
-    const cq = { ...query };
-    if (!category) delete cq.category;
-
-    if (q.trim().length > 0) {
-      products = await runClothingFind(cq, sortObj, skip, limitNum, true);
-      total = await ClothingProduct.countDocuments(cq);
-      if (products.length === 0 && q.trim()) {
-        const textMatch = {
-          $or: [
-            { name: { $regex: q, $options: 'i' } },
-            { brand: { $regex: q, $options: 'i' } },
-            { tags: { $elemMatch: { $regex: q, $options: 'i' } } },
-            { description: { $regex: q, $options: 'i' } }
-          ]
-        };
-        const andParts = [textMatch];
-        if (color) {
-          andParts.push({
-            $or: [
-              { primaryColor: { $regex: color, $options: 'i' } },
-              { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
-            ]
-          });
-        }
-        const regexQuery = { $and: andParts };
-        attachGenderFilter(regexQuery, gender);
-        if (category === 'clothing') regexQuery.category = 'clothing';
-        if (occasion) regexQuery.occasion = { $in: Array.isArray(occasion) ? occasion : [occasion] };
-        if (minPrice || maxPrice) {
-          regexQuery.price = {};
-          if (minPrice) regexQuery.price.$gte = Number(minPrice);
-          if (maxPrice) regexQuery.price.$lte = Number(maxPrice);
-        }
-
-        const raw = await ClothingProduct.find(regexQuery, { embedding: 0 })
-          .sort({ metadataScore: -1, scrapedAt: -1 })
-          .skip(skip)
-          .limit(limitNum)
-          .lean();
-        products = raw.map(formatClothingForApi);
-        total = await ClothingProduct.countDocuments(regexQuery);
-      }
+    if (query) {
+      merged.sort((a, b) => b._score - a._score);
     } else {
-      const raw = await ClothingProduct.find(cq, { embedding: 0 })
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limitNum)
-        .lean();
-      products = raw.map(formatClothingForApi);
-      total = await ClothingProduct.countDocuments(cq);
+      merged.sort((a, b) => new Date(b.scrapedAt || 0) - new Date(a.scrapedAt || 0));
     }
+    merged = merged.map(({ _score, ...p }) => p);
+
+    const total = merged.length;
+    const skip = (pageNum - 1) * limitNum;
+    const products = merged.slice(skip, skip + limitNum);
 
     res.json({
-      query: q,
+      query,
       products,
       pagination: {
         page: pageNum,
@@ -129,19 +137,16 @@ export async function getSuggestions(req, res) {
     const { q = '' } = req.query;
     if (q.length < 2) return res.json({ suggestions: [] });
 
-    const fromClothing = await ClothingProduct.find(
-      { name: { $regex: q, $options: 'i' } },
-      { name: 1, brand: 1, category: 1 }
-    )
-      .limit(10)
-      .lean();
+    const perCatalog = await Promise.all(
+      CATALOGS.map(({ key, Model }) =>
+        Model.find({ name: { $regex: q, $options: 'i' } }, { name: 1, brand: 1, category: 1 })
+          .limit(5)
+          .lean()
+          .then((docs) => docs.map((p) => ({ id: p._id, label: `${p.name} — ${p.brand}`, category: p.category || key })))
+      )
+    );
 
-    const suggestions = fromClothing.map((p) => ({
-      id: p._id,
-      label: `${p.name} — ${p.brand}`,
-      category: p.category || 'clothing'
-    }));
-
+    const suggestions = perCatalog.flat().slice(0, 10);
     res.json({ suggestions });
   } catch {
     res.status(500).json({ error: 'Suggestions failed' });

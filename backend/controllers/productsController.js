@@ -1,6 +1,15 @@
 import ClothingProduct from '../models/ClothingProduct.js';
+import ShoeProduct from '../models/ShoeProduct.js';
+import JewelryProduct from '../models/JewelryProduct.js';
+import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi } from '../services/productCompat.js';
 import { attachGenderFilter } from '../utils/catalogQuery.js';
+
+const ACCESSORY_MODELS = [
+  { key: 'shoes', Model: ShoeProduct },
+  { key: 'jewelry', Model: JewelryProduct },
+  { key: 'watches', Model: WatchProduct }
+];
 
 export async function getProducts(req, res) {
   try {
@@ -113,11 +122,21 @@ export async function getProductStats(req, res) {
   }
 }
 
+/**
+ * Looks up a product by id across ALL catalogs — clothing is checked first (the
+ * common case), then shoes/jewelry/watches so accessory cards from search never 404.
+ */
 export async function getProductById(req, res) {
   try {
     const raw = await ClothingProduct.findById(req.params.id).select('-embedding').lean();
-    if (!raw) return res.status(404).json({ error: 'Product not found' });
-    res.json({ product: formatClothingForApi(raw) });
+    if (raw) return res.json({ product: formatClothingForApi(raw) });
+
+    for (const { key, Model } of ACCESSORY_MODELS) {
+      const doc = await Model.findById(req.params.id).select('-embedding').lean();
+      if (doc) return res.json({ product: { ...doc, category: doc.category || key } });
+    }
+
+    return res.status(404).json({ error: 'Product not found' });
   } catch (err) {
     if (err.name === 'CastError') return res.status(400).json({ error: 'Invalid product ID' });
     res.status(500).json({ error: 'Failed to fetch product' });

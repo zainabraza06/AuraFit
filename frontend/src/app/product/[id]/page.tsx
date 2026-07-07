@@ -30,13 +30,23 @@ export default function ProductDetailsPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [prodRes, recRes] = await Promise.all([
+        // Recommendations are a "nice to have" upsell — if that call fails (e.g. a
+        // shoe/jewelry product with no cross-catalog matching yet), the product
+        // itself must still render.
+        const [prodResult, recResult] = await Promise.allSettled([
           productsApi.getById(id as string),
           recommendationsApi.forProduct(id as string)
         ]);
-        setProduct(prodRes.data.product);
-        setRecommendations(recRes.data);
-        setActiveImage(prodRes.data.product.imageUrl || prodRes.data.product.images?.[0] || '');
+        if (prodResult.status === 'fulfilled') {
+          const p = prodResult.value.data.product;
+          setProduct(p);
+          setActiveImage(p.imageUrl || p.images?.[0] || '');
+        } else {
+          console.error('Failed to fetch product', prodResult.reason);
+        }
+        if (recResult.status === 'fulfilled') {
+          setRecommendations(recResult.value.data);
+        }
       } catch (err) {
         console.error('Failed to fetch product details', err);
       } finally {

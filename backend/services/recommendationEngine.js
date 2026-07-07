@@ -415,6 +415,14 @@ const SHOE_TYPE_MATCH = [
   { kw: ['boot', 'boots', 'ankle boot', 'chelsea'], types: ['boot', 'ankle-boot', 'chelsea-boot', 'long-boot', 'combat'] }
 ];
 
+/** The specific shoeType values a user's shoe-type word should match (or null). */
+function shoeTypesFor(accessoryType) {
+  if (!accessoryType) return null;
+  const t = String(accessoryType).toLowerCase();
+  const m = SHOE_TYPE_MATCH.find((r) => r.kw.some((k) => t.includes(k)));
+  return m ? m.types : null;
+}
+
 /** Add a type filter (shoeType or jewelryType) for a dedicated accessory search. */
 function accessoryTypeFilter(catalog, accessoryType) {
   if (!accessoryType) return null;
@@ -543,7 +551,16 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
   let relaxedLabel = null;
   for (const step of relaxSteps) {
     let batch = await Model.find(buildAccessoryOnlyDbQuery(intent, catalog, step.drop)).select(select).limit(limitFetch).lean();
-    if (catalog === 'shoes') batch = await healShoeDrift(batch);
+    if (catalog === 'shoes') {
+      batch = await healShoeDrift(batch);
+      // Re-apply the type filter AFTER healing: a shoe the DB had mislabeled as a
+      // heel that heals to 'sandal' must drop out of a "heels" search this same
+      // request (keeps type-specific results honest — mirrors clothing dressStyle).
+      if (!step.drop.has('type')) {
+        const types = shoeTypesFor(intent.accessoryType);
+        if (types) batch = batch.filter((s) => types.includes(s.shoeType));
+      }
+    }
     if (batch.length) { raw = batch; relaxedLabel = step.drop.size ? step.label : null; break; }
   }
 
@@ -1057,7 +1074,20 @@ export async function getOutfitForQuery(intent) {
 export async function getRecommendations(productId, options = {}) {
   const { maxShoes = 6, maxClothing = 6 } = options;
   const srcRaw = await ClothingProduct.findById(productId).lean();
-  if (!srcRaw) throw new Error('Product not found');
+  if (!srcRaw) {
+    // Not a clothing product — it may be a shoe/jewelry/watch card from cross-catalog
+    // search. We don't yet cross-match those against clothing, so degrade gracefully
+    // (empty "Complete the Look") instead of 404ing the whole product-detail page.
+    const isAccessory = await Promise.all([
+      ShoeProduct.exists({ _id: productId }),
+      JewelryProduct.exists({ _id: productId }),
+      WatchProduct.exists({ _id: productId })
+    ]);
+    if (isAccessory.some(Boolean)) {
+      return { source: null, shoes: [], complementaryClothing: [], generatedAt: new Date() };
+    }
+    throw new Error('Product not found');
+  }
   const source = formatClothingForApi(srcRaw);
 
   const baseQuery = { _id: { $ne: source._id }, inStock: { $ne: false } };
