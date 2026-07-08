@@ -534,7 +534,7 @@ export function normalizeProduct(raw, brandConfig) {
   const fashionType = inferFashionType(textBlob, resolvedSubCategory);
   const pattern     = inferPattern(textBlob);
   const season      = inferSeason(textBlob);
-  const gender = resolveGender(titleLc, raw.tags || [], brandConfig.gender);
+  const gender = resolveGender(titleLc, raw.tags || [], brandConfig.gender, descLc);
   // NOTE: women-only filtering happens in BaseAdapter (post-validation) so that
   // an intentionally-rejected men's/kids' item is not mistaken for a parse
   // failure and sent through the LLM repair path.
@@ -701,13 +701,15 @@ function inferGender(blob) {
  * a clear "men"/"boys"/"kids" signal in the text must be honoured (and dropped
  * downstream) rather than silently forced to 'women'.
  */
-const G_WOMEN = /\b(women|womens|women's|ladies|female)\b/;
-const G_MEN   = /\b(men|mens|men's|gents|gentlemen|male)\b/;
-const G_KIDS  = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/;
+const G_WOMEN  = /\b(women|womens|women's|ladies|female)\b/;
+const G_MEN    = /\b(men|mens|men's|gents|gentlemen|male)\b/;
+const G_KIDS   = /\b(kids|kid's|child|children|junior|toddler|infant|girls?|boys?|baby)\b/;
+const G_UNISEX = /\b(unisex|gender[\s-]?neutral)\b/;
 
-function resolveGender(nameLc, tags, brandGender) {
+function resolveGender(nameLc, tags, brandGender, descLc = '') {
   // 1. The NAME is the most reliable signal.
   const nameWomen = G_WOMEN.test(nameLc);
+  if (G_UNISEX.test(nameLc)) return 'unisex';
   if (G_MEN.test(nameLc) && !nameWomen) return 'men';
   if (G_KIDS.test(nameLc) && !nameWomen) return 'kids';
 
@@ -717,10 +719,18 @@ function resolveGender(nameLc, tags, brandGender) {
     .filter((t) => !/\d/.test(t) && !/size|chart|guide|care|wash|dhldes|desc/i.test(t))
     .join(' ').toLowerCase();
   const tagWomen = G_WOMEN.test(cleanTags);
+  if (G_UNISEX.test(cleanTags)) return 'unisex';
   if (G_MEN.test(cleanTags) && !tagWomen) return 'men';
   if (G_KIDS.test(cleanTags) && !tagWomen) return 'kids';
 
-  // 3. Collection default, then any women signal, then default (women-only catalog).
+  // 3. Description is noisy marketing prose, so it's only consulted once name and
+  //    tags gave no signal at all — e.g. "For children aged 5-10" with a generic title.
+  const descWomen = G_WOMEN.test(descLc);
+  if (G_UNISEX.test(descLc)) return 'unisex';
+  if (G_MEN.test(descLc) && !descWomen) return 'men';
+  if (G_KIDS.test(descLc) && !descWomen) return 'kids';
+
+  // 4. Collection default, then any women signal, then default (women-only catalog).
   if (brandGender && ['women', 'men', 'kids', 'unisex'].includes(brandGender)) return brandGender;
   return 'women';
 }
