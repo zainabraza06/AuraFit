@@ -53,16 +53,28 @@ function extractColorsForSearch(colorText) {
 }
 
 /**
- * Builds a natural-language description from the photo analysis, in the same
- * shape a user might type — so it benefits from the same occasion / color /
- * garment-hint extraction as a typed semantic search query. Uses the distilled
- * color list (not the full descriptive color text) to avoid embellishment
- * colors hijacking the color-match score.
+ * Text used to derive SIGNALS (color/occasion/garment) via analyzeSearchQuery.
+ * Deliberately excludes `keywords` — those often mention embroidery/embellishment
+ * accent colors ("floral embroidery in red and gold"), and analyzeSearchQuery
+ * scans its ENTIRE input for color words with no notion of "this is decorative
+ * thread, not the garment". Keeping keywords out of this text is what stops
+ * red/gold from re-entering the color-match score after already being excluded
+ * from the color field itself.
  */
-function describeAnalysis(analysis) {
+function buildSignalText(analysis) {
   const colors = extractColorsForSearch(analysis.color);
-  const parts = [analysis.style, ...colors, analysis.category, ...analysis.keywords].filter(Boolean);
-  return parts.join(' ');
+  return [analysis.style, ...colors, analysis.category, analysis.occasion].filter(Boolean).join(' ');
+}
+
+/**
+ * Text used ONLY for the embedding vector — richer than the signal text since
+ * keywords (silhouette, neckline, embroidery style) genuinely help semantic
+ * similarity and don't need to be color-clean the way structured facet scoring does.
+ */
+function buildEmbeddingText(signals, analysis) {
+  const base = buildSemanticQueryText(signals);
+  const keywords = (analysis.keywords || []).join(', ');
+  return keywords ? `${base}\nDetails: ${keywords}` : base;
 }
 
 export async function searchByImage(req, res) {
@@ -107,16 +119,18 @@ export async function searchByImage(req, res) {
       });
     }
 
-    const descriptionText = describeAnalysis(analysis);
+    const signalText = buildSignalText(analysis);
     const limit = Math.min(30, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
     let matches, engine, relaxedFloor = false;
 
-    if (process.env.HUGGING_FACE_API_KEY && descriptionText) {
+    if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
       // Same hybrid cosine + facet ranking used by text search, across ALL catalogs
       // (clothing/shoes/jewelry/watches) — so a photo of shoes correctly surfaces shoes.
-      const signals = analyzeSearchQuery(descriptionText);
-      const queryForEmbedding = buildSemanticQueryText(signals);
+      // Signals (color/occasion/garment) come from the clean signal text only;
+      // the embedding text separately layers in keywords for semantic richness.
+      const signals = analyzeSearchQuery(signalText);
+      const queryForEmbedding = buildEmbeddingText(signals, analysis);
       const queryEmbedding = await getEmbedding(queryForEmbedding);
       const searchRes = await searchAcrossCatalogs(signals, queryEmbedding, { limit });
       matches = searchRes.results;
