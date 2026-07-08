@@ -124,12 +124,13 @@ export async function regexSearchAcrossCatalogs({ color, keywords = [], gender }
     : CATALOGS;
 
   const orClauses = [];
-  if (color) {
+  const colorList = (Array.isArray(color) ? color : [color]).filter(Boolean);
+  for (const c of colorList) {
     orClauses.push(
-      { primaryColor: { $regex: color, $options: 'i' } },
-      { primaryExactColor: { $regex: color, $options: 'i' } },
-      { exactColors: { $elemMatch: { $regex: color, $options: 'i' } } },
-      { colors: { $elemMatch: { $regex: color, $options: 'i' } } }
+      { primaryColor: { $regex: c, $options: 'i' } },
+      { primaryExactColor: { $regex: c, $options: 'i' } },
+      { exactColors: { $elemMatch: { $regex: c, $options: 'i' } } },
+      { colors: { $elemMatch: { $regex: c, $options: 'i' } } }
     );
   }
   for (const kw of keywords.slice(0, 5)) {
