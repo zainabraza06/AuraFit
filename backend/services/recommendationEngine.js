@@ -1146,7 +1146,19 @@ export async function getRecommendations(productId, options = {}) {
   const clothingPoolRaw = await ClothingProduct.find(baseQuery).limit(100).lean();
   const clothingPool = clothingPoolRaw.map(formatClothingForApi);
 
-  const scoredShoes    = shoePool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxShoes);
+  // Shoes use the SAME footwear-matching logic as the "Style Me" outfit
+  // builder (accessoryMatcher.js's footwearFashionScore/explainFootwearChoice
+  // — color harmony + contrast + occasion + silhouette-appropriateness) rather
+  // than the older generic scoreProduct() heuristic, which only weighed raw
+  // embedding/color/occasion/style overlap with no footwear-specific reasoning.
+  const usedShoeIds = new Set();
+  const scoredShoes = [];
+  for (let i = 0; i < maxShoes; i++) {
+    const pick = pickBestShoe(source, shoePool, usedShoeIds);
+    if (!pick) break;
+    scoredShoes.push({ product: pick.product, scores: { total: pick.score }, reason: pick.reason });
+  }
+
   const scoredClothing = clothingPool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxClothing);
 
   return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
