@@ -52,6 +52,35 @@ function extractColorsForSearch(colorText) {
   return exactColors.slice(0, 2);
 }
 
+/** Canonical color families (e.g. "Teal", "White") distilled from the photo's color text. */
+function extractColorFamilies(colorText) {
+  const { colors, primaryExactColor } = inferColors(colorText);
+  if (primaryExactColor === 'multicolor') return [];
+  return colors.slice(0, 2);
+}
+
+/**
+ * The blended cosine+facet score alone isn't strict enough about color: color is
+ * only ~34% of the facet score, so a wrong-colored item with strong occasion/
+ * keyword/style overlap (e.g. another "embroidered formal kurta") can still score
+ * close to genuinely correct-colored items. For a TYPED query that's reasonable —
+ * loose text is inherently fuzzy about color intent. For a PHOTO, we saw the exact
+ * garment and know its color with much higher confidence, so apply a hard filter:
+ * keep only items whose color family overlaps the photo's, and only fall back to
+ * the unfiltered ranking if that would leave suspiciously few results (never
+ * silently show zero when the ranked list had usable candidates).
+ */
+function filterByColorFamily(results, colorFamilies, minKeep = 3) {
+  if (!colorFamilies.length) return results;
+  const want = new Set(colorFamilies);
+  const filtered = results.filter((p) => {
+    const prim = p.primaryColor;
+    const list = Array.isArray(p.colors) ? p.colors : [];
+    return want.has(prim) || list.some((c) => want.has(c));
+  });
+  return filtered.length >= minKeep ? filtered : results;
+}
+
 /**
  * Text used to derive SIGNALS (color/occasion/garment) via analyzeSearchQuery.
  * Deliberately excludes `keywords` — those often mention embroidery/embellishment
@@ -132,8 +161,11 @@ export async function searchByImage(req, res) {
       const signals = analyzeSearchQuery(signalText);
       const queryForEmbedding = buildEmbeddingText(signals, analysis);
       const queryEmbedding = await getEmbedding(queryForEmbedding);
-      const searchRes = await searchAcrossCatalogs(signals, queryEmbedding, { limit });
-      matches = searchRes.results;
+      // Fetch a larger pool than requested so the hard color filter below has
+      // enough correctly-colored candidates to fill the final result set from.
+      const searchRes = await searchAcrossCatalogs(signals, queryEmbedding, { limit: Math.min(60, limit * 3) });
+      const colorFamilies = extractColorFamilies(analysis.color);
+      matches = filterByColorFamily(searchRes.results, colorFamilies).slice(0, limit);
       relaxedFloor = searchRes.relaxedFloor;
       engine = `HuggingFace all-MiniLM-L6-v2 (photo analyzed by ${visionProvider})`;
     } else {
