@@ -647,7 +647,11 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
 // least-important filter, tell the shopper to raise their budget, accept, or stop.
 // Falls back to the deterministic fetchCandidatesDeterministic() if the LLM is unavailable.
 const RELAXABLE = ['neckline', 'occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
-const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
+// 'sharara'/'gharara' deliberately absent — they're wide-leg trouser styles worn
+// with a kurta (structurally a kurta/shalwar-kameez silhouette, not a distinct
+// skirt-based style), and no code path ever sets intent.dressStyle to those
+// values (searchQueryIntel.js's QUERY_GARMENT_MAP maps them to 'kurta').
+const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'palazzo'];
 const TARGET_RESULTS = 8;
 // One round can only drop ONE constraint, so the budget must cover the worst
 // case: every RELAXABLE constraint specified at once, plus color's own two-step

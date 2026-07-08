@@ -23,8 +23,16 @@ const QUERY_OCCASION_MAP = [
 
 const QUERY_GARMENT_MAP = [
   { kw: ['saree', 'sari'], val: 'saree' },
-  { kw: ['lehenga', 'lehnga', 'sharara', 'gharara'], val: 'lehenga' },
-  { kw: ['kurta', 'kurti', 'kameez', 'shalwar', 'salwar'], val: 'kurta' },
+  { kw: ['lehenga', 'lehnga'], val: 'lehenga' },
+  // sharara/gharara are wide-leg TROUSER styles worn under a kurta/kameez top —
+  // a structurally different silhouette from a lehenga's single continuous
+  // flared skirt (see imageSearchController.js's vision prompt for the same
+  // distinction). Mapping them to 'lehenga' here was wrong and independent of
+  // whatever the vision model actually classified the photo as — a kurta over
+  // sharara/gharara/palazzo trousers was getting silently overridden to
+  // "lehenga" by this keyword map alone, regardless of AI accuracy upstream.
+  { kw: ['kurta', 'kurti', 'kameez', 'shalwar', 'salwar', 'sharara', 'gharara'], val: 'kurta' },
+  { kw: ['palazzo'], val: 'palazzo' },
   { kw: ['abaya'], val: 'abaya' },
   { kw: ['maxi', 'gown', 'frock'], val: 'frock' },
   { kw: ['sherwani'], val: 'sherwani' },
