@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { tryonApi, authApi } from '@/lib/api';
 
-type Step = 'idle' | 'processing' | 'done' | 'error' | 'no-auth' | 'no-pic';
+type Step = 'idle' | 'processing' | 'done' | 'error' | 'no-auth' | 'no-pic' | 'bad-photo';
 
 /** Builds a clean garment description from a product's real fields (color, dress style,
  * pieces, print) instead of the raw scraped title — better text-conditioning for the AI. */
@@ -85,6 +85,11 @@ export default function TryOnButton({ productImage, productName, productDescript
       setResultUrl(res.data.resultUrl);
       setStep('done');
     } catch (e: any) {
+      if (e?.response?.data?.reason === 'bad_person_photo') {
+        setErr(e.response.data.error);
+        setStep('bad-photo');
+        return;
+      }
       const msg = e?.response?.data?.error || 'Try-on failed. Please try again.';
       const hint = e?.response?.data?.hint || '';
       setErr(hint ? `${msg} ${hint}` : msg);
@@ -153,6 +158,17 @@ export default function TryOnButton({ productImage, productName, productDescript
                   Tip: a well-lit, front-facing, full-length photo gives the best fit — the AI can only place the outfit on the part of you that's actually in frame.
                 </p>
                 <button className="btn btn-primary" onClick={() => router.push('/account')}>Set Profile Picture →</button>
+              </div>
+            )}
+
+            {step === 'bad-photo' && (
+              <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🙈</div>
+                <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>We need a clearer photo</h4>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem', maxWidth: 380, margin: '0 auto 1.5rem', lineHeight: 1.5 }}>
+                  {err}
+                </p>
+                <button className="btn btn-primary" onClick={() => router.push('/account')}>Update Profile Picture →</button>
               </div>
             )}
 

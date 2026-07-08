@@ -1,7 +1,64 @@
+import axios from 'axios';
 import { isCloudinaryConfigured, rehostUrlOnCloudinary } from '../services/cloudinary.js';
+import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 
 function bufferToDataUrl(buffer, mimetype) {
   return `data:${mimetype};base64,${buffer.toString('base64')}`;
+}
+
+/** Resolves a personInput/clothingInput ({buffer,mimetype} or {url}) to base64 + mimeType. */
+async function resolveImageBytes(input) {
+  if (Buffer.isBuffer(input.buffer)) {
+    return { imageBase64: input.buffer.toString('base64'), mimeType: input.mimetype || 'image/jpeg' };
+  }
+  const { data, headers } = await axios.get(input.url, { responseType: 'arraybuffer', timeout: 20000 });
+  return { imageBase64: Buffer.from(data).toString('base64'), mimeType: headers['content-type'] || 'image/jpeg' };
+}
+
+/**
+ * Checks the person photo BEFORE spending a generation attempt on it — a
+ * half-body photo or one where the face is covered/cropped out produces a
+ * visibly broken result (the model stretches/shortens the outfit to fit
+ * whatever body region is in frame). Better to tell the user upfront than
+ * show them a bad generation. Reuses the same vision fallback chain (Mistral
+ * Pixtral → Gemini) as visual search — no new provider/dependency.
+ */
+async function validatePersonPhoto(personInput) {
+  try {
+    const { imageBase64, mimeType } = await resolveImageBytes(personInput);
+    const prompt = `
+      Look at this photo, which will be used for an AI virtual clothing try-on.
+      Return ONLY a JSON object:
+      {
+        "hasPerson": boolean,   // is there a clearly visible person in the photo?
+        "faceVisible": boolean, // is the person's face visible and not covered, turned away, or cropped out of frame?
+        "framing": "full-body" | "half-body" | "close-up" | "unclear"
+        // full-body = head down to at least the knees is visible
+        // half-body = roughly waist-up or less is visible
+        // close-up = just the face/shoulders fill the frame
+      }
+    `;
+    const { data } = await analyzeImageWithProviderFallback({ prompt, imageBase64, mimeType });
+    const hasPerson = data?.hasPerson !== false;
+    const faceVisible = data?.faceVisible !== false;
+    const framing = String(data?.framing || 'unclear').toLowerCase();
+
+    if (!hasPerson) {
+      return { ok: false, message: "We couldn't find a person in this photo. Please upload a clear photo of yourself." };
+    }
+    if (!faceVisible) {
+      return { ok: false, message: 'Your face needs to be visible for try-on — please upload a photo where your face is clearly shown, not covered or turned away.' };
+    }
+    if (framing === 'half-body' || framing === 'close-up') {
+      return { ok: false, message: `This photo looks like a ${framing.replace('-', ' ')} shot. For an accurate try-on, please upload a full-length photo (head to at least your knees) with your face visible.` };
+    }
+    return { ok: true };
+  } catch (e) {
+    // Validation itself failing (provider down, bad image fetch, etc.) should
+    // never block a try-on attempt that might otherwise succeed — fail open.
+    console.warn('[TryOn] Person photo validation skipped (check failed):', e.message);
+    return { ok: true };
+  }
 }
 
 /**
@@ -124,6 +181,11 @@ export async function virtualTryon(req, res) {
     const personInput   = personFile   ? { buffer: personFile.buffer, mimetype: personFile.mimetype }   : { url: personUrl };
     const clothingInput = clothingFile ? { buffer: clothingFile.buffer, mimetype: clothingFile.mimetype } : { url: clothingUrl };
     const description = req.body.description;
+
+    const photoCheck = await validatePersonPhoto(personInput);
+    if (!photoCheck.ok) {
+      return res.status(422).json({ error: photoCheck.message, reason: 'bad_person_photo' });
+    }
 
     let replicateError = null;
     try {
