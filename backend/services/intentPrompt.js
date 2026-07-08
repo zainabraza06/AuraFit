@@ -13,7 +13,12 @@ Return ONLY a valid JSON object with these exact fields:
 - shade: The EXACT color word(s) the user mentioned. null if none.
 - occasion: Array from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"]. Map "bridal" queries to ["wedding","bridal"]. Map fashion/fancy/festive to ["party","eid"].
 - style: Array from: ["elegant", "trendy", "minimal", "embroidered", "western", "traditional", "heavy"]
-- gender: "women", "men", "kids", or "unisex". Default "women" if not specified.
+- gender: "women", "men", "kids", or "unisex". This is a WOMEN's fashion platform — garment words like
+  "kurta", "shalwar-kameez", "kameez" are used by both genders in Pakistani fashion and must NEVER be
+  read as a male signal by themselves. Only say "men" or "kids" when there is an EXPLICIT, unambiguous
+  signal (e.g. "for my husband", "menswear", "for my son", "boys' "). Default to "women" for anything
+  ambiguous, and ALWAYS for queries describing the shopper themselves (body shape, skin tone, "what
+  should I wear") — those are always about a woman on this platform.
 - dressType: "bridal", "formal", "casual", "party", "western", "festive" or null.
 - dressStyle: ONE of: saree, lehenga, frock, maxi, gown, shalwar-kameez, kurta, co-ord, palazzo, western, abaya, tunic, pant-coat, sherwani, t-shirt, polo, shirt, trouser, other — or null if unknown.
 - piece: String describing piece count/type (e.g., "2-piece", "3-piece", "kurta") or null.

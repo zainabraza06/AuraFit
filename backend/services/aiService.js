@@ -207,6 +207,11 @@ Decide your styling recommendation in two steps:
         tradition, not a niche choice.
       • Red carpet / award-show style events — Western gowns.
       • Garden parties / high tea — maxis or flowy Western dresses are common alongside eastern wear.
+      • Corporate/university/school "annual dinner" or annual function galas — these are semi-formal
+        evening events, NOT bridal-adjacent. The norm is an elegant saree, a fitted/flowy Western gown
+        or dress, or a refined 2-piece — NOT a heavily embroidered bridal-style lehenga, which reads as
+        overdressed here. Reserve lehenga recommendations for actual weddings, mehndi, or similarly
+        bridal/festive functions the user explicitly names.
     Shalwar-kameez/kurta ARE the right call for everyday wear, office, casual outings, and many
     religious/family occasions (eid namaz, mehndi in some families, casual get-togethers) — use them
     there. The point is to be accurate to the specific occasion, not to lean any particular direction.
@@ -339,15 +344,53 @@ function stripUnavailableGarmentWords(text, dressStyle) {
   for (const word of banned) {
     out = out.replace(new RegExp(`\\b${word}\\b`, 'gi'), dressStyle);
   }
+  // A phrase like "western gown" was already catalog-safe (dressStyle=western
+  // qualifying a banned word) — replacing "gown" above leaves "western western".
+  // Collapse any immediately-repeated word (case-insensitive) back to one.
+  out = out.replace(/\b(\w+)(\s+\1)+\b/gi, '$1');
   return out.replace(/\s+/g, ' ').trim();
 }
 
 /**
- * Utility: Robust JSON extraction from LLM response
+ * Utility: Robust JSON extraction from LLM response.
+ *
+ * The naive "first { to last }" approach breaks whenever a provider emits
+ * MORE than one brace-containing block in the same response — a retry, a
+ * dangling second attempt, trailing commentary with its own braces, etc.
+ * lastIndexOf('}') then grabs the end of that unrelated second block, and
+ * JSON.parse can silently succeed on the hybrid text with a corrupted/
+ * truncated string value (this is what produced a stylist "advice" string
+ * that trailed off mid-word into fragments of a second, unrelated block).
+ *
+ * This instead finds the FIRST balanced {...} object by tracking brace depth,
+ * correctly skipping over braces that appear inside string literals (so a
+ * garment description containing "{" would never happen, but this is cheap
+ * insurance) — and stops at the true end of that first well-formed object,
+ * ignoring anything a provider appends afterward.
  */
 function extractJson(text) {
   const start = text.indexOf('{');
+  if (start === -1) return text;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.substring(start, i + 1);
+    }
+  }
+  // No balanced close found — fall back to the old (best-effort) behavior.
   const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1) return text;
-  return text.substring(start, end + 1);
+  return end === -1 ? text : text.substring(start, end + 1);
 }

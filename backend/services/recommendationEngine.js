@@ -649,7 +649,14 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
 const RELAXABLE = ['neckline', 'occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
 const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
 const TARGET_RESULTS = 8;
-const MAX_ROUNDS = 4;
+// One round can only drop ONE constraint, so the budget must cover the worst
+// case: every RELAXABLE constraint specified at once, plus color's own two-step
+// path (exact shade → color family → no color filter). A rich stylist-generated
+// query (color + occasion + dressStyle + neckline + stitching + pieces + fabric
+// + season) can legitimately specify all of RELAXABLE simultaneously — 4 rounds
+// was proven too few in testing, silently returning 0 results after exhausting
+// the budget instead of continuing to relax down to a real match.
+const MAX_ROUNDS = RELAXABLE.length + 2;
 
 // ─── Self-healing: re-derive drift-prone fields from each product's own text and
 // write corrections back to the DB. The catalog heals through normal usage — a

@@ -149,6 +149,29 @@ function buildPriorityFromHint(hint) {
   return out.filter((k) => RELAX_KEYS.has(k));
 }
 
+const EXPLICIT_MALE_SIGNAL = /\b(men'?s|mens\b|for\s+(?:my\s+)?(?:husband|brother|dad|father|boyfriend|son)|menswear|for\s+him)\b/i;
+const EXPLICIT_KIDS_SIGNAL = /\b(kids?|children|toddler|for\s+my\s+(?:son|daughter)|baby\s+boy|baby\s+girl|boys?'?s|girls?'?s)\b/i;
+
+/**
+ * The catalog is 100% women's clothing (verified via direct DB check) and
+ * gender is a HARD, never-relaxed filter (recommendationEngine.buildDBQuery) —
+ * so if the intent LLM ever guesses "men"/"kids" from an ambiguous garment
+ * word (kurta/shalwar-kameez are worn by both genders in Pakistani fashion,
+ * with nothing in the query text actually implying menswear), the search
+ * becomes permanently unfixable at 0 results, no matter how much else gets
+ * relaxed. Same "don't trust prose alone" principle used elsewhere in this
+ * codebase: only honor a non-women gender guess if the ORIGINAL message text
+ * itself has a real, explicit corroborating signal — otherwise fall back to
+ * "women", which this platform can always actually serve.
+ */
+function resolveGender(rawGender, message) {
+  if (rawGender === 'unisex') return 'unisex';
+  const text = String(message || '');
+  if (rawGender === 'men' && EXPLICIT_MALE_SIGNAL.test(text)) return 'men';
+  if (rawGender === 'kids' && EXPLICIT_KIDS_SIGNAL.test(text)) return 'kids';
+  return 'women';
+}
+
 /**
  * @param {Record<string, unknown>} raw — LLM JSON
  * @param {string} message — original user message
@@ -248,7 +271,7 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
     fabric:    fabricRaw   || null,
     stitching: stitchingRaw || null,
     print,
-    gender: ['women', 'men', 'kids', 'unisex'].includes(raw.gender) ? raw.gender : 'women',
+    gender: resolveGender(raw.gender, message),
     dressType: raw.dressType && raw.dressType !== 'null' ? String(raw.dressType).toLowerCase().trim() : null,
     dressStyle: dressStyleRaw || null,
     accessoryType: raw.accessoryType && raw.accessoryType !== 'null' ? String(raw.accessoryType).toLowerCase().trim() : null,
