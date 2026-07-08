@@ -32,12 +32,29 @@ function normalizeAnalysis(raw) {
 }
 
 /**
+ * Vision models often describe color richly ("off white with red, green, and
+ * gold embroidery accents") rather than as a single base shade — great for
+ * display, but it corrupts search: both the facet color-match AND the sentence
+ * embedding pick up "red"/"green" as strong signals and pull in wrongly-colored
+ * products almost as high as the actually-matching white ones. Distill the
+ * analysis color down to just the FIRST recognized base shade for search
+ * purposes; the full descriptive text is still shown to the user untouched.
+ */
+function extractPrimaryColor(colorText) {
+  const { primaryExactColor } = inferColors(colorText);
+  return primaryExactColor !== 'multicolor' ? primaryExactColor : (colorText || '').split(/\s+/).slice(0, 2).join(' ');
+}
+
+/**
  * Builds a natural-language description from the photo analysis, in the same
  * shape a user might type — so it benefits from the same occasion / color /
- * garment-hint extraction as a typed semantic search query.
+ * garment-hint extraction as a typed semantic search query. Uses the distilled
+ * primary color (not the full descriptive color text) to avoid embellishment
+ * colors hijacking the color-match score.
  */
 function describeAnalysis(analysis) {
-  const parts = [analysis.style, analysis.color, analysis.category, ...analysis.keywords].filter(Boolean);
+  const primaryColor = extractPrimaryColor(analysis.color);
+  const parts = [analysis.style, primaryColor, analysis.category, ...analysis.keywords].filter(Boolean);
   return parts.join(' ');
 }
 
@@ -49,14 +66,18 @@ export async function searchByImage(req, res) {
       Analyze this fashion item as a Pakistani fashion e-commerce stylist would.
       Identify its:
       - Category (dress, kurta, lehenga, saree, shoe, earrings, necklace, etc.)
-      - Primary color (be specific — e.g. "maroon" not just "red")
+      - Primary color — the MAIN BASE fabric color ONLY, as ONE or TWO words
+        (e.g. "maroon", "off white", "bottle green"). Do NOT describe embroidery,
+        embellishment, print, or accent colors here — mention those in keywords
+        instead (e.g. "off white" not "off white with red and gold embroidery").
       - Style (embroidered, printed, plain, western, traditional, formal, casual, etc.)
       - Occasion it best suits (wedding, party, casual, office, eid, mehndi, formal)
-      - 3-5 keywords describing notable features (neckline, embellishment, silhouette, fabric look)
+      - 3-5 keywords describing notable features (neckline, embellishment colors, silhouette, fabric look)
 
       Return ONLY a JSON object with these EXACT types — category, color, style, and occasion
-      MUST each be a single short plain-text string (never a nested object, never an array):
-      { "category": "string", "color": "string", "style": "string", "occasion": "string", "keywords": ["string", "string"] }
+      MUST each be a single short plain-text string (never a nested object, never an array).
+      "color" MUST be only the base color, 1-2 words maximum:
+      { "category": "string", "color": "string (1-2 words, base color only)", "style": "string", "occasion": "string", "keywords": ["string", "string"] }
     `;
 
     let analysis, visionProvider;
@@ -96,7 +117,7 @@ export async function searchByImage(req, res) {
       // canonical color family AND the exact scraped shade (a specific color word
       // like "maroon" only ever lives in primaryExactColor/exactColors).
       const searchRes = await regexSearchAcrossCatalogs(
-        { color: analysis.color, keywords: [analysis.category, ...(analysis.keywords || [])] },
+        { color: extractPrimaryColor(analysis.color), keywords: [analysis.category, ...(analysis.keywords || [])] },
         { limit }
       );
       matches = searchRes.results;
