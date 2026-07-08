@@ -11,7 +11,15 @@ Analyze the user request and extract structured fashion intent as JSON.
 Return ONLY a valid JSON object with these exact fields:
 - color: MUST be one of: ${canonicalColors.join(', ')}, Any
 - shade: The EXACT color word(s) the user mentioned. null if none.
-- occasion: Array from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"]. Map "bridal" queries to ["wedding","bridal"]. Map fashion/fancy/festive to ["party","eid"].
+- occasion: Array from: ["casual", "wedding", "bridal", "office", "party", "eid", "formal", "mehndi"].
+  ONLY set this from an occasion/event the user EXPLICITLY named or unmistakably implied (e.g. "for eid",
+  "wedding guest", "office wear", "a party look"). Map "bridal" queries to ["wedding","bridal"]. Map an
+  explicitly named fancy/festive EVENT to ["party","eid"] — but do NOT infer an occasion merely from a
+  style/print/embellishment adjective like "embroidered", "fancy", "elegant", or "heavy": embroidered and
+  heavily-worked pieces are extremely common EVERYDAY/casual wear in Pakistani fashion too, not
+  exclusively party/eid wear. If the user named no occasion at all, return an empty array [] — do not
+  guess one, since a wrongly-inferred occasion silently excludes real matching products that are
+  correctly tagged for a different (or no) occasion.
 - style: Array from: ["elegant", "trendy", "minimal", "embroidered", "western", "traditional", "heavy"]
 - gender: "women", "men", "kids", or "unisex". This is a WOMEN's fashion platform — garment words like
   "kurta", "shalwar-kameez", "kameez" are used by both genders in Pakistani fashion and must NEVER be
@@ -20,7 +28,12 @@ Return ONLY a valid JSON object with these exact fields:
   ambiguous, and ALWAYS for queries describing the shopper themselves (body shape, skin tone, "what
   should I wear") — those are always about a woman on this platform.
 - dressType: "bridal", "formal", "casual", "party", "western", "festive" or null.
-- dressStyle: ONE of: saree, lehenga, frock, maxi, gown, shalwar-kameez, kurta, co-ord, palazzo, western, abaya, tunic, pant-coat, sherwani, t-shirt, polo, shirt, trouser, other — or null if unknown.
+- dressStyle: ONE of: saree, lehenga, frock, maxi, gown, shalwar-kameez, kurta, co-ord, palazzo, western, abaya, tunic, pant-coat, sherwani, t-shirt, polo, shirt, trouser, other.
+  Only set this when the user named (or clearly implied) a SPECIFIC garment type. Use "other" only for a
+  real, specific style you recognize that genuinely isn't in this list — never for a generic/ambiguous
+  word like "dress", "outfit", or "clothes" alone, since "other" then becomes a literal database filter
+  that excludes almost everything (most products are tagged with a real style, not "other"). For a
+  generic word with no specific style implied, return null instead.
 - piece: String describing piece count/type (e.g., "2-piece", "3-piece", "kurta") or null.
 - pieces: Number — 1, 2, 3, or 4. null if unknown.
 - fabric: String (e.g., "lawn", "chiffon") or null.

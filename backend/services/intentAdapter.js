@@ -202,7 +202,15 @@ export function rawIntentToEngineIntent(raw, message, prioritiesHint) {
   const season =
     seasonRaw && ['summer', 'winter', 'all-season'].includes(seasonRaw) ? seasonRaw : null;
 
-  const dressStyleRaw = raw.dressStyle && raw.dressStyle !== 'null' ? String(raw.dressStyle).toLowerCase().trim() : null;
+  // "other" as a LITERAL DB filter matches almost nothing (products are tagged
+  // with a real style, not "other") — the LLM still occasionally returns it for
+  // a generic word like "dress" despite the prompt saying not to, so treat it
+  // as "no constraint" here too (same defense-in-depth pattern as the gender
+  // safety net above): don't let a meaningless filter value silently narrow
+  // the search and waste relaxation rounds recovering from it.
+  const dressStyleRaw = raw.dressStyle && raw.dressStyle !== 'null' && raw.dressStyle !== 'other'
+    ? String(raw.dressStyle).toLowerCase().trim()
+    : null;
 
   const printRaw = raw.print && raw.print !== 'null' ? String(raw.print).toLowerCase().trim() : null;
   const print =

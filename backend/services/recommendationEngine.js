@@ -728,13 +728,25 @@ export async function agenticRelax(intent) {
     }
 
     // Candidate next moves (only constraints the user actually specified & not yet dropped).
+    // relaxOptionsList mirrors relaxOptions but keeps the real constraint key
+    // (not just its display label) so the DISTINCTIVE-style override below can
+    // reliably find "any alternative that isn't dressStyle", independent of
+    // what the label text happens to say.
     const relaxOptions = {};
+    const relaxOptionsList = [];
     for (const c of RELAXABLE) {
-      if (specified.has(c) && !dropped.has(c)) relaxOptions[relaxLabel(intent, c)] = await countFor(intent, new Set([...dropped, c]), colorMode);
+      if (specified.has(c) && !dropped.has(c)) {
+        const label = relaxLabel(intent, c);
+        const count = await countFor(intent, new Set([...dropped, c]), colorMode);
+        relaxOptions[label] = count;
+        relaxOptionsList.push({ constraint: c, count });
+      }
     }
+    let colorCount = null;
     if (colorMode !== 'none') {
       const nextMode = colorMode === 'exact' && specified.has('colorFamily') ? 'family' : 'none';
-      relaxOptions[`colour (${relaxLabel(intent, 'color')})`] = await countFor(intent, dropped, nextMode);
+      colorCount = await countFor(intent, dropped, nextMode);
+      relaxOptions[`colour (${relaxLabel(intent, 'color')})`] = colorCount;
     }
     // Budget probe — keep all current filters, lift only the price ceiling.
     let budgetLift = null, cheapest = null;
@@ -783,9 +795,32 @@ export async function agenticRelax(intent) {
       };
     }
     // relax the chosen constraint (match against our labels)
-    const target = RELAXABLE.find((c) => specified.has(c) && !dropped.has(c) &&
+    let target = RELAXABLE.find((c) => specified.has(c) && !dropped.has(c) &&
       String(decision.constraint || '').toLowerCase().includes(relaxLabel(intent, c).toLowerCase().split(' ')[0]));
-    if (String(decision.constraint || '').toLowerCase().includes('colo') && colorMode !== 'none') {
+    let relaxingColor = String(decision.constraint || '').toLowerCase().includes('colo') && colorMode !== 'none';
+
+    // Hard override: planNextRelaxation is a per-call LLM judgment and has been
+    // observed to be non-deterministic on which constraint "matters more" —
+    // sometimes correctly relaxing color, sometimes wrongly dropping the exact
+    // silhouette noun the user named (e.g. "maroon lehenga" → drops "lehenga"
+    // and returns shalwar-kameez suits instead of just widening the color).
+    // A DISTINCTIVE style word is the defining noun of the search; never let it
+    // be the first thing sacrificed while any other relaxable option —
+    // including color — still has real results.
+    if (target === 'dressStyle' && DISTINCTIVE_STYLES.includes(intent.dressStyle)) {
+      if (colorMode !== 'none' && colorCount > 0) {
+        target = null;
+        relaxingColor = true;
+      } else {
+        const betterAlt = relaxOptionsList
+          .filter((o) => o.constraint !== 'dressStyle' && o.count > 0)
+          .sort((a, b) => b.count - a.count)[0];
+        if (betterAlt) target = betterAlt.constraint;
+        // else: genuinely nothing else to relax — allow dropping dressStyle as a last resort.
+      }
+    }
+
+    if (relaxingColor) {
       colorMode = colorMode === 'exact' && specified.has('colorFamily') ? 'family' : 'none';
       relaxedFields.push(colorMode === 'family' ? 'exact color → showing color family' : 'color');
     } else if (target) {
