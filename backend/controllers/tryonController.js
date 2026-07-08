@@ -143,7 +143,11 @@ async function finalizeResultUrl(resultUrl) {
 
 /** Paid path — Replicate-hosted IDM-VTON. Fast (~30-90s), needs REPLICATE_API_KEY + account credit. */
 async function tryReplicate({ personInput, clothingInput, description }) {
-  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_KEY;
+  // .trim() guards against a stray trailing newline/space from copy-pasting the
+  // key into a hosting dashboard's env var UI — Replicate rejects the whole
+  // token as invalid (401) if it's not byte-for-byte exact, and a trailing
+  // whitespace character is invisible when eyeballing the value.
+  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_KEY?.trim();
   if (!REPLICATE_API_TOKEN) {
     const e = new Error('REPLICATE_API_KEY not configured');
     e.notConfigured = true;

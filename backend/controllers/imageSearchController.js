@@ -151,11 +151,18 @@ export async function searchByImage(req, res) {
         embellished — sarees are also worn for weddings and formal occasions.
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
-        "off white"). If the garment genuinely has two significant color BLOCKS
-        or PANELS (e.g. a white top with a teal border/panel), name both, e.g.
-        "white and teal". Do NOT list embroidery/embellishment thread colors here
-        — put those in keywords instead (e.g. "off white" not "off white with red
-        and gold embroidery thread").
+        "royal blue", "mustard"). If the garment genuinely has two significant
+        color BLOCKS or PANELS (e.g. a white top with a teal border/panel), name
+        both, e.g. "white and teal". Do NOT list embroidery/embellishment thread
+        colors here — put those in keywords instead (e.g. "maroon" not "maroon
+        with gold embroidery thread").
+        Look carefully before calling anything "white" or "off-white" — pale/pastel
+        shades (mint, sage, seafoam, pale lilac, baby pink, pastel yellow) can look
+        washed-out or desaturated in photos, especially under bright light, but
+        still have a real, visible color tint. Only say "white"/"off-white"/"ivory"/
+        "cream" when the fabric is genuinely neutral with no color tint at all —
+        if you can see ANY hint of green, pink, blue, or yellow, name that color
+        (e.g. "mint" or "pale green", not "off white").
       - Style (embroidered, printed, plain, western, traditional, formal, casual, etc.)
       - Occasion it best suits (wedding, party, casual, office, eid, mehndi, formal)
       - 3-5 keywords describing notable features (neckline, embellishment colors, silhouette, fabric look)
