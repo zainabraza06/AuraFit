@@ -68,6 +68,12 @@ export async function virtualTryon(req, res) {
     if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
       return res.status(401).json({ error: 'Invalid Replicate API key. Please check your REPLICATE_API_KEY.' });
     }
+    if (err.message?.includes('402') || err.message?.includes('Insufficient credit')) {
+      return res.status(402).json({
+        error: 'Replicate account has no credit',
+        hint: 'Add billing credit at replicate.com/account/billing, then try again in a few minutes.'
+      });
+    }
     if (err.message?.includes('rate limit') || err.message?.includes('429')) {
       return res.status(429).json({ error: 'Replicate rate limit reached. Please try again in a minute.' });
     }

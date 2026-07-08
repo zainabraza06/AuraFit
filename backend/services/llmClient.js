@@ -123,6 +123,92 @@ async function callGroq(system, user, temperature = 0.1) {
   return text;
 }
 
+/** Mistral vision (Pixtral) call — image analysis, same account/throttle as text Mistral. */
+async function callMistralVision(system, imageBase64, mimeType, temperature = 0.1) {
+  await mistralThrottle();
+  const model = process.env.MISTRAL_VISION_MODEL || 'pixtral-12b-2409';
+  const { data } = await axios.post(
+    MISTRAL_URL,
+    {
+      model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: system },
+            { type: 'image_url', image_url: `data:${mimeType};base64,${imageBase64}` }
+          ]
+        }
+      ],
+      temperature,
+      response_format: { type: 'json_object' }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+  const text = data?.choices?.[0]?.message?.content;
+  if (!text) throw new Error('Mistral vision empty response');
+  return text;
+}
+
+async function callGeminiVision(modelName, prompt, imageBase64, mimeType, temperature = 0.1) {
+  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: { responseMimeType: 'application/json', temperature }
+  });
+  const result = await model.generateContent([
+    prompt,
+    { inlineData: { data: imageBase64, mimeType } }
+  ]);
+  const text = result.response.text();
+  if (!text) throw new Error('Gemini vision empty response');
+  return text;
+}
+
+/**
+ * Analyze an image with a text prompt, trying vision-capable providers in order:
+ * Mistral (Pixtral) → Gemini. Returns parsed JSON.
+ * @param {{ prompt: string, imageBase64: string, mimeType: string }} opts
+ * @returns {Promise<{ data: object, provider: string }>}
+ */
+export async function analyzeImageWithProviderFallback(opts) {
+  const { prompt, imageBase64, mimeType } = opts;
+
+  if (hasMistral() && canUseLlmProvider('mistral-vision')) {
+    try {
+      const text = await callMistralVision(prompt, imageBase64, mimeType, 0.2);
+      recordLlmProviderSuccess('mistral-vision');
+      return { data: JSON.parse(stripFences(text)), provider: 'mistral-vision' };
+    } catch (e) {
+      recordLlmProviderFailure('mistral-vision');
+      console.warn('[llmClient] Mistral vision failed:', e.message);
+    }
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    for (const modelName of geminiJsonFallbackChain()) {
+      if (!canUseLlmProvider(modelName)) continue;
+      try {
+        const text = await callGeminiVision(modelName, prompt, imageBase64, mimeType, 0.2);
+        recordLlmProviderSuccess(modelName);
+        return { data: JSON.parse(stripFences(text)), provider: modelName };
+      } catch (e) {
+        recordLlmProviderFailure(modelName);
+        console.warn(`[llmClient] ${modelName} vision failed:`, e.message);
+      }
+    }
+  }
+
+  throw new Error('All vision providers failed or no API keys configured');
+}
+
 async function callGemini(modelName, combinedPrompt, temperature = 0.1) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
