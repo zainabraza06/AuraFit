@@ -236,6 +236,14 @@ Return ONLY a JSON object:
                   specific color and ONE specific garment style — never write alternatives like
                   'yellow or green' or 'lehenga or gharara'; the advice text can mention options,
                   but searchPrompt is a single decisive query, not a choice.
+                  If a specific neckline/shoulder style genuinely flatters the body shape or proportions
+                  the user described (e.g. boat-neck to visually broaden narrow shoulders, off-shoulder
+                  or sweetheart to soften a pear shape, V-neck to elongate a shorter neck/torso, square
+                  neck for an hourglass), name that reasoning in the advice AND include the neckline word
+                  directly in searchPrompt too (one of: round neck, v-neck, boat neck, collar neck,
+                  keyhole neck, halter neck, square neck, off-shoulder) — e.g. 'boat neck emerald green
+                  lehenga for wedding'. Only include a neckline word when it's a genuine styling reason
+                  tied to what the user described, never as decoration.
                   The garment word in searchPrompt MUST be one of: kurta, shalwar-kameez, western,
                   lehenga, co-ord, abaya, saree — your Step 2 pivoted style, never the Step 1 ideal
                   if that one is unavailable. Never put sharara, gharara, anarkali, frock, maxi, gown,

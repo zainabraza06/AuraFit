@@ -11,24 +11,10 @@ type Msg = {
   isError?: boolean;
   advice?: { advice: string; searchPrompt: string };
 };
-type Mode = 'search' | 'stylist';
-
-const OCCASION_CHIPS = [
-  { label: 'Eid', prompt: 'A festive Eid outfit with accessories' },
-  { label: 'Wedding', prompt: 'A bridal/guest wedding look' },
-  { label: 'Mehndi', prompt: 'A colorful mehndi outfit' },
-  { label: 'Party', prompt: 'A stylish party look for evening' },
-  { label: 'Office', prompt: 'A smart office formal outfit' },
-  { label: 'Casual', prompt: 'An everyday casual look' },
-];
-
-const STYLIST_WELCOME = "Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\"";
-
 export default function ChatPage() {
-  const [mode, setMode] = useState<Mode>('search');
   const [messages, setMessages] = useState<Msg[]>([{
     role: 'ai',
-    text: "Assalam o Alaikum! I'm your personal AI Stylist, powered by Gemini. Tell me what occasion you're dressing for, your color preference, or budget — and I'll curate a complete look from Pakistan's top brands. ✨"
+    text: "Assalam o Alaikum! I'm your personal AI Stylist, powered by Gemini. Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards, then show you real pieces from our catalog. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\" ✨"
   }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,18 +68,8 @@ export default function ChatPage() {
     } finally { setLoading(false); }
   };
 
-  const searchThisLook = (searchPrompt: string) => {
-    setMode('search');
+  const showRecommendations = (searchPrompt: string) => {
     send(searchPrompt);
-  };
-
-  const switchMode = (m: Mode) => {
-    if (m === mode) return;
-    setMode(m);
-    setMessages(p => [...p, {
-      role: 'ai',
-      text: m === 'stylist' ? STYLIST_WELCOME : "Back to direct search — describe what you need and I'll curate a look."
-    }]);
   };
 
   const handleEscalate = async (msgIdx: number, userMessage: string) => {
@@ -132,28 +108,8 @@ export default function ChatPage() {
         <div className="live-badge" style={{ marginLeft: 'auto' }}>Online</div>
       </div>
 
-      {/* Mode toggle */}
-      <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 66px)', left: 0, right: 0, zIndex: 49, background: 'rgba(8,8,16,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)', padding: '0.6rem clamp(1rem,4vw,3rem)', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-        {(['search', 'stylist'] as Mode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => switchMode(m)}
-            disabled={loading}
-            style={{
-              padding: '0.4rem 1.1rem', borderRadius: '100px', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-              fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 600,
-              background: mode === m ? 'var(--accent)' : 'var(--bg-elevated)',
-              color: mode === m ? '#0a0a12' : 'var(--text-secondary)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {m === 'search' ? '🔍 Direct Search' : '👤 Personal Stylist'}
-          </button>
-        ))}
-      </div>
-
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 130px) clamp(1rem,4vw,3rem) 200px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 82px) clamp(1rem,4vw,3rem) 200px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '0.4rem' }}>
             {msg.role === 'ai' && (
@@ -205,7 +161,7 @@ export default function ChatPage() {
                 {msg.advice && (
                   <div style={{ marginTop: '0.85rem' }}>
                     <button
-                      onClick={() => searchThisLook(msg.advice!.searchPrompt)}
+                      onClick={() => showRecommendations(msg.advice!.searchPrompt)}
                       disabled={loading}
                       style={{
                         background: 'rgba(201,169,110,0.12)',
@@ -220,7 +176,7 @@ export default function ChatPage() {
                         textAlign: 'left',
                       }}
                     >
-                      🔍 Search: "{msg.advice.searchPrompt}"
+                      👗 Show Recommendations
                     </button>
                   </div>
                 )}
@@ -249,36 +205,20 @@ export default function ChatPage() {
 
       {/* Input area */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'rgba(8,8,16,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', padding: '0.85rem clamp(1rem,4vw,3rem) 1.25rem' }}>
-        {/* Occasion chips — direct-search mode only */}
-        {mode === 'search' && (
-          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', maxWidth: 860, margin: '0 auto 0.75rem' }}>
-            {OCCASION_CHIPS.map(chip => (
-              <button
-                key={chip.label}
-                className="chip"
-                onClick={() => send(chip.prompt)}
-                disabled={loading}
-                style={{ fontSize: '0.73rem', padding: '0.3rem 0.85rem' }}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        )}
         <div style={{ display: 'flex', gap: '0.85rem', maxWidth: 860, margin: '0 auto' }}>
           <div className="style-input-wrap" style={{ flex: 1 }}>
             <input
               type="text"
-              placeholder={mode === 'stylist' ? "E.g. I'm tall with a cool undertone, going to a wedding…" : 'E.g. A maroon wedding outfit under Rs. 12,000…'}
+              placeholder="E.g. I'm tall with a cool undertone, going to a wedding…"
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') (mode === 'stylist' ? sendStyleAdvice(input) : send(input)); }}
+              onKeyDown={e => { if (e.key === 'Enter') sendStyleAdvice(input); }}
               style={{ fontSize: '0.92rem' }}
             />
           </div>
           <button
             className="btn btn-primary"
-            onClick={() => (mode === 'stylist' ? sendStyleAdvice(input) : send(input))}
+            onClick={() => sendStyleAdvice(input)}
             disabled={!input.trim() || loading}
             style={{ borderRadius: '100px', padding: '0 1.75rem', flexShrink: 0 }}
           >

@@ -143,7 +143,7 @@ export function generateShoeMatchReason(shoe, dress) {
 
 // Default relaxation order: first entry = dropped first = least important by default.
 // "color" is a unified placeholder covering exact shade → family → none.
-const DEFAULT_RELAX_ORDER = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season', 'color'];
+const DEFAULT_RELAX_ORDER = ['neckline', 'occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season', 'color'];
 
 /**
  * Build the unified relaxation order respecting the user's stated priority.
@@ -170,6 +170,7 @@ function buildUnifiedRelaxOrder(constraintPriority = []) {
 // Which constraints the user actually specified (only filter on these)
 function getSpecifiedConstraints(intent) {
   const specified = new Set();
+  if (intent.neckline)                                      specified.add('neckline');
   if (intent.occasion?.length)                              specified.add('occasion');
   if (intent.print)                                         specified.add('print');
   if (intent.dressStyle)                                    specified.add('dressStyle');
@@ -206,6 +207,8 @@ function buildRelaxationMessage(intent, relaxedFields) {
   // ── What was relaxed ──
   const relaxedParts = [];
 
+  if (droppedKeys.has('neckline'))
+    relaxedParts.push(intent.neckline ? `${intent.neckline} neckline` : 'neckline');
   if (droppedKeys.has('print'))
     relaxedParts.push(intent.print ? `${intent.print} work` : 'print/work');
   if (droppedKeys.has('dressStyle'))
@@ -241,6 +244,7 @@ function buildRelaxationMessage(intent, relaxedFields) {
   if (!colorFullyDropped && !colorDowngraded && baseCol) stillParts.push(baseCol);
   if (colorDowngraded && intent.colorFamily && intent.colorFamily !== 'Any')
     stillParts.push(`${intent.colorFamily} shades`);
+  if (!droppedKeys.has('neckline') && intent.neckline)   stillParts.push(`${intent.neckline} neckline`);
   if (!droppedKeys.has('print') && intent.print)         stillParts.push(intent.print);
   if (!droppedKeys.has('dressStyle') && intent.dressStyle) stillParts.push(intent.dressStyle);
   if (!droppedKeys.has('stitching') && intent.stitching) stillParts.push(intent.stitching);
@@ -315,6 +319,15 @@ function buildDBQuery(intent, dropped, colorMode) {
     const safe = escapeRegex(String(intent.fabric).trim());
     if (safe) query.fabric = { $regex: new RegExp(safe, 'i') };
   }
+  // Neckline: the structured field only covers ~12% of the catalog, so also match
+  // the (more common) mention of it in free-text descriptions — a soft signal, not
+  // a strict filter, which is why it's always dropped first during relaxation.
+  if (!dropped.has('neckline') && intent.neckline) {
+    const safe = escapeRegex(String(intent.neckline).trim());
+    const textPattern = new RegExp(safe.replace(/-/g, '[\\s-]?'), 'i');
+    query.$and = query.$and || [];
+    query.$and.push({ $or: [{ neckline: intent.neckline }, { description: { $regex: textPattern } }] });
+  }
 
   if (!dropped.has('season') && intent.season) {
     query.$and = query.$and || [];
@@ -341,7 +354,7 @@ function buildDBQuery(intent, dropped, colorMode) {
 }
 
 const SELECT_CLOTHING =
-  'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion season style tags imageUrl images productUrl description gender metadataScore embedding';
+  'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion season style tags imageUrl images productUrl description neckline gender metadataScore embedding';
 
 const SELECT_SHOE =
   'name brand price images primaryColor primaryExactColor colors occasion shoeType subCategory gender tags productUrl style embedding';
@@ -633,7 +646,7 @@ async function getAccessoryOnlyOutfitResponse(intent, catalog) {
 // counts for every possible next move and decides ONE honest step — relax the
 // least-important filter, tell the shopper to raise their budget, accept, or stop.
 // Falls back to the deterministic fetchCandidatesDeterministic() if the LLM is unavailable.
-const RELAXABLE = ['occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
+const RELAXABLE = ['neckline', 'occasion', 'print', 'dressStyle', 'stitching', 'pieces', 'fabric', 'season'];
 const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
 const TARGET_RESULTS = 8;
 const MAX_ROUNDS = 4;
@@ -678,6 +691,7 @@ async function countFor(intent, dropped, colorMode) {
 }
 
 function relaxLabel(intent, c) {
+  if (c === 'neckline') return intent.neckline || 'neckline';
   if (c === 'pieces') return intent.pieces ? `${intent.pieces}-piece` : 'piece count';
   if (c === 'print') return intent.print || 'print/work';
   if (c === 'stitching') return intent.stitching || 'stitching';

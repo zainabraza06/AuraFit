@@ -21,6 +21,9 @@ Return ONLY a valid JSON object with these exact fields:
 - fabric: String (e.g., "lawn", "chiffon") or null.
 - stitching: "stitched", "unstitched", or null.
 - print: "embroidered", "printed", "plain", "mixed", or null — from user wording about work/print.
+- neckline: ONE of: round, v-neck, boat-neck, collar, keyhole, halter, square, off-shoulder — ONLY if the
+  user explicitly named a neckline/shoulder style (e.g. "off-shoulder", "boat neck", "halter", "V-neck",
+  "square neck"). null if not mentioned — never guess one.
 - maxBudget: Number (PKR). 0 if not mentioned.
 - season: "summer", "winter", "all-season", or null if not mentioned.
 - constraintPriority: Ordered array — MOST important constraint FIRST (the one the user would least want dropped).

@@ -14,28 +14,15 @@ type Msg = {
   advice?: { advice: string; searchPrompt: string };
 };
 type PanelState = 'closed' | 'open' | 'minimized';
-type Mode = 'search' | 'stylist';
-
-const OCCASION_CHIPS = [
-  { label: 'Eid', prompt: 'A festive Eid outfit with accessories' },
-  { label: 'Wedding', prompt: 'A bridal/guest wedding look' },
-  { label: 'Mehndi', prompt: 'A colorful mehndi outfit' },
-  { label: 'Party', prompt: 'A stylish party look for evening' },
-  { label: 'Office', prompt: 'A smart office formal outfit' },
-  { label: 'Casual', prompt: 'An everyday casual look' },
-];
-
-const STYLIST_WELCOME = "Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\"";
 
 let msgId = 0;
 
 export default function ChatWidget() {
   const [panel, setPanel] = useState<PanelState>('closed');
-  const [mode, setMode] = useState<Mode>('search');
   const [messages, setMessages] = useState<Msg[]>([{
     id: msgId++,
     role: 'ai',
-    text: "Assalam o Alaikum! I'm your AI Stylist. Pick an occasion below or describe what you need — I'll curate a complete look. ✨"
+    text: "Assalam o Alaikum! I'm your AI Stylist. Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards, then show you real pieces from our catalog. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\" ✨"
   }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -129,18 +116,8 @@ export default function ChatWidget() {
     }
   };
 
-  const searchThisLook = (searchPrompt: string) => {
-    setMode('search');
+  const showRecommendations = (searchPrompt: string) => {
     send(searchPrompt);
-  };
-
-  const switchMode = (m: Mode) => {
-    if (m === mode) return;
-    setMode(m);
-    setMessages(p => [...p, {
-      id: msgId++, role: 'ai',
-      text: m === 'stylist' ? STYLIST_WELCOME : 'Back to direct search — describe what you need and I\'ll curate a look.'
-    }]);
   };
 
   const handleEscalate = async (msgId: number, userQuery: string) => {
@@ -262,63 +239,6 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {/* Mode toggle */}
-          <div style={{ display: 'flex', padding: '0.6rem 1.25rem 0', gap: '0.4rem', background: 'var(--bg-primary)', flexShrink: 0 }}>
-            {(['search', 'stylist'] as Mode[]).map(m => (
-              <button
-                key={m}
-                onClick={() => switchMode(m)}
-                disabled={loading}
-                style={{
-                  flex: 1, padding: '0.4rem 0.5rem', borderRadius: '100px', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                  fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 600,
-                  background: mode === m ? 'var(--accent)' : 'var(--bg-elevated)',
-                  color: mode === m ? 'var(--bg-primary)' : 'var(--text-secondary)',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {m === 'search' ? '🔍 Direct Search' : '👤 Personal Stylist'}
-              </button>
-            ))}
-          </div>
-
-          {/* Occasion chips — direct-search mode only */}
-          {mode === 'search' && (
-          <div style={{
-            padding: '0.65rem 1.25rem',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-primary)',
-            flexShrink: 0,
-            display: 'flex', gap: '0.4rem', flexWrap: 'wrap',
-          }}>
-            {OCCASION_CHIPS.map(chip => (
-              <button
-                key={chip.label}
-                onClick={() => send(chip.prompt)}
-                disabled={loading}
-                style={{
-                  background: 'rgba(201,169,110,0.08)',
-                  border: '1px solid rgba(201,169,110,0.25)',
-                  color: 'var(--accent)',
-                  borderRadius: '100px',
-                  padding: '0.25rem 0.7rem',
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  letterSpacing: '0.02em',
-                  transition: 'background 0.15s, border-color 0.15s',
-                  opacity: loading ? 0.5 : 1,
-                  fontFamily: 'var(--font-body)',
-                }}
-                onMouseEnter={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,169,110,0.18)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,169,110,0.08)'; }}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-          )}
-
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
             {messages.map((msg) => (
@@ -366,7 +286,7 @@ export default function ChatWidget() {
                     )}
                     {msg.advice && (
                       <button
-                        onClick={() => searchThisLook(msg.advice!.searchPrompt)}
+                        onClick={() => showRecommendations(msg.advice!.searchPrompt)}
                         disabled={loading}
                         style={{
                           marginTop: '0.65rem', display: 'block', width: '100%', textAlign: 'left',
@@ -376,7 +296,7 @@ export default function ChatWidget() {
                           fontFamily: 'var(--font-body)', lineHeight: 1.4,
                         }}
                       >
-                        🔍 Search: "{msg.advice.searchPrompt}"
+                        👗 Show Recommendations
                       </button>
                     )}
                   </div>
@@ -414,12 +334,12 @@ export default function ChatWidget() {
                 type="text"
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') (mode === 'stylist' ? sendStyleAdvice(input) : send(input)); }}
-                placeholder={mode === 'stylist' ? "E.g. I'm tall with a cool undertone, going to a wedding…" : 'E.g. Eid outfit in blush pink…'}
+                onKeyDown={e => { if (e.key === 'Enter') sendStyleAdvice(input); }}
+                placeholder="E.g. I'm tall with a cool undertone, going to a wedding…"
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-body)' }}
               />
               <button
-                onClick={() => (mode === 'stylist' ? sendStyleAdvice(input) : send(input))}
+                onClick={() => sendStyleAdvice(input)}
                 disabled={!input.trim() || loading}
                 style={{
                   width: 34, height: 34, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
