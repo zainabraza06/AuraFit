@@ -703,7 +703,7 @@ function relaxLabel(intent, c) {
   return c;
 }
 
-async function agenticRelax(intent) {
+export async function agenticRelax(intent) {
   const specified = getSpecifiedConstraints(intent);
   const dropped = new Set();
   let colorMode = specified.has('colorExact') ? 'exact' : specified.has('colorFamily') ? 'family' : 'none';

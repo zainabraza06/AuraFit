@@ -1,6 +1,7 @@
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
-import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs } from '../services/crossCatalogSearch.js';
+import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs, cosineSimilarity } from '../services/crossCatalogSearch.js';
+import { agenticRelax } from '../services/recommendationEngine.js';
 import { inferColors } from '../scripts/scrapers/utils/colorInference.js';
 
 /**
@@ -124,6 +125,41 @@ function buildEmbeddingText(signals, analysis) {
   return keywords ? `${base}\nDetails: ${keywords}` : base;
 }
 
+/**
+ * Builds a recommendationEngine-shaped "intent" from the photo analysis so a
+ * clothing photo can be run through the SAME honest progressive-relaxation
+ * engine used by text search (agenticRelax in recommendationEngine.js) instead
+ * of a plain similarity threshold. This is what makes a photo of a rare style
+ * (e.g. saree — only a couple in stock) come back with an honest "no exact
+ * match, here's what we relaxed" instead of silently substituting or returning
+ * nothing.
+ *
+ * constraintPriority lists MOST important first (dressStyle — the exact
+ * garment type the camera saw, the whole point of a photo search) down to
+ * LEAST important (occasion — the vision model's softest, most inferred guess).
+ */
+function buildIntentFromPhotoAnalysis(analysis, signals) {
+  const colorsExact = extractColorsForSearch(analysis.color);
+  const colorsFamily = extractColorFamilies(analysis.color);
+  const dressStyle = signals.garmentHints[0] || null;
+  return {
+    dressStyle,
+    occasion: signals.occasions,
+    colorExact: colorsExact[0] || null,
+    colorFamily: colorsFamily[0] || 'Any',
+    gender: signals.genderHint || 'women',
+    maxBudget: 0,
+    print: null,
+    stitching: null,
+    pieces: null,
+    fabric: null,
+    season: null,
+    neckline: null,
+    constraintPriority: dressStyle ? ['dressStyle', 'color', 'occasion'] : ['color', 'occasion'],
+    originalMessage: `photo of a ${analysis.category || 'clothing item'}`
+  };
+}
+
 export async function searchByImage(req, res) {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
@@ -203,14 +239,38 @@ export async function searchByImage(req, res) {
     // because they happen to score competitively on color/occasion embedding.
     const detectedCatalog = classifyCatalog(analysis);
 
-    let matches, engine, relaxedFloor = false;
+    let matches, engine, relaxedFloor = false, relaxationMessage = null;
+    const signals = analyzeSearchQuery(signalText);
 
-    if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
-      // Same hybrid cosine + facet ranking used by text search, but scoped to the
-      // single catalog the photo actually belongs to (see classifyCatalog above).
-      // Signals (color/occasion/garment) come from the clean signal text only;
-      // the embedding text separately layers in keywords for semantic richness.
-      const signals = analyzeSearchQuery(signalText);
+    if (detectedCatalog === 'clothing') {
+      // Clothing photos go through the SAME honest progressive-relaxation engine
+      // as text search, instead of a plain similarity threshold — so a photo of
+      // a rare style (e.g. saree, only a couple in stock) gets an honest "no
+      // exact match, here's what we had to relax" rather than silently
+      // substituting a different dressStyle or returning nothing.
+      const intent = buildIntentFromPhotoAnalysis(analysis, signals);
+      const { products, relaxationMessage: relaxMsg } = await agenticRelax(intent);
+      relaxationMessage = relaxMsg;
+
+      let ranked = products;
+      if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
+        const queryForEmbedding = buildEmbeddingText(signals, analysis);
+        const queryEmbedding = await getEmbedding(queryForEmbedding);
+        ranked = products
+          .map((p) => ({ ...p, _cosine: cosineSimilarity(queryEmbedding, p.embedding) }))
+          .sort((a, b) => b._cosine - a._cosine);
+      }
+      matches = ranked.slice(0, limit).map(({ embedding, _cosine, ...p }) => ({
+        ...p,
+        catalog: 'clothing',
+        relevanceScore: _cosine != null ? parseFloat(_cosine.toFixed(4)) : undefined
+      }));
+      engine = process.env.HUGGING_FACE_API_KEY
+        ? `HuggingFace all-MiniLM-L6-v2 + agentic relaxation (photo analyzed by ${visionProvider})`
+        : `agentic relaxation (photo analyzed by ${visionProvider})`;
+    } else if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
+      // Shoes/jewelry/watches — same hybrid cosine + facet ranking used by text
+      // search, scoped to the single catalog the photo actually belongs to.
       const queryForEmbedding = buildEmbeddingText(signals, analysis);
       const queryEmbedding = await getEmbedding(queryForEmbedding);
       // Fetch a larger pool than requested so the hard color filter below has
@@ -238,9 +298,12 @@ export async function searchByImage(req, res) {
       matches,
       engine,
       relaxedFloor,
-      message: matches.length
-        ? `Found ${matches.length} item${matches.length === 1 ? '' : 's'} matching your photo!`
-        : "No close matches found in our catalog for this photo — try a different image or search by text instead."
+      relaxationMessage,
+      message: relaxationMessage
+        ? relaxationMessage
+        : matches.length
+          ? `Found ${matches.length} item${matches.length === 1 ? '' : 's'} matching your photo!`
+          : "No close matches found in our catalog for this photo — try a different image or search by text instead."
     });
   } catch (err) {
     console.error('Image search error:', err);
