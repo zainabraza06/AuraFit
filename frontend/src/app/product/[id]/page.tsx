@@ -257,6 +257,11 @@ export default function ProductDetailsPage() {
                       <div className="score-bar">
                         <div className="score-bar__fill" style={{ width: `${rec.scores.total * 100}%`, background: 'linear-gradient(90deg, var(--accent-teal), var(--accent-warm))' }} />
                       </div>
+                      {rec.reason && (
+                        <p style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                          {rec.reason}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}

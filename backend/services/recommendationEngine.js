@@ -1171,7 +1171,23 @@ export async function getRecommendations(productId, options = {}) {
       })
     : candidatePicks.slice(0, maxShoes).map((pick) => ({ product: pick.product, scores: { total: pick.score }, reason: pick.reason }));
 
-  const scoredClothing = clothingPool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxClothing);
+  // Complementary clothing: same two-stage pattern as shoes above — a
+  // deterministic pre-filter (scoreProduct's embedding/color/occasion/style
+  // heuristic) narrows the pool, then an AI reasoning pass picks the final N
+  // and explains each as a genuine styling/coordination choice rather than a
+  // bare percentage.
+  const clothingCandidates = clothingPool
+    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
+    .sort((a, b) => b.scores.total - a.scores.total)
+    .slice(0, Math.max(maxClothing * 3, 15));
+
+  const clothingAiPicks = await rankComplementaryClothingWithAI(source, clothingCandidates.map((c) => c.product), maxClothing);
+  const scoredClothing = clothingAiPicks
+    ? clothingAiPicks.map((ai) => {
+        const det = clothingCandidates.find((c) => c.product === ai.product);
+        return { product: ai.product, scores: det?.scores ?? { total: 0.5 }, reason: ai.reason };
+      })
+    : clothingCandidates.slice(0, maxClothing);
 
   return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
 }
