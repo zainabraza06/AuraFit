@@ -17,6 +17,8 @@
     "export:catalog": "node scripts/exportCatalog.js",
     "audit:catalog": "node scripts/auditCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
+    "embed:clothing": "node scripts/embedAll.js",
+    "embed:accessories": "node scripts/embedAccessories.js",
     "test": "node --test"
   },
   "dependencies": {
