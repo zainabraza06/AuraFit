@@ -4,6 +4,24 @@ import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs } from '.
 import { inferColors } from '../scripts/scrapers/utils/colorInference.js';
 
 /**
+ * The photo shows exactly ONE item, so its matches should come from exactly ONE
+ * catalog. Without this, a saree/kurta photo's embedding can score competitively
+ * against gold/bridal jewelry or shoes (shared color + occasion words), letting
+ * accessories leak into "top matches" for a plain clothing photo.
+ */
+const SHOE_WORDS = /\b(shoe|heel|pump|stiletto|sandal|chappal|sneaker|trainer|jogger|boot|loafer|flat|wedge|mule|slipper|khussa|kolhapuri|peshawari|oxford|clog|espadrille)s?\b/i;
+const JEWELRY_WORDS = /\b(earring|jhumka|chandbali|necklace|choker|mala|pendant|bracelet|bangle|kada|ring|nose[- ]?pin|nath|tikka|jhoomar|passa|anklet|payal|brooch|cufflink|jewel(?:le)?ry)s?\b/i;
+const WATCH_WORDS = /\b(watch|wristwatch|chronograph|smartwatch)(?:es)?\b/i;
+
+function classifyCatalog(analysis) {
+  const text = `${analysis.category} ${(analysis.keywords || []).join(' ')}`;
+  if (SHOE_WORDS.test(text)) return 'shoes';
+  if (JEWELRY_WORDS.test(text)) return 'jewelry';
+  if (WATCH_WORDS.test(text)) return 'watches';
+  return 'clothing';
+}
+
+/**
  * Vision models don't always honor "return a plain string" instructions — some
  * (Pixtral in particular) occasionally nest a field as { name, hex, ... }. Flatten
  * whatever comes back into readable text instead of letting "[object Object]"
@@ -114,6 +132,23 @@ export async function searchByImage(req, res) {
       Analyze this fashion item as a Pakistani fashion e-commerce stylist would.
       Identify its:
       - Category (dress, kurta, lehenga, saree, shoe, earrings, necklace, etc.)
+        Pay close attention to distinguishing SAREE from LEHENGA — they are
+        frequently confused but are structurally different:
+          • SAREE = ONE continuous piece of unstitched fabric (5-6 yards) draped
+            around the body and pleated, with the loose end (pallu) draped over one
+            shoulder. Worn over a separate fitted blouse and petticoat, but the
+            saree itself has no visible waist seam or stitched skirt panel — the
+            drape is continuous fabric, often with a visible border running along
+            one edge.
+          • LEHENGA = a separate stitched, flared, floor-length SKIRT (with a
+            waistband/seam) worn with a cropped fitted blouse (choli) and a
+            separate dupatta draped loosely — three distinct stitched pieces, not
+            one draped fabric length.
+        If the photo shows a visible waist seam / stitched skirt silhouette with a
+        cropped blouse, it's a lehenga. If it shows one continuous draped fabric
+        with a pallu over the shoulder and no stitched skirt seam, it's a saree.
+        Do not default to "lehenga" just because the outfit looks bridal or heavily
+        embellished — sarees are also worn for weddings and formal occasions.
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
         "off white"). If the garment genuinely has two significant color BLOCKS
@@ -150,12 +185,16 @@ export async function searchByImage(req, res) {
 
     const signalText = buildSignalText(analysis);
     const limit = Math.min(30, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    // The photo shows exactly one item — restrict matches to its own catalog so a
+    // clothing photo can't surface shoes/jewelry/watches (or vice versa) just
+    // because they happen to score competitively on color/occasion embedding.
+    const detectedCatalog = classifyCatalog(analysis);
 
     let matches, engine, relaxedFloor = false;
 
     if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
-      // Same hybrid cosine + facet ranking used by text search, across ALL catalogs
-      // (clothing/shoes/jewelry/watches) — so a photo of shoes correctly surfaces shoes.
+      // Same hybrid cosine + facet ranking used by text search, but scoped to the
+      // single catalog the photo actually belongs to (see classifyCatalog above).
       // Signals (color/occasion/garment) come from the clean signal text only;
       // the embedding text separately layers in keywords for semantic richness.
       const signals = analyzeSearchQuery(signalText);
@@ -163,7 +202,7 @@ export async function searchByImage(req, res) {
       const queryEmbedding = await getEmbedding(queryForEmbedding);
       // Fetch a larger pool than requested so the hard color filter below has
       // enough correctly-colored candidates to fill the final result set from.
-      const searchRes = await searchAcrossCatalogs(signals, queryEmbedding, { limit: Math.min(60, limit * 3) });
+      const searchRes = await searchAcrossCatalogs(signals, queryEmbedding, { limit: Math.min(60, limit * 3), catalog: detectedCatalog });
       const colorFamilies = extractColorFamilies(analysis.color);
       matches = filterByColorFamily(searchRes.results, colorFamilies).slice(0, limit);
       relaxedFloor = searchRes.relaxedFloor;
@@ -174,7 +213,7 @@ export async function searchByImage(req, res) {
       // like "maroon" only ever lives in primaryExactColor/exactColors).
       const searchRes = await regexSearchAcrossCatalogs(
         { color: extractColorsForSearch(analysis.color), keywords: [analysis.category, ...(analysis.keywords || [])] },
-        { limit }
+        { limit, catalog: detectedCatalog }
       );
       matches = searchRes.results;
       engine = 'keyword fallback (add HUGGING_FACE_API_KEY for semantic visual search)';
@@ -182,6 +221,7 @@ export async function searchByImage(req, res) {
 
     res.json({
       analysis,
+      detectedCatalog,
       matches,
       engine,
       relaxedFloor,
