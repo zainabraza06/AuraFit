@@ -1,16 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { authApi } from '@/lib/api';
-
-const QUICK_LINKS = [
-  { href: '/favorites',    icon: '❤️', label: 'Favourites',     desc: 'Your saved products' },
-  { href: '/wardrobe',     icon: '👕', label: 'My Wardrobe',    desc: 'Your digital closet' },
-  { href: '/boards',       icon: '📋', label: 'Outfit Boards',  desc: 'AI-curated looks' },
-  { href: '/try-on',       icon: '👗', label: 'Virtual Try-On', desc: 'See clothes on you' },
-  { href: '/search/visual',icon: '📸', label: 'Visual Search',  desc: 'Search by photo' },
-];
 
 export default function AccountPage() {
   const router = useRouter();
@@ -100,25 +91,6 @@ export default function AccountPage() {
             </div>
             <button onClick={handleLogout} className="btn btn-secondary">Logout</button>
           </div>
-        </div>
-      </div>
-
-      {/* Quick links */}
-      <div className="container" style={{ maxWidth: 720, padding: '3rem clamp(1rem,4vw,3rem)' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '1.25rem', color: 'var(--text-secondary)' }}>Quick Access</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-          {QUICK_LINKS.map(l => (
-            <Link key={l.href} href={l.href} style={{ textDecoration: 'none' }}>
-              <div className="glass-card" style={{ padding: '1.25rem 1.5rem', cursor: 'pointer', transition: 'border-color 0.2s' }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-accent)')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
-              >
-                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{l.icon}</div>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>{l.label}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{l.desc}</div>
-              </div>
-            </Link>
-          ))}
         </div>
       </div>
     </main>

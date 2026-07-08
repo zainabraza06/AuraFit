@@ -10,6 +10,7 @@
  * degrade gracefully (the app must not crash when Cloudinary is absent).
  */
 import { v2 as cloudinary } from 'cloudinary';
+import axios from 'axios';
 
 let _configured = null;
 
@@ -55,14 +56,18 @@ export function isCloudinaryConfigured() {
 /**
  * Uploads an in-memory image buffer to Cloudinary.
  * @param {Buffer} buffer
- * @param {{ folder?: string, publicId?: string }} [opts]
+ * @param {{ folder?: string, publicId?: string, transformation?: object[] }} [opts]
  * @returns {Promise<{ url: string, publicId: string }>}
  */
 export function uploadBufferToCloudinary(buffer, opts = {}) {
   if (!isCloudinaryConfigured()) {
     return Promise.reject(new Error('Cloudinary is not configured'));
   }
-  const { folder = 'aurafit/avatars', publicId } = opts;
+  const {
+    folder = 'aurafit/avatars',
+    publicId,
+    transformation = [{ width: 512, height: 512, crop: 'limit' }, { quality: 'auto', fetch_format: 'auto' }]
+  } = opts;
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
@@ -70,7 +75,7 @@ export function uploadBufferToCloudinary(buffer, opts = {}) {
         public_id: publicId,
         overwrite: true,
         resource_type: 'image',
-        transformation: [{ width: 512, height: 512, crop: 'limit' }, { quality: 'auto', fetch_format: 'auto' }]
+        transformation
       },
       (err, result) => {
         if (err) return reject(err);
@@ -78,5 +83,24 @@ export function uploadBufferToCloudinary(buffer, opts = {}) {
       }
     );
     stream.end(buffer);
+  });
+}
+
+/**
+ * Downloads an image from a (possibly ephemeral/session-scoped) URL and
+ * re-hosts it on Cloudinary, returning a permanent, universally-loadable URL.
+ * Used for AI-generated try-on results — provider URLs (Replicate, free HF
+ * Spaces) can be short-lived, session-bound, or reject hotlinking from a
+ * browser <img> tag loaded well after the request that generated them.
+ * @param {string} sourceUrl
+ * @param {{ folder?: string, publicId?: string }} [opts]
+ * @returns {Promise<{ url: string, publicId: string }>}
+ */
+export async function rehostUrlOnCloudinary(sourceUrl, opts = {}) {
+  const { data } = await axios.get(sourceUrl, { responseType: 'arraybuffer', timeout: 30000 });
+  return uploadBufferToCloudinary(Buffer.from(data), {
+    folder: 'aurafit/tryon',
+    transformation: [{ width: 1024, height: 1024, crop: 'limit' }, { quality: 'auto', fetch_format: 'auto' }],
+    ...opts
   });
 }

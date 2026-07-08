@@ -1,5 +1,27 @@
+import { isCloudinaryConfigured, rehostUrlOnCloudinary } from '../services/cloudinary.js';
+
 function bufferToDataUrl(buffer, mimetype) {
   return `data:${mimetype};base64,${buffer.toString('base64')}`;
+}
+
+/**
+ * Both providers return a URL to the generated image. Replicate's URLs expire
+ * after a period; the free Hugging Face Space's URLs are tied to its own
+ * ephemeral `/tmp/gradio/...` file server and can reject or 404 by the time a
+ * browser <img> tag loads them well after the API call returned. Re-hosting on
+ * Cloudinary immediately gives the frontend a permanent, always-loadable URL.
+ * Falls back to the raw provider URL if Cloudinary isn't configured or the
+ * re-host itself fails — never throw away a successful generation over this.
+ */
+async function finalizeResultUrl(resultUrl) {
+  if (!isCloudinaryConfigured()) return resultUrl;
+  try {
+    const { url } = await rehostUrlOnCloudinary(resultUrl);
+    return url;
+  } catch (e) {
+    console.warn('[TryOn] Cloudinary re-host failed, returning provider URL directly:', e.message);
+    return resultUrl;
+  }
 }
 
 /** Paid path — Replicate-hosted IDM-VTON. Fast (~30-90s), needs REPLICATE_API_KEY + account credit. */
@@ -101,7 +123,8 @@ export async function virtualTryon(req, res) {
     let replicateError = null;
     try {
       const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
-      return res.json({ success: true, resultUrl, provider, message: 'Virtual try-on generated successfully!' });
+      const finalUrl = await finalizeResultUrl(resultUrl);
+      return res.json({ success: true, resultUrl: finalUrl, provider, message: 'Virtual try-on generated successfully!' });
     } catch (err) {
       replicateError = err;
       if (!err.notConfigured) console.warn('[TryOn] Replicate failed, falling back to free provider:', err.message);
@@ -111,9 +134,10 @@ export async function virtualTryon(req, res) {
     // back to the free Hugging Face Space automatically.
     try {
       const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
+      const finalUrl = await finalizeResultUrl(resultUrl);
       return res.json({
         success: true,
-        resultUrl,
+        resultUrl: finalUrl,
         provider,
         message: 'Virtual try-on generated using our free AI provider (may be slower than usual).'
       });

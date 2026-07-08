@@ -1,4 +1,5 @@
 'use client';
+import TryOnButton from './TryOnButton';
 
 // ── Tier config ────────────────────────────────────────────────────────────────
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -161,6 +162,10 @@ export default function RecommendationResult({ data, compact = false }: { data: 
             <p style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)', fontWeight: 700, marginBottom: '0.2rem' }}>Why AI chose this</p>
             <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, margin: 0 }}>"{topResult.matchReason}"</p>
           </div>
+        )}
+
+        {heroDress && (
+          <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} variant="full" />
         )}
 
         {relaxationMessage && (
@@ -339,11 +344,14 @@ export default function RecommendationResult({ data, compact = false }: { data: 
 
                 {heroJewelry?.length > 0 && <PairedJewelry jewelry={heroJewelry} />}
 
-                {heroDress.productUrl && (
-                  <a href={heroDress.productUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>
-                    Shop on {heroDress.brand} →
-                  </a>
-                )}
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginTop: 'auto' }}>
+                  {heroDress.productUrl && (
+                    <a href={heroDress.productUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+                      Shop on {heroDress.brand} →
+                    </a>
+                  )}
+                  <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} variant="full" />
+                </div>
               </div>
             </div>
           </div>
@@ -420,14 +428,17 @@ export default function RecommendationResult({ data, compact = false }: { data: 
 
                         {r.jewelry?.length > 0 && <PairedJewelry jewelry={r.jewelry} size="compact" />}
 
-                        {p.productUrl && (
-                          <a href={p.productUrl} target="_blank" rel="noopener noreferrer"
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '0.45rem 0.85rem', marginTop: 'auto', textAlign: 'center', textDecoration: 'none' }}
-                          >
-                            Shop →
-                          </a>
-                        )}
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: 'auto' }}>
+                          {p.productUrl && (
+                            <a href={p.productUrl} target="_blank" rel="noopener noreferrer"
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '0.45rem 0.85rem', textAlign: 'center', textDecoration: 'none', flex: 1 }}
+                            >
+                              Shop →
+                            </a>
+                          )}
+                          <TryOnButton productImage={p.imageUrl || p.images?.[0]} productName={p.name} />
+                        </div>
                       </div>
                     </div>
                   );

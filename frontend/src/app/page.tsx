@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ProductCard from '@/components/ProductCard';
+import TryOnButton from '@/components/TryOnButton';
 import { productsApi, recommendationsApi } from '@/lib/api';
 
 const OCCASIONS = ['All', 'Casual', 'Wedding', 'Office', 'Eid', 'Party', 'Mehndi', 'Formal'];
@@ -255,6 +256,11 @@ export default function HomePage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-light)' }}>PKR {chatResult.results[0].product.price?.toLocaleString()}</span>
                       <a href={chatResult.results[0].product.productUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Shop This Look →</a>
+                      <TryOnButton
+                        productImage={chatResult.results[0].product.imageUrl || chatResult.results[0].product.images?.[0]}
+                        productName={chatResult.results[0].product.name}
+                        variant="full"
+                      />
                     </div>
                     {/* Paired shoe */}
                     {chatResult.results[0].shoe && (
@@ -361,7 +367,10 @@ export default function HomePage() {
                                 ))}
                               </div>
                             )}
-                            <a href={r.product.productUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ marginTop: 'auto', textAlign: 'center' }}>Shop →</a>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: 'auto' }}>
+                              <a href={r.product.productUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textAlign: 'center', flex: 1 }}>Shop →</a>
+                              <TryOnButton productImage={r.product.imageUrl || r.product.images?.[0]} productName={r.product.name} />
+                            </div>
                           </div>
                         </div>
                       ))}
