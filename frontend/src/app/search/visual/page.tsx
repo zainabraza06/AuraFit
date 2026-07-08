@@ -9,6 +9,9 @@ export default function VisualSearchPage() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [engine, setEngine] = useState<string>('');
   const [message, setMessage] = useState<string>('');
+  const [intent, setIntent] = useState<any>(null);
+  const [feedback, setFeedback] = useState('');
+  const [refining, setRefining] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,6 +30,8 @@ export default function VisualSearchPage() {
     setAnalysis(null);
     setEngine('');
     setMessage('');
+    setIntent(null);
+    setFeedback('');
 
     const formData = new FormData();
     formData.append('image', file);
@@ -37,11 +42,29 @@ export default function VisualSearchPage() {
       setResults(res.data.matches || []);
       setEngine(res.data.engine || '');
       setMessage(res.data.message || '');
+      setIntent(res.data.intent || null);
     } catch (err) {
       console.error('Visual search failed', err);
       alert('Failed to analyze the image.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!intent || !feedback.trim() || refining) return;
+    setRefining(true);
+    try {
+      const res = await visualSearchApi.refine(intent, feedback.trim());
+      setResults(res.data.matches || []);
+      setMessage(res.data.message || '');
+      setIntent(res.data.intent || intent);
+      setFeedback('');
+    } catch (err) {
+      console.error('Refine failed', err);
+      alert('Failed to refine the search.');
+    } finally {
+      setRefining(false);
     }
   };
 
@@ -123,8 +146,35 @@ export default function VisualSearchPage() {
               {results.length ? 'We Found These Matches' : 'No Matches Found'}
             </h2>
             {message && (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '2rem' }}>{message}</p>
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>{message}</p>
             )}
+
+            {intent && (
+              <div style={{ maxWidth: '600px', margin: '0 auto 2.5rem' }}>
+                <p style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.6rem' }}>
+                  Not quite right? Tell us what to keep and what can change — e.g. "prioritize {intent.dressStyle || 'the style'}, color can change"
+                </p>
+                <div style={{ display: 'flex', gap: '0.6rem' }}>
+                  <input
+                    type="text"
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRefine(); }}
+                    placeholder={`e.g. prioritize ${intent.dressStyle || 'saree'}, color can change`}
+                    style={{ flex: 1, padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleRefine}
+                    disabled={!feedback.trim() || refining}
+                    style={{ borderRadius: 'var(--radius-sm)', padding: '0 1.5rem', flexShrink: 0 }}
+                  >
+                    {refining ? 'Refining…' : 'Refine'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {results.length > 0 && (
               <div className="product-grid">
                 {results.map((p) => (

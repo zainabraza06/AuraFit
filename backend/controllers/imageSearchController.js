@@ -2,6 +2,7 @@ import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
 import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs, cosineSimilarity } from '../services/crossCatalogSearch.js';
 import { agenticRelax } from '../services/recommendationEngine.js';
+import { parseRefinementFeedback } from '../services/intentAdapter.js';
 import { inferColors } from '../scripts/scrapers/utils/colorInference.js';
 
 /**
@@ -239,7 +240,7 @@ export async function searchByImage(req, res) {
     // because they happen to score competitively on color/occasion embedding.
     const detectedCatalog = classifyCatalog(analysis);
 
-    let matches, engine, relaxedFloor = false, relaxationMessage = null;
+    let matches, engine, relaxedFloor = false, relaxationMessage = null, intentUsed = null;
     const signals = analyzeSearchQuery(signalText);
 
     if (detectedCatalog === 'clothing') {
@@ -247,8 +248,11 @@ export async function searchByImage(req, res) {
       // as text search, instead of a plain similarity threshold — so a photo of
       // a rare style (e.g. saree, only a couple in stock) gets an honest "no
       // exact match, here's what we had to relax" rather than silently
-      // substituting a different dressStyle or returning nothing.
+      // substituting a different dressStyle or returning nothing. The intent is
+      // echoed back in the response so the frontend can send it to /refine
+      // after the user gives feedback, without re-uploading the photo.
       const intent = buildIntentFromPhotoAnalysis(analysis, signals);
+      intentUsed = intent;
       const { products, relaxationMessage: relaxMsg } = await agenticRelax(intent);
       relaxationMessage = relaxMsg;
 
@@ -295,6 +299,7 @@ export async function searchByImage(req, res) {
     res.json({
       analysis,
       detectedCatalog,
+      intent: intentUsed,
       matches,
       engine,
       relaxedFloor,
@@ -308,5 +313,59 @@ export async function searchByImage(req, res) {
   } catch (err) {
     console.error('Image search error:', err);
     res.status(500).json({ error: 'Failed to analyze image' });
+  }
+}
+
+/**
+ * Human-in-the-loop refinement: after seeing results (possibly with an honest
+ * "relaxed X" disclosure), the user reacts in plain English — e.g. "prioritize
+ * saree, color can change" — and this re-runs the SAME agentic relaxation
+ * engine with that feedback applied. No re-upload needed: the client just
+ * sends back the `intent` echoed in the original /image response.
+ *
+ * Two things carry the feedback into the engine, because agenticRelax's LLM
+ * step (planNextRelaxation) decides what to drop by reading `originalMessage`
+ * text, NOT by consulting constraintPriority — that field is only consulted in
+ * the rare deterministic fallback (LLM providers unavailable). So:
+ *   1. originalMessage is rewritten to state the feedback explicitly, which is
+ *      what the LLM planner actually reads ("keep what they clearly care
+ *      about" is literally in its instructions).
+ *   2. constraintPriority is also reordered, as a second line of defense for
+ *      the deterministic fallback path.
+ */
+export async function refineVisualSearch(req, res) {
+  try {
+    const { intent, feedback } = req.body || {};
+    if (!intent || typeof intent !== 'object' || !intent.dressStyle && !intent.occasion?.length && !intent.colorExact) {
+      return res.status(400).json({ error: 'A valid intent from the original photo search response is required.' });
+    }
+    if (!feedback || !String(feedback).trim()) {
+      return res.status(400).json({ error: 'feedback is required, e.g. "prioritize saree, color can change".' });
+    }
+
+    const constraintPriority = parseRefinementFeedback(feedback, intent.constraintPriority || []);
+    const nextIntent = {
+      ...intent,
+      constraintPriority,
+      originalMessage: `${intent.originalMessage || 'a fashion search'}. The shopper now says: "${String(feedback).trim()}" — honor this exactly: keep whatever they said to prioritize/keep, and treat whatever they said can change/is flexible as the first thing to relax.`
+    };
+
+    const { products, relaxationMessage } = await agenticRelax(nextIntent);
+    const limit = Math.min(30, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const matches = products.slice(0, limit).map(({ embedding, ...p }) => ({ ...p, catalog: 'clothing' }));
+
+    res.json({
+      intent: nextIntent,
+      matches,
+      relaxationMessage,
+      message: relaxationMessage
+        ? relaxationMessage
+        : matches.length
+          ? `Found ${matches.length} item${matches.length === 1 ? '' : 's'} matching your feedback!`
+          : "No matches found even after adjusting for your feedback — try a different image or search by text instead."
+    });
+  } catch (err) {
+    console.error('Visual search refine error:', err);
+    res.status(500).json({ error: 'Failed to refine search' });
   }
 }

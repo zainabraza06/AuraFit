@@ -113,7 +113,9 @@ export const outfitsApi = {
 
 // ─── Visual Search ───────────────────────────────────────────────────────────
 export const visualSearchApi = {
-  searchByImage: (formData: FormData) => api.post('/search/visual/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  searchByImage: (formData: FormData) => api.post('/search/visual/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  /** Human-in-the-loop refinement — e.g. "prioritize saree, color can change" — re-runs the search using the intent echoed by searchByImage. */
+  refine: (intent: any, feedback: string) => api.post('/search/visual/refine', { intent, feedback })
 };
 
 // ─── Virtual Try-On ──────────────────────────────────────────────────────────

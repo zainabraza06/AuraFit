@@ -84,6 +84,51 @@ export function inferConstraintPriorityFallback(partial) {
   return sanitizePriority(ordered.length ? ordered : ['occasion', 'color', 'dressStyle']);
 }
 
+const REFINE_CONSTRAINT_KEYWORDS = [
+  { key: 'dressStyle', re: /\b(dress\s?style|silhouette|saree|sari|lehenga|kurta|kurti|shalwar|kameez|gown|maxi|frock|abaya|western|co-?ord|sherwani)\b/i },
+  { key: 'color', re: /\b(colou?r|shade|tone)\b/i },
+  { key: 'occasion', re: /\b(occasion|event|function|wedding|bridal|party|eid|mehndi|office|casual)\b/i },
+  { key: 'neckline', re: /\b(neckline|neck)\b/i },
+  { key: 'print', re: /\b(print(?:ed)?|embroider(?:y|ed)|pattern|work)\b/i },
+  { key: 'fabric', re: /\b(fabric|material|lawn|silk|cotton|chiffon|velvet|khaddar)\b/i },
+  { key: 'pieces', re: /\b(piece|pieces|2-piece|3-piece)\b/i },
+  { key: 'stitching', re: /\b(stitch(?:ed|ing)?|unstitched)\b/i },
+  { key: 'season', re: /\b(season|summer|winter)\b/i }
+];
+
+const REFINE_RELAX_CUES = /\b(can\s+(?:be\s+)?chang(?:e|ed)|flexible|don'?t\s+care|doesn'?t\s+matter|no\s+preference|open\s+to|any(?:thing)?|whatever)\b/i;
+
+/**
+ * Interprets free-text feedback given AFTER the user has already seen results
+ * (e.g. "prioritize saree, color can change") into a re-ordered
+ * constraintPriority: whatever they insisted on gets protected (moved to the
+ * front — most important, drops last), whatever they said is flexible gets
+ * demoted (moved to the back — drops first). Clauses split on punctuation/
+ * "but"/"however" so multiple statements in one message ("keep it a saree,
+ * but the color can change") are each read independently rather than one
+ * relax cue anywhere in the message flipping the whole thing to "relax".
+ * The caller re-runs the SAME agenticRelax loop with the updated order.
+ */
+export function parseRefinementFeedback(feedback, baseConstraintPriority = []) {
+  const clauses = String(feedback || '')
+    .split(/[,.;]+|\bbut\b|\bhowever\b/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const protect = [];
+  const relax = [];
+  for (const clause of clauses) {
+    const isRelax = REFINE_RELAX_CUES.test(clause);
+    for (const { key, re } of REFINE_CONSTRAINT_KEYWORDS) {
+      if (!re.test(clause)) continue;
+      if (isRelax) { if (!relax.includes(key)) relax.push(key); }
+      else if (!protect.includes(key)) protect.push(key);
+    }
+  }
+  const rest = baseConstraintPriority.filter((k) => !protect.includes(k) && !relax.includes(k));
+  return [...protect, ...rest, ...relax];
+}
+
 /**
  * Extracts an ordered constraint list from a plain-English priority hint
  * sent by the client (e.g. from a UI priority control: "occasion over color").
