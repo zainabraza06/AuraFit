@@ -1,6 +1,7 @@
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
 import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs } from '../services/crossCatalogSearch.js';
+import { inferColors } from '../scripts/scrapers/utils/colorInference.js';
 
 /**
  * Vision models don't always honor "return a plain string" instructions — some

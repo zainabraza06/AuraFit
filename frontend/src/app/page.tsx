@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ProductCard from '@/components/ProductCard';
-import TryOnButton from '@/components/TryOnButton';
+import TryOnButton, { buildGarmentDescription } from '@/components/TryOnButton';
 import { productsApi, recommendationsApi } from '@/lib/api';
 
 const OCCASIONS = ['All', 'Casual', 'Wedding', 'Office', 'Eid', 'Party', 'Mehndi', 'Formal'];
@@ -259,6 +259,7 @@ export default function HomePage() {
                       <TryOnButton
                         productImage={chatResult.results[0].product.imageUrl || chatResult.results[0].product.images?.[0]}
                         productName={chatResult.results[0].product.name}
+                        productDescription={buildGarmentDescription(chatResult.results[0].product)}
                         variant="full"
                       />
                     </div>
@@ -369,7 +370,7 @@ export default function HomePage() {
                             )}
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: 'auto' }}>
                               <a href={r.product.productUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textAlign: 'center', flex: 1 }}>Shop →</a>
-                              <TryOnButton productImage={r.product.imageUrl || r.product.images?.[0]} productName={r.product.name} />
+                              <TryOnButton productImage={r.product.imageUrl || r.product.images?.[0]} productName={r.product.name} productDescription={buildGarmentDescription(r.product)} />
                             </div>
                           </div>
                         </div>

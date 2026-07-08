@@ -6,9 +6,25 @@ import { tryonApi, authApi } from '@/lib/api';
 
 type Step = 'idle' | 'processing' | 'done' | 'error' | 'no-auth' | 'no-pic';
 
+/** Builds a clean garment description from a product's real fields (color, dress style,
+ * pieces, print) instead of the raw scraped title — better text-conditioning for the AI. */
+export function buildGarmentDescription(p: any): string {
+  if (!p) return '';
+  const parts = [
+    p.primaryExactColor || p.primaryColor,
+    p.print,
+    p.pieces ? `${p.pieces}-piece` : null,
+    p.dressStyle,
+    p.fabric
+  ].filter(Boolean);
+  return parts.length ? parts.join(' ') : p.name;
+}
+
 interface Props {
   productImage?: string;
   productName?: string;
+  /** Richer garment description (color/style/pieces) — improves AI fit quality over the raw product title. Falls back to productName. */
+  productDescription?: string;
   /** compact = small pill for card overlays; full = normal button */
   variant?: 'compact' | 'full';
 }
@@ -18,7 +34,7 @@ interface Props {
  * picture as the person image and the given product image as the garment.
  * Prompts to log in / set a profile picture when those are missing.
  */
-export default function TryOnButton({ productImage, productName, variant = 'compact' }: Props) {
+export default function TryOnButton({ productImage, productName, productDescription, variant = 'compact' }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('idle');
@@ -65,7 +81,7 @@ export default function TryOnButton({ productImage, productName, variant = 'comp
     setErr('');
     setResultUrl('');
     try {
-      const res = await tryonApi.generateFromUrls(pic, productImage, productName);
+      const res = await tryonApi.generateFromUrls(pic, productImage, productDescription || productName);
       setResultUrl(res.data.resultUrl);
       setStep('done');
     } catch (e: any) {
@@ -130,8 +146,11 @@ export default function TryOnButton({ productImage, productName, variant = 'comp
               <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
                 <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📷</div>
                 <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>Set a profile picture first</h4>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem', maxWidth: 380, margin: '0 auto 1.5rem' }}>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem', fontSize: '0.9rem', maxWidth: 380, margin: '0 auto 0.75rem' }}>
                   We use your profile photo as the model for AI try-on. Add one to your account, then come back.
+                </p>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.78rem', maxWidth: 380, margin: '0 auto 1.5rem', lineHeight: 1.5 }}>
+                  Tip: a well-lit, front-facing, full-length photo gives the best fit — the AI can only place the outfit on the part of you that's actually in frame.
                 </p>
                 <button className="btn btn-primary" onClick={() => router.push('/account')}>Set Profile Picture →</button>
               </div>

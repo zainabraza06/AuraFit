@@ -1,5 +1,5 @@
 'use client';
-import TryOnButton from './TryOnButton';
+import TryOnButton, { buildGarmentDescription } from './TryOnButton';
 
 // ── Tier config ────────────────────────────────────────────────────────────────
 const TIER_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -165,7 +165,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
         )}
 
         {heroDress && (
-          <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} variant="full" />
+          <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} productDescription={buildGarmentDescription(heroDress)} variant="full" />
         )}
 
         {relaxationMessage && (
@@ -350,7 +350,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                       Shop on {heroDress.brand} →
                     </a>
                   )}
-                  <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} variant="full" />
+                  <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} productDescription={buildGarmentDescription(heroDress)} variant="full" />
                 </div>
               </div>
             </div>
@@ -437,7 +437,7 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                               Shop →
                             </a>
                           )}
-                          <TryOnButton productImage={p.imageUrl || p.images?.[0]} productName={p.name} />
+                          <TryOnButton productImage={p.imageUrl || p.images?.[0]} productName={p.name} productDescription={buildGarmentDescription(p)} />
                         </div>
                       </div>
                     </div>

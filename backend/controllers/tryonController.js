@@ -50,7 +50,10 @@ async function tryReplicate({ personInput, clothingInput, description }) {
         garm_img: garmImg,
         garment_des: description || 'A fashionable clothing item',
         is_checked: true,
-        is_checked_crop: false,
+        // Auto-crop to the detected garment/torso region instead of stretching the
+        // full garment silhouette to fill the whole photo — the fix for outfits
+        // looking "shortened" on a half-body / non-full-length person photo.
+        is_checked_crop: true,
         denoise_steps: 30,
         seed: 42
       }
@@ -83,7 +86,9 @@ async function tryFreeHfSpace({ personInput, clothingInput, description }) {
     garm_img: toGradioInput(clothingInput),
     garment_des: description || 'a fashionable clothing item',
     is_checked: true,
-    is_checked_crop: false,
+    // Same fix as Replicate — crop to the actual garment region instead of
+    // stretching the outfit onto the full (possibly partial-body) photo.
+    is_checked_crop: true,
     denoise_steps: 20,
     seed: 42
   });
