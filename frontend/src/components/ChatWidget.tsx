@@ -11,8 +11,10 @@ type Msg = {
   noResults?: boolean;
   isError?: boolean;
   userQuery?: string;
+  advice?: { advice: string; searchPrompt: string };
 };
 type PanelState = 'closed' | 'open' | 'minimized';
+type Mode = 'search' | 'stylist';
 
 const OCCASION_CHIPS = [
   { label: 'Eid', prompt: 'A festive Eid outfit with accessories' },
@@ -23,10 +25,13 @@ const OCCASION_CHIPS = [
   { label: 'Casual', prompt: 'An everyday casual look' },
 ];
 
+const STYLIST_WELCOME = "Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\"";
+
 let msgId = 0;
 
 export default function ChatWidget() {
   const [panel, setPanel] = useState<PanelState>('closed');
+  const [mode, setMode] = useState<Mode>('search');
   const [messages, setMessages] = useState<Msg[]>([{
     id: msgId++,
     role: 'ai',
@@ -101,6 +106,41 @@ export default function ChatWidget() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendStyleAdvice = async (text: string) => {
+    const q = text.trim();
+    if (!q || loading) return;
+    setInput('');
+    setMessages(p => [...p, { id: msgId++, role: 'user', text: q }]);
+    setLoading(true);
+    try {
+      const res = await recommendationsApi.styleAdvice(q);
+      setMessages(p => [...p, { id: msgId++, role: 'ai', text: res.data.advice, advice: res.data }]);
+      if (panel !== 'open') { setUnread(u => u + 1); showToast('Styling advice ready!'); }
+    } catch (e: any) {
+      setMessages(p => [...p, {
+        id: msgId++, role: 'ai',
+        text: e?.response?.data?.error || 'Having trouble reaching the stylist right now. Please try again.',
+        isError: true,
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchThisLook = (searchPrompt: string) => {
+    setMode('search');
+    send(searchPrompt);
+  };
+
+  const switchMode = (m: Mode) => {
+    if (m === mode) return;
+    setMode(m);
+    setMessages(p => [...p, {
+      id: msgId++, role: 'ai',
+      text: m === 'stylist' ? STYLIST_WELCOME : 'Back to direct search — describe what you need and I\'ll curate a look.'
+    }]);
   };
 
   const handleEscalate = async (msgId: number, userQuery: string) => {
@@ -222,7 +262,28 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {/* Occasion chips — always visible below header */}
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', padding: '0.6rem 1.25rem 0', gap: '0.4rem', background: 'var(--bg-primary)', flexShrink: 0 }}>
+            {(['search', 'stylist'] as Mode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => switchMode(m)}
+                disabled={loading}
+                style={{
+                  flex: 1, padding: '0.4rem 0.5rem', borderRadius: '100px', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 600,
+                  background: mode === m ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: mode === m ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {m === 'search' ? '🔍 Direct Search' : '👤 Personal Stylist'}
+              </button>
+            ))}
+          </div>
+
+          {/* Occasion chips — direct-search mode only */}
+          {mode === 'search' && (
           <div style={{
             padding: '0.65rem 1.25rem',
             borderBottom: '1px solid var(--border)',
@@ -256,6 +317,7 @@ export default function ChatWidget() {
               </button>
             ))}
           </div>
+          )}
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
@@ -302,6 +364,21 @@ export default function ChatWidget() {
                     {escalatedIds.has(msg.id) && (
                       <p style={{ marginTop: '0.4rem', fontSize: '0.73rem', color: 'var(--success)' }}>✓ Expert notified</p>
                     )}
+                    {msg.advice && (
+                      <button
+                        onClick={() => searchThisLook(msg.advice!.searchPrompt)}
+                        disabled={loading}
+                        style={{
+                          marginTop: '0.65rem', display: 'block', width: '100%', textAlign: 'left',
+                          background: 'rgba(201,169,110,0.1)', border: '1px solid rgba(201,169,110,0.3)',
+                          color: 'var(--accent)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.73rem', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600,
+                          fontFamily: 'var(--font-body)', lineHeight: 1.4,
+                        }}
+                      >
+                        🔍 Search: "{msg.advice.searchPrompt}"
+                      </button>
+                    )}
                   </div>
                 )}
                 {msg.data && !msg.noResults && !msg.isError && (
@@ -337,12 +414,12 @@ export default function ChatWidget() {
                 type="text"
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') send(input); }}
-                placeholder="E.g. Eid outfit in blush pink…"
+                onKeyDown={e => { if (e.key === 'Enter') (mode === 'stylist' ? sendStyleAdvice(input) : send(input)); }}
+                placeholder={mode === 'stylist' ? "E.g. I'm tall with a cool undertone, going to a wedding…" : 'E.g. Eid outfit in blush pink…'}
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-body)' }}
               />
               <button
-                onClick={() => send(input)}
+                onClick={() => (mode === 'stylist' ? sendStyleAdvice(input) : send(input))}
                 disabled={!input.trim() || loading}
                 style={{
                   width: 34, height: 34, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',

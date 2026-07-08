@@ -32,7 +32,9 @@ export const productsApi = {
 export const recommendationsApi = {
   forProduct: (id: string) => api.get(`/recommendations/${id}`),
   outfit: (message: string, prioritiesHint?: string) =>
-    api.post('/recommendations/outfit', { message, ...(prioritiesHint ? { prioritiesHint } : {}) })
+    api.post('/recommendations/outfit', { message, ...(prioritiesHint ? { prioritiesHint } : {}) }),
+  /** Personal Stylist — describe yourself + occasion, get styling advice + a ready-to-search prompt. */
+  styleAdvice: (message: string) => api.post('/recommendations/style-advice', { message })
 };
 
 // ─── Search ──────────────────────────────────────────────────────────────────

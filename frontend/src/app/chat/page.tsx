@@ -3,7 +3,15 @@ import { useState, useRef, useEffect } from 'react';
 import { recommendationsApi, supportApi } from '@/lib/api';
 import RecommendationResult from '@/components/RecommendationResult';
 
-type Msg = { role: 'user' | 'ai'; text?: string; data?: any; noResults?: boolean; isError?: boolean };
+type Msg = {
+  role: 'user' | 'ai';
+  text?: string;
+  data?: any;
+  noResults?: boolean;
+  isError?: boolean;
+  advice?: { advice: string; searchPrompt: string };
+};
+type Mode = 'search' | 'stylist';
 
 const OCCASION_CHIPS = [
   { label: 'Eid', prompt: 'A festive Eid outfit with accessories' },
@@ -14,7 +22,10 @@ const OCCASION_CHIPS = [
   { label: 'Casual', prompt: 'An everyday casual look' },
 ];
 
+const STYLIST_WELCOME = "Tell me about yourself — body type, skin tone, height, whatever you'd like to share — and the occasion, and I'll suggest what to wear using global styling principles and Pakistani traditional standards. E.g. \"I'm petite with a wheatish skin tone, going to a friend's mehndi.\"";
+
 export default function ChatPage() {
+  const [mode, setMode] = useState<Mode>('search');
   const [messages, setMessages] = useState<Msg[]>([{
     role: 'ai',
     text: "Assalam o Alaikum! I'm your personal AI Stylist, powered by Gemini. Tell me what occasion you're dressing for, your color preference, or budget — and I'll curate a complete look from Pakistan's top brands. ✨"
@@ -30,7 +41,6 @@ export default function ChatPage() {
   const send = async (text: string) => {
     const q = text.trim(); if (!q || loading) return;
     setInput('');
-    const userMsgIdx = messages.length;
     setMessages(p => [...p, { role: 'user', text: q }]);
     setLoading(true);
     try {
@@ -53,6 +63,37 @@ export default function ChatPage() {
         data: { _userMessage: q }
       }]);
     } finally { setLoading(false); }
+  };
+
+  const sendStyleAdvice = async (text: string) => {
+    const q = text.trim(); if (!q || loading) return;
+    setInput('');
+    setMessages(p => [...p, { role: 'user', text: q }]);
+    setLoading(true);
+    try {
+      const res = await recommendationsApi.styleAdvice(q);
+      setMessages(p => [...p, { role: 'ai', text: res.data.advice, advice: res.data }]);
+    } catch (e: any) {
+      setMessages(p => [...p, {
+        role: 'ai',
+        text: e?.response?.data?.error || "I'm having trouble reaching the stylist. Please try again in a moment.",
+        isError: true,
+      }]);
+    } finally { setLoading(false); }
+  };
+
+  const searchThisLook = (searchPrompt: string) => {
+    setMode('search');
+    send(searchPrompt);
+  };
+
+  const switchMode = (m: Mode) => {
+    if (m === mode) return;
+    setMode(m);
+    setMessages(p => [...p, {
+      role: 'ai',
+      text: m === 'stylist' ? STYLIST_WELCOME : "Back to direct search — describe what you need and I'll curate a look."
+    }]);
   };
 
   const handleEscalate = async (msgIdx: number, userMessage: string) => {
@@ -91,8 +132,28 @@ export default function ChatPage() {
         <div className="live-badge" style={{ marginLeft: 'auto' }}>Online</div>
       </div>
 
+      {/* Mode toggle */}
+      <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 66px)', left: 0, right: 0, zIndex: 49, background: 'rgba(8,8,16,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)', padding: '0.6rem clamp(1rem,4vw,3rem)', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+        {(['search', 'stylist'] as Mode[]).map(m => (
+          <button
+            key={m}
+            onClick={() => switchMode(m)}
+            disabled={loading}
+            style={{
+              padding: '0.4rem 1.1rem', borderRadius: '100px', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 600,
+              background: mode === m ? 'var(--accent)' : 'var(--bg-elevated)',
+              color: mode === m ? '#0a0a12' : 'var(--text-secondary)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {m === 'search' ? '🔍 Direct Search' : '👤 Personal Stylist'}
+          </button>
+        ))}
+      </div>
+
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 80px) clamp(1rem,4vw,3rem) 200px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(var(--nav-h) + 130px) clamp(1rem,4vw,3rem) 200px', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '0.4rem' }}>
             {msg.role === 'ai' && (
@@ -141,6 +202,28 @@ export default function ChatPage() {
                     ✓ Expert notified
                   </p>
                 )}
+                {msg.advice && (
+                  <div style={{ marginTop: '0.85rem' }}>
+                    <button
+                      onClick={() => searchThisLook(msg.advice!.searchPrompt)}
+                      disabled={loading}
+                      style={{
+                        background: 'rgba(201,169,110,0.12)',
+                        border: '1px solid rgba(201,169,110,0.35)',
+                        color: 'var(--accent)',
+                        padding: '0.55rem 1rem',
+                        borderRadius: '100px',
+                        fontSize: '0.78rem',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        letterSpacing: '0.02em',
+                        textAlign: 'left',
+                      }}
+                    >
+                      🔍 Search: "{msg.advice.searchPrompt}"
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {msg.data && !msg.noResults && !msg.isError && (
@@ -166,34 +249,36 @@ export default function ChatPage() {
 
       {/* Input area */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'rgba(8,8,16,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border)', padding: '0.85rem clamp(1rem,4vw,3rem) 1.25rem' }}>
-        {/* Occasion chips — always visible */}
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', maxWidth: 860, margin: '0 auto 0.75rem' }}>
-          {OCCASION_CHIPS.map(chip => (
-            <button
-              key={chip.label}
-              className="chip"
-              onClick={() => send(chip.prompt)}
-              disabled={loading}
-              style={{ fontSize: '0.73rem', padding: '0.3rem 0.85rem' }}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+        {/* Occasion chips — direct-search mode only */}
+        {mode === 'search' && (
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', maxWidth: 860, margin: '0 auto 0.75rem' }}>
+            {OCCASION_CHIPS.map(chip => (
+              <button
+                key={chip.label}
+                className="chip"
+                onClick={() => send(chip.prompt)}
+                disabled={loading}
+                style={{ fontSize: '0.73rem', padding: '0.3rem 0.85rem' }}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '0.85rem', maxWidth: 860, margin: '0 auto' }}>
           <div className="style-input-wrap" style={{ flex: 1 }}>
             <input
               type="text"
-              placeholder="E.g. A maroon wedding outfit under Rs. 12,000…"
+              placeholder={mode === 'stylist' ? "E.g. I'm tall with a cool undertone, going to a wedding…" : 'E.g. A maroon wedding outfit under Rs. 12,000…'}
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') send(input); }}
+              onKeyDown={e => { if (e.key === 'Enter') (mode === 'stylist' ? sendStyleAdvice(input) : send(input)); }}
               style={{ fontSize: '0.92rem' }}
             />
           </div>
           <button
             className="btn btn-primary"
-            onClick={() => send(input)}
+            onClick={() => (mode === 'stylist' ? sendStyleAdvice(input) : send(input))}
             disabled={!input.trim() || loading}
             style={{ borderRadius: '100px', padding: '0 1.75rem', flexShrink: 0 }}
           >

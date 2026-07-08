@@ -1,9 +1,10 @@
 import express from 'express';
-import { getProductRecommendations, generateOutfit } from '../controllers/recommendationsController.js';
+import { getProductRecommendations, generateOutfit, getPersonalStyleAdvice } from '../controllers/recommendationsController.js';
 
 const router = express.Router();
 
-router.get('/:productId', getProductRecommendations);
 router.post('/outfit', generateOutfit);
+router.post('/style-advice', getPersonalStyleAdvice);
+router.get('/:productId', getProductRecommendations);
 
 export default router;

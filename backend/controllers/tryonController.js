@@ -22,6 +22,10 @@ async function resolveImageBytes(input) {
  * whatever body region is in frame). Better to tell the user upfront than
  * show them a bad generation. Reuses the same vision fallback chain (Mistral
  * Pixtral → Gemini) as visual search — no new provider/dependency.
+ *
+ * `missingPortion` distinguishes a MINOR crop (just feet/ankles missing —
+ * worth auto-extending) from a SIGNIFICANT one (only bust/waist-up — no
+ * amount of outpainting can credibly invent an entire missing lower body).
  */
 async function validatePersonPhoto(personInput) {
   try {
@@ -32,16 +36,21 @@ async function validatePersonPhoto(personInput) {
       {
         "hasPerson": boolean,   // is there a clearly visible person in the photo?
         "faceVisible": boolean, // is the person's face visible and not covered, turned away, or cropped out of frame?
-        "framing": "full-body" | "half-body" | "close-up" | "unclear"
+        "framing": "full-body" | "half-body" | "close-up" | "unclear",
         // full-body = head down to at least the knees is visible
         // half-body = roughly waist-up or less is visible
         // close-up = just the face/shoulders fill the frame
+        "missingPortion": "none" | "feet-ankles" | "significant"
+        // none = full body already visible (framing is full-body)
+        // feet-ankles = ONLY feet/ankles are cut off, everything else (legs, knees) is visible — a minor crop
+        // significant = more than that is missing (e.g. waist-up or less)
       }
     `;
     const { data } = await analyzeImageWithProviderFallback({ prompt, imageBase64, mimeType });
     const hasPerson = data?.hasPerson !== false;
     const faceVisible = data?.faceVisible !== false;
     const framing = String(data?.framing || 'unclear').toLowerCase();
+    const missingPortion = String(data?.missingPortion || 'significant').toLowerCase();
 
     if (!hasPerson) {
       return { ok: false, message: "We couldn't find a person in this photo. Please upload a clear photo of yourself." };
@@ -49,16 +58,67 @@ async function validatePersonPhoto(personInput) {
     if (!faceVisible) {
       return { ok: false, message: 'Your face needs to be visible for try-on — please upload a photo where your face is clearly shown, not covered or turned away.' };
     }
-    if (framing === 'half-body' || framing === 'close-up') {
-      return { ok: false, message: `This photo looks like a ${framing.replace('-', ' ')} shot. For an accurate try-on, please upload a full-length photo (head to at least your knees) with your face visible.` };
+    if (framing === 'full-body') {
+      return { ok: true };
     }
-    return { ok: true };
+    if ((framing === 'half-body' || framing === 'unclear') && missingPortion === 'feet-ankles') {
+      // Just short of full-body — worth extending rather than rejecting outright.
+      return { ok: true, needsExtension: true };
+    }
+    return { ok: false, message: `This photo looks like a ${framing.replace('-', ' ')} shot. For an accurate try-on, please upload a full-length photo (head to at least your knees) with your face visible.` };
   } catch (e) {
     // Validation itself failing (provider down, bad image fetch, etc.) should
     // never block a try-on attempt that might otherwise succeed — fail open.
     console.warn('[TryOn] Person photo validation skipped (check failed):', e.message);
     return { ok: true };
   }
+}
+
+/**
+ * Free path — extends an "almost full body" photo downward (adds legs/feet)
+ * so IDM-VTON has somewhere to place the rest of the garment, instead of
+ * rejecting a photo that's only slightly short. Uses the same free ZeroGPU
+ * pool as the free try-on Space, so it shares that quota — a best-effort
+ * feature, not a guarantee. Generator endpoint: must use submit()+iterate,
+ * not predict(), to reliably get the final generated frame.
+ */
+async function extendPersonPhoto(personInput) {
+  const { Client, handle_file } = await import('@gradio/client');
+  const app = await Client.connect('fffiloni/diffusers-image-outpaint', {
+    hf_token: process.env.HUGGING_FACE_API_KEY || undefined
+  });
+  const imageArg = Buffer.isBuffer(personInput.buffer) ? handle_file(personInput.buffer) : handle_file(personInput.url);
+
+  console.log('[TryOn] Extending an almost-full-body photo (free outpainting Space, shared quota)...');
+  const submission = app.submit('/infer', {
+    image: imageArg,
+    width: 832,
+    height: 1280,
+    overlap_percentage: 10,
+    num_inference_steps: 8,
+    resize_option: 'Full',
+    custom_resize_percentage: 50,
+    prompt_input: 'full length photo, matching legs and feet standing on the floor, same lighting, same background, seamless continuation',
+    alignment: 'Top',
+    overlap_left: true,
+    overlap_right: true,
+    overlap_top: true,
+    overlap_bottom: true
+  });
+
+  let lastData = null;
+  for await (const msg of submission) {
+    if (msg.type === 'data') lastData = msg.data;
+  }
+  if (!lastData) throw new Error('Outpainting returned no image');
+
+  // The Imageslider output is a [before, after]-style tuple — take the last
+  // non-null entry (the final generated frame).
+  const flat = (Array.isArray(lastData) ? lastData : [lastData]).flat().filter(Boolean);
+  const last = flat[flat.length - 1];
+  const url = last?.url || (typeof last === 'string' ? last : null);
+  if (!url) throw new Error('Outpainting returned no usable image URL');
+  return url;
 }
 
 /**
@@ -178,13 +238,27 @@ export async function virtualTryon(req, res) {
       });
     }
 
-    const personInput   = personFile   ? { buffer: personFile.buffer, mimetype: personFile.mimetype }   : { url: personUrl };
+    let personInput   = personFile   ? { buffer: personFile.buffer, mimetype: personFile.mimetype }   : { url: personUrl };
     const clothingInput = clothingFile ? { buffer: clothingFile.buffer, mimetype: clothingFile.mimetype } : { url: clothingUrl };
     const description = req.body.description;
 
     const photoCheck = await validatePersonPhoto(personInput);
     if (!photoCheck.ok) {
       return res.status(422).json({ error: photoCheck.message, reason: 'bad_person_photo' });
+    }
+    if (photoCheck.needsExtension) {
+      try {
+        const extendedUrl = await extendPersonPhoto(personInput);
+        personInput = { url: extendedUrl };
+      } catch (e) {
+        // Extension is best-effort (shared free quota) — if it fails, reject
+        // with the same clear message rather than running a doomed try-on.
+        console.warn('[TryOn] Photo extension failed:', e.message);
+        return res.status(422).json({
+          error: 'This photo is almost full-length, but we couldn\'t extend it right now (our free extension tool is busy). Please try again shortly, or upload a full-length photo.',
+          reason: 'bad_person_photo'
+        });
+      }
     }
 
     let replicateError = null;

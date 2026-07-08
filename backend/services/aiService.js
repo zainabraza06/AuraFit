@@ -169,9 +169,102 @@ export async function mapDressStyleWithAI(term) {
 }
 
 /**
+ * generatePersonalStyleAdvice
+ * The user describes themselves (body type, skin tone, height, age — whatever
+ * they choose to share) plus the occasion. Blends GLOBAL fashion principles
+ * (color theory for skin undertone, silhouettes that flatter different body
+ * shapes, proportion balancing) with PAKISTANI TRADITIONAL standards (which
+ * garment fits which occasion, modesty/coverage norms, seasonal fabric
+ * choices, traditional occasion color associations) into genuine styling
+ * advice, then distills that into a clean search prompt the app's existing
+ * outfit engine can run directly — no separate "person description" field
+ * needed in the catalog/search layer, this just produces a good query for it.
+ */
+export async function generatePersonalStyleAdvice(userMessage) {
+  const system = `You are an expert fashion stylist for AuraFit, a Pakistani women's fashion platform.
+Combine two knowledge sources when advising:
+  1. GLOBAL fashion principles — color theory relative to skin undertone (warm/cool/neutral), silhouettes
+     that flatter different body shapes (pear, apple, hourglass, rectangle, inverted-triangle), and
+     proportion balancing (e.g. A-line to balance a fuller lower body, structured shoulders to balance
+     a pear shape, empire waists to elongate a shorter torso).
+  2. PAKISTANI TRADITIONAL standards — which garment suits which occasion (shalwar-kameez, lehenga,
+     saree, gharara, sharara, kurta, abaya), modesty/coverage norms for weddings/eid/mehndi/religious
+     contexts, seasonal fabric choices (lawn/chiffon/cotton for summer, khaddar/velvet/wool for winter),
+     and traditional occasion color associations (bridal reds/maroons/deep greens/gold, mehndi
+     yellows/greens/oranges, eid pastels/brights, funeral/somber events → white/muted tones).
+
+The user will describe themselves and the occasion in their own words — details may be partial or
+entirely absent (e.g. they might only give the occasion, or only a body type). Give the best specific
+advice possible with whatever is provided; never refuse or demand more information.
+
+Return ONLY a JSON object:
+{
+  "advice": "2-4 sentences of SPECIFIC styling advice — name actual colors, silhouettes, and garment
+             types, and briefly explain WHY (skin tone / body shape / occasion reasoning). Warm,
+             confident, stylist tone — not generic.",
+  "searchPrompt": "ONE natural-language sentence formatted exactly like a normal outfit search query
+                  our catalog engine can run directly — e.g. 'emerald green 3-piece embroidered
+                  lehenga for wedding' or 'pastel pink unstitched 2-piece for eid under 8000'.
+                  Include color, garment/dress style, and occasion at minimum; include piece count,
+                  fabric, or budget ONLY if the user mentioned or implied them. MUST commit to ONE
+                  specific color and ONE specific garment style — never write alternatives like
+                  'yellow or green' or 'lehenga or gharara'; the advice text can mention options,
+                  but searchPrompt is a single decisive query, not a choice.
+                  The garment word in searchPrompt MUST be one of: kurta, shalwar-kameez, western,
+                  lehenga, co-ord, abaya, saree — these are the catalog styles with real inventory.
+                  STRONGLY PREFER shalwar-kameez or kurta (the catalog's largest categories) whenever
+                  the occasion reasonably allows it — this is what most Pakistani formal/casual wear
+                  actually is. Reserve 'lehenga' for genuinely bridal/heavy-festive looks only. Do NOT
+                  use frock, maxi, gown, tunic, palazzo, or sherwani in searchPrompt — the catalog has
+                  zero or almost zero items in these categories, so a search for them reliably returns
+                  nothing. The advice text is free to use authentic regional terms (sharara, gharara,
+                  anarkali, etc.) since that reads naturally to the user, but map them to a real
+                  catalog term for searchPrompt: sharara/gharara/anarkali → shalwar-kameez (or lehenga
+                  only if genuinely bridal), angrakha → kurta. Never put an unsupported term (sharara,
+                  gharara, anarkali, frock, maxi, gown, etc.) directly in searchPrompt.",
+  "dressStyle": "the catalog garment-type word actually used in searchPrompt, e.g. 'lehenga' or 'shalwar-kameez'",
+  "occasion": "the occasion as stated or inferred, e.g. 'wedding'"
+}`;
+
+  try {
+    const { text } = await completeJsonWithProviderFallback({ system, user: userMessage, temperature: 0.4 });
+    const parsed = JSON.parse(extractJson(text));
+    if (!parsed?.advice || !parsed?.searchPrompt) throw new Error('Incomplete style advice response');
+    return {
+      advice: String(parsed.advice).trim(),
+      searchPrompt: stripAlternatives(String(parsed.searchPrompt).trim()),
+      dressStyle: parsed.dressStyle ? String(parsed.dressStyle).trim() : null,
+      occasion: parsed.occasion ? String(parsed.occasion).trim() : null
+    };
+  } catch (e) {
+    console.warn('[generatePersonalStyleAdvice] failed:', e.message);
+    throw new Error('Could not generate styling advice right now — please try again.');
+  }
+}
+
+/**
  * Intent parsing — OpenRouter → Groq → Gemini 1.5 → Gemini 2.5
  */
 export const parseIntentWithFallback = async (message, prompt) => parseIntentWithProviderOrder(message, prompt);
+
+/**
+ * Defensive cleanup for generatePersonalStyleAdvice's searchPrompt: the LLM is
+ * instructed to commit to one option, but occasionally still writes "navy blue
+ * or soft lavender ..." anyway. A compound "X or Y" query confuses the intent
+ * parser (which color should it filter on?). Keep only the first alternative.
+ * Anchored to a known "next token" (fabric/style word, piece-count, garment
+ * noun, or "for") immediately after the second alternative — this is what
+ * makes it safe to apply broadly: without the anchor, a naive "first `or`"
+ * match over-consumes unrelated later words (tested and rejected — e.g. it
+ * corrupted "pastel pink or mint green 3-piece" into "pink-piece").
+ */
+function stripAlternatives(text) {
+  const anchorWords = ['tailored', 'structured', 'embroidered', 'plain', 'printed', 'unstitched', 'stitched',
+    'velvet', 'chiffon', 'lawn', 'cotton', 'silk', 'kurta', 'shalwar-kameez', 'lehenga', 'saree', 'abaya', 'western', 'co-ord'];
+  const anchor = `(?:${anchorWords.join('|')}|for\\s|\\d+-piece)`;
+  const re = new RegExp(`\\b(\\w+(?:\\s\\w+)?)\\s+or\\s+(\\w+(?:\\s\\w+)?)\\s+(?=${anchor})`, 'i');
+  return text.replace(re, '$1 ').replace(/\s+/g, ' ').trim();
+}
 
 /**
  * Utility: Robust JSON extraction from LLM response
