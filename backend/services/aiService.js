@@ -102,6 +102,114 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
 }
 
 /**
+ * rankShoesWithAI
+ * Given one dress and a pre-filtered candidate shoe pool (already scored by
+ * accessoryMatcher.js's footwearFashionScore, so silhouette-mismatched shoes
+ * like sneakers-for-eastern-wear are already deprioritized), asks the LLM to
+ * pick the best N and explain each choice against REAL global + Pakistani
+ * fashion pairing standards — replacing the templated "color harmony" string
+ * with a genuine, specific reason. Falls back to the pre-filtered order (with
+ * a null reason) if all providers fail, same pattern as rankProductsWithAI.
+ */
+export async function rankShoesWithAI(dress, candidates, maxPicks = 6) {
+  if (!candidates.length) return [];
+
+  const shoeList = candidates
+    .map((s, i) => `[${i}] "${s.name}" — type: ${s.shoeType || 'N/A'}, color: ${s.primaryColor || 'N/A'}, occasion: ${(s.occasion || []).join(', ') || 'N/A'}`)
+    .join('\n');
+
+  const prompt = `You are AuraFit's footwear stylist for Pakistani women's fashion.
+
+The outfit: "${dress.name}" — dress style: ${dress.dressStyle || dress.subCategory || 'N/A'}, color: ${dress.primaryColor || 'N/A'}, occasion: ${(dress.occasion || []).join(', ') || 'N/A'}.
+
+Candidate shoes:
+${shoeList}
+
+Pick the best ${Math.min(maxPicks, candidates.length)} shoes for this specific outfit, applying REAL global + Pakistani fashion pairing standards:
+  • Eastern traditional silhouettes (shalwar-kameez, kurta, lehenga, saree, abaya, sherwani) pair with khussa, kolhapuri, sandals, wedges, mules, or dressy flats — NEVER Western athletic shoes (sneakers, trainers, joggers), regardless of how "casual" the occasion is. A casual unstitched lawn suit still calls for a casual eastern sandal or khussa, not a sneaker.
+  • Western wear (co-ord, western dresses, jeans-style pieces) can genuinely pair with sneakers, flats, loafers, or heels depending on formality.
+  • Bridal/wedding/formal occasions favor heels, khussa, or mules — never sneakers/flats/joggers.
+  • Color harmony and occasion tags matter, but silhouette-appropriateness above is the deciding factor when they conflict.
+
+Return ONLY valid JSON:
+{
+  "picks": [
+    { "shoeIndex": 0, "reason": "one specific sentence grounded in the actual pairing logic above" }
+  ]
+}
+shoeIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)}.`;
+
+  try {
+    const { text, provider } = await completeJsonWithProviderFallback({
+      system: 'You are AuraFit\'s footwear stylist. Output a single valid JSON object exactly as requested. No markdown, no commentary.',
+      user: prompt,
+      temperature: 0.2
+    });
+    console.log(`[rankShoesWithAI] ranked via ${provider}`);
+    const parsed = JSON.parse(extractJson(text));
+    const picks = (parsed.picks || [])
+      .map((p) => ({ product: candidates[p.shoeIndex], reason: typeof p.reason === 'string' ? p.reason.trim() : null }))
+      .filter((p) => p.product != null);
+    return picks.length ? picks : null;
+  } catch (err) {
+    console.warn('[rankShoesWithAI] All providers exhausted:', err.message);
+    return null;
+  }
+}
+
+/**
+ * rankComplementaryClothingWithAI
+ * Given the product-page source garment and a pre-filtered candidate pool
+ * (already scored by the deterministic scoreProduct() heuristic — embedding
+ * similarity + color/occasion/style overlap), asks the LLM to pick the best N
+ * and explain each as a genuine styling/coordination choice — e.g. "pairs as a
+ * matching bottom", "same occasion tier, complementary accent color", "similar
+ * silhouette for a mix-and-match wardrobe" — rather than a bare percentage.
+ * Falls back to the pre-filtered order (no reason) if all providers fail.
+ */
+export async function rankComplementaryClothingWithAI(source, candidates, maxPicks = 6) {
+  if (!candidates.length) return [];
+
+  const list = candidates
+    .map((c, i) => `[${i}] "${c.name}" — style: ${c.dressStyle || c.subCategory || 'N/A'}, color: ${c.primaryColor || 'N/A'}, occasion: ${(c.occasion || []).join(', ') || 'N/A'}, fabric: ${c.fabric || 'N/A'}`)
+    .join('\n');
+
+  const prompt = `You are AuraFit's fashion stylist for Pakistani women's fashion, picking "Complementary Styles" for a shopper viewing this item:
+
+"${source.name}" — dress style: ${source.dressStyle || source.subCategory || 'N/A'}, color: ${source.primaryColor || 'N/A'}, occasion: ${(source.occasion || []).join(', ') || 'N/A'}, fabric: ${source.fabric || 'N/A'}.
+
+Candidate pieces:
+${list}
+
+Pick the best ${Math.min(maxPicks, candidates.length)} pieces that genuinely complement or coordinate with this item — same occasion tier and formality level, a harmonious (not clashing) color relationship, and a style/silhouette a real stylist would suggest pairing or wearing on a similar occasion. Apply real global + Pakistani fashion standards: don't suggest a heavily bridal-embellished piece alongside a plain casual lawn suit, don't mix mismatched formality levels, and favor genuine color harmony over a same-hue coincidence.
+
+Return ONLY valid JSON:
+{
+  "picks": [
+    { "productIndex": 0, "reason": "one specific sentence about why this coordinates well" }
+  ]
+}
+productIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)}.`;
+
+  try {
+    const { text, provider } = await completeJsonWithProviderFallback({
+      system: 'You are AuraFit\'s fashion stylist. Output a single valid JSON object exactly as requested. No markdown, no commentary.',
+      user: prompt,
+      temperature: 0.2
+    });
+    console.log(`[rankComplementaryClothingWithAI] ranked via ${provider}`);
+    const parsed = JSON.parse(extractJson(text));
+    const picks = (parsed.picks || [])
+      .map((p) => ({ product: candidates[p.productIndex], reason: typeof p.reason === 'string' ? p.reason.trim() : null }))
+      .filter((p) => p.product != null);
+    return picks.length ? picks : null;
+  } catch (err) {
+    console.warn('[rankComplementaryClothingWithAI] All providers exhausted:', err.message);
+    return null;
+  }
+}
+
+/**
  * planNextRelaxation — the agentic step decision.
  * Given the user's request, what's still filtered, and the ACTUAL catalog counts
  * for each possible next move, the LLM decides ONE honest next action.

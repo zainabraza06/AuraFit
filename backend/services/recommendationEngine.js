@@ -22,7 +22,7 @@ import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
 import { formatClothingForApi, intentPrintToPatterns } from './productCompat.js';
 import { getColorArrayCompatibility } from './colorTheory.js';
-import { rankProductsWithAI, planNextRelaxation } from './aiService.js';
+import { rankProductsWithAI, planNextRelaxation, rankShoesWithAI, rankComplementaryClothingWithAI } from './aiService.js';
 import { deriveDressStyle, deriveFabric } from '../scripts/scrapers/parsers/productParser.js';
 import { deriveShoeGender, deriveShoeType } from '../scripts/scrapers/parsers/shoeParser.js';
 import {
@@ -1146,18 +1146,30 @@ export async function getRecommendations(productId, options = {}) {
   const clothingPoolRaw = await ClothingProduct.find(baseQuery).limit(100).lean();
   const clothingPool = clothingPoolRaw.map(formatClothingForApi);
 
-  // Shoes use the SAME footwear-matching logic as the "Style Me" outfit
-  // builder (accessoryMatcher.js's footwearFashionScore/explainFootwearChoice
-  // — color harmony + contrast + occasion + silhouette-appropriateness) rather
-  // than the older generic scoreProduct() heuristic, which only weighed raw
-  // embedding/color/occasion/style overlap with no footwear-specific reasoning.
+  // Shoes: first pre-filter/score with the SAME footwear-matching logic as the
+  // "Style Me" outfit builder (accessoryMatcher.js's footwearFashionScore —
+  // color harmony + contrast + occasion + silhouette-appropriateness, e.g.
+  // never scoring sneakers highly against eastern traditional wear) to get a
+  // sane candidate pool, THEN send that pool through an AI reasoning pass
+  // (rankShoesWithAI) for a genuine, specific explanation grounded in real
+  // global + Pakistani pairing standards — replacing the old templated
+  // "color harmony + contrast" string. Falls back to the deterministic
+  // picks/reasons if every AI provider is unavailable.
   const usedShoeIds = new Set();
-  const scoredShoes = [];
-  for (let i = 0; i < maxShoes; i++) {
+  const candidatePicks = [];
+  for (let i = 0; i < Math.max(maxShoes * 3, 15); i++) {
     const pick = pickBestShoe(source, shoePool, usedShoeIds);
     if (!pick) break;
-    scoredShoes.push({ product: pick.product, scores: { total: pick.score }, reason: pick.reason });
+    candidatePicks.push(pick);
   }
+
+  const aiPicks = await rankShoesWithAI(source, candidatePicks.map((p) => p.product), maxShoes);
+  const scoredShoes = aiPicks
+    ? aiPicks.map((ai) => {
+        const det = candidatePicks.find((p) => p.product === ai.product);
+        return { product: ai.product, scores: { total: det?.score ?? 0.5 }, reason: ai.reason || det?.reason };
+      })
+    : candidatePicks.slice(0, maxShoes).map((pick) => ({ product: pick.product, scores: { total: pick.score }, reason: pick.reason }));
 
   const scoredClothing = clothingPool.map((c) => ({ product: c, scores: scoreProduct(source, c) })).sort((a, b) => b.scores.total - a.scores.total).slice(0, maxClothing);
 

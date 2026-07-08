@@ -42,12 +42,37 @@ export function footwearFashionScore(dress, shoe) {
 
   const shoeType = (shoe.shoeType || '').toLowerCase();
   const formalish = ['wedding', 'bridal', 'formal', 'party', 'eid'].some((o) => occD.includes(o));
+
+  // Eastern traditional silhouettes (shalwar-kameez/kurta/lehenga/saree/abaya)
+  // are never paired with Western athletic footwear in real global or
+  // Pakistani styling standards — that's a silhouette mismatch, not a
+  // formality question, so "casual" occasion must NOT unlock sneakers/
+  // trainers/joggers here the way it correctly does for Western dressStyle.
+  // (Bug this fixes: an unstitched lawn 2-piece suit — occasion "casual",
+  // dressStyle "shalwar-kameez" — was scoring sneakers/joggers as highly as
+  // proper eastern footwear, since the old rule only checked occasion.)
+  const EASTERN_STYLES = new Set(['shalwar-kameez', 'kurta', 'lehenga', 'saree', 'abaya', 'sherwani']);
+  const isEastern = EASTERN_STYLES.has((dress.dressStyle || '').toLowerCase());
+  const ATHLETIC = /sneaker|trainer|jogger|running|basketball/;
+  const EASTERN_FOOTWEAR = /khussa|kohati|kolhapuri|peshawari|sandal|chappal|wedge|mule|slide|slipper/;
+  const WESTERN_CASUAL = /sneaker|trainer|jogger|flat|slide|sandal|loafer/;
+
   let silhouette = 0.1;
+  const eastAthleticMismatch = isEastern && ATHLETIC.test(shoeType);
   if (formalish && /heel|stiletto|pump|bridal|khussa|kolhapuri|mule/.test(shoeType)) silhouette = 0.22;
-  if (!formalish && /sneaker|trainer|flat|slide|sandal|loafer/.test(shoeType)) silhouette = 0.2;
+  else if (isEastern) {
+    if (!formalish && EASTERN_FOOTWEAR.test(shoeType)) silhouette = 0.2;
+  } else if (!formalish && WESTERN_CASUAL.test(shoeType)) {
+    silhouette = 0.2;
+  }
   if (occD.includes('office') && /loafer|pump|heel|oxford|flat/.test(shoeType)) silhouette = 0.2;
 
-  const total = Math.min(1, colorBest + contrastBoost + occHit + silhouette);
+  let total = Math.min(1, colorBest + contrastBoost + occHit + silhouette);
+  // Multiplicative, applied AFTER the ceiling clamp — an additive penalty on
+  // "silhouette" alone gets swallowed whenever color+contrast+occasion already
+  // sum past 1 (exactly what let sneakers tie with slippers at score 1 despite
+  // the fix above: strong color/occasion match papered over the mismatch).
+  if (eastAthleticMismatch) total *= 0.12;
   return parseFloat(total.toFixed(3));
 }
 
