@@ -52,6 +52,28 @@ function normalizeAnalysis(raw) {
 }
 
 /**
+ * Deterministic safety net for the kurta/lehenga confusion: prompt instructions
+ * alone aren't 100% reliable (vision models can still misread a long kurta +
+ * voluminous sharara/gharara/palazzo trousers as a lehenga's flared skirt,
+ * despite explicit criteria in the prompt above). If the model said "lehenga"
+ * but its OWN keywords/style text also names trouser-type bottoms with no
+ * skirt-specific language, trust the trouser signal and correct the category —
+ * same "don't trust prose alone" principle used elsewhere in this codebase
+ * (e.g. describeMatch() fact-checking AI-written match reasons).
+ */
+function correctKurtaLehengaConfusion(analysis) {
+  const text = `${analysis.category} ${analysis.style} ${analysis.keywords.join(' ')}`.toLowerCase();
+  if (!/\b(lehenga|lehnga)\b/.test(text)) return analysis;
+  const trouserSignal = /\b(trouser|trousers|pant|pants|palazzo|sharara|gharara|wide[- ]?leg)\b/.test(text);
+  const skirtSignal = /\b(flared skirt|circular skirt|gathered skirt|choli|blouse)\b/.test(text);
+  if (trouserSignal && !skirtSignal) {
+    console.warn('[VisualSearch] Corrected lehenga→kurta misclassification (trouser keywords present, no skirt signal):', text);
+    return { ...analysis, category: analysis.category.replace(/lehenga|lehnga/gi, 'kurta') };
+  }
+  return analysis;
+}
+
+/**
  * Vision models often describe color richly ("off white with red, green, and
  * gold embroidery accents") rather than as clean base shades — great for
  * display, but it corrupts search: a compound run-on sentence lets stray words
@@ -169,43 +191,14 @@ export async function searchByImage(req, res) {
       Analyze this fashion item as a Pakistani fashion e-commerce stylist would.
       Identify its:
       - Category (dress, kurta, lehenga, saree, shoe, earrings, necklace, etc.)
-        Pay close attention to distinguishing SAREE from LEHENGA — they are
-        frequently confused, especially in modern/pre-draped saree styles where
-        front pleats can look like a flared lehenga skirt panel. Use this ONE
-        decisive tell FIRST, before anything else:
-          • Look for a PALLU — a length of the SAME fabric crossing diagonally
-            across the torso from one hip/waist up to the opposite shoulder, then
-            hanging loose down the back or arm on that shoulder. This diagonal
-            cross-body drape is UNIQUE to sarees — a lehenga's dupatta is draped
-            separately (over both shoulders, across both arms, or around the neck
-            like a shawl) and is a visually distinct piece of fabric, not a
-            continuation of the skirt fabric itself.
-          • If you see that diagonal pallu drape (even with vertical pleats
-            visible at the front where the fabric is tucked), it is a SAREE —
-            the vertical pleats are the saree's own front pleat-tuck, not a
-            separate lehenga skirt panel. Do not call it a lehenga just because
-            the pleats look full or flared.
-          • Only call it a LEHENGA if there is NO diagonal pallu and instead a
-            clearly separate, distinctly different-looking dupatta draped
-            symmetrically, with an obviously separate stitched flared skirt and
-            a short cropped choli blouse.
-        Do not default to "lehenga" just because the outfit looks bridal or heavily
-        embellished — sarees are also worn for weddings and formal occasions, and
-        this diagonal-pallu check is far more reliable than "does it look bridal".
-        Separately, KURTA/SHALWAR-KAMEEZ with wide-leg PALAZZO or sharara-style
-        trousers is also frequently confused with a lehenga, because voluminous
-        flowing palazzo pants can visually read as a flared lehenga skirt in a
-        standing photo. Use this decisive tell: look at the TOP garment's length.
-          • If the top extends down to at least mid-thigh or knee-length (a long
-            kurta/tunic covering the hips and upper legs), it is a KURTA/
-            SHALWAR-KAMEEZ or CO-ORD SET — the wide bottom is trousers (two
-            separate leg openings, even if voluminous), not a skirt. Long kurtas
-            over wide palazzo/sharara trousers are extremely common everyday and
-            festive wear and must not be called a lehenga.
-          • Only call it a LEHENGA if the TOP is short/cropped (ending at or
-            above the natural waist, like a choli/blouse) AND the bottom is a
-            single continuous flared skirt attached at that waistline with no
-            visible separate leg openings.
+        LEHENGA requires BOTH: a short top ending at or above the waist, AND a
+        separate skirt attached right at that waistline. If the top is long
+        (past the hip, to mid-thigh or lower), it is a KURTA/SHALWAR-KAMEEZ —
+        even if the bottom is wide or flowing (wide-leg trousers, not a skirt).
+        If one continuous piece of fabric drapes diagonally across the body
+        with a loose end over one shoulder, it is a SAREE, not a lehenga.
+        When genuinely unsure, look at actual measurable proportions in the
+        photo rather than assuming from the occasion or how ornate it looks.
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
         "royal blue", "mustard"). If the garment genuinely has two significant
@@ -237,7 +230,7 @@ export async function searchByImage(req, res) {
         imageBase64: req.file.buffer.toString('base64'),
         mimeType: req.file.mimetype
       });
-      analysis = normalizeAnalysis(data);
+      analysis = correctKurtaLehengaConfusion(normalizeAnalysis(data));
       visionProvider = provider;
     } catch (e) {
       return res.status(503).json({
