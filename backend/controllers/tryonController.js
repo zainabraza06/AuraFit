@@ -265,34 +265,35 @@ export async function virtualTryon(req, res) {
       }
     }
 
-    let replicateError = null;
+    // Free Hugging Face Space is primary — no billing required. Replicate is only
+    // an opportunistic fallback (useful if paid credit is ever added later), since
+    // it costs money per generation and the account currently has none.
+    let freeError = null;
     try {
-      const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
+      const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
       const finalUrl = await finalizeResultUrl(resultUrl);
       return res.json({ success: true, resultUrl: finalUrl, provider, message: 'Virtual try-on generated successfully!' });
     } catch (err) {
-      replicateError = err;
-      if (!err.notConfigured) console.warn('[TryOn] Replicate failed, falling back to free provider:', err.message);
+      freeError = err;
+      console.warn('[TryOn] Free provider failed, trying Replicate fallback:', err.message);
     }
 
-    // Replicate unavailable/failed (no key, no credit, rate limited, etc.) — fall
-    // back to the free Hugging Face Space automatically.
     try {
-      const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
+      const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
       const finalUrl = await finalizeResultUrl(resultUrl);
       return res.json({
         success: true,
         resultUrl: finalUrl,
         provider,
-        message: 'Virtual try-on generated using our free AI provider (may be slower than usual).'
+        message: 'Virtual try-on generated successfully!'
       });
-    } catch (freeErr) {
-      console.error('[TryOn] Free provider also failed:', freeErr.message);
+    } catch (replicateErr) {
+      console.error('[TryOn] Replicate fallback also failed:', replicateErr.message);
       return res.status(503).json({
         error: 'Virtual try-on is temporarily unavailable',
-        hint: replicateError?.notConfigured
-          ? 'The free provider (huggingface.co/spaces/yisol/IDM-VTON) is busy or down — please try again shortly.'
-          : `Replicate: ${replicateError?.message || 'failed'}. Free fallback also failed — please try again shortly.`
+        hint: replicateErr.notConfigured
+          ? `Our free provider is busy or down (${freeError?.message || 'failed'}) — please try again shortly.`
+          : `Free provider: ${freeError?.message || 'failed'}. Replicate: ${replicateErr?.message || 'failed'}. Please try again shortly.`
       });
     }
   } catch (err) {

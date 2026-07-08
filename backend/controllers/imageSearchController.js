@@ -133,22 +133,28 @@ export async function searchByImage(req, res) {
       Identify its:
       - Category (dress, kurta, lehenga, saree, shoe, earrings, necklace, etc.)
         Pay close attention to distinguishing SAREE from LEHENGA — they are
-        frequently confused but are structurally different:
-          • SAREE = ONE continuous piece of unstitched fabric (5-6 yards) draped
-            around the body and pleated, with the loose end (pallu) draped over one
-            shoulder. Worn over a separate fitted blouse and petticoat, but the
-            saree itself has no visible waist seam or stitched skirt panel — the
-            drape is continuous fabric, often with a visible border running along
-            one edge.
-          • LEHENGA = a separate stitched, flared, floor-length SKIRT (with a
-            waistband/seam) worn with a cropped fitted blouse (choli) and a
-            separate dupatta draped loosely — three distinct stitched pieces, not
-            one draped fabric length.
-        If the photo shows a visible waist seam / stitched skirt silhouette with a
-        cropped blouse, it's a lehenga. If it shows one continuous draped fabric
-        with a pallu over the shoulder and no stitched skirt seam, it's a saree.
+        frequently confused, especially in modern/pre-draped saree styles where
+        front pleats can look like a flared lehenga skirt panel. Use this ONE
+        decisive tell FIRST, before anything else:
+          • Look for a PALLU — a length of the SAME fabric crossing diagonally
+            across the torso from one hip/waist up to the opposite shoulder, then
+            hanging loose down the back or arm on that shoulder. This diagonal
+            cross-body drape is UNIQUE to sarees — a lehenga's dupatta is draped
+            separately (over both shoulders, across both arms, or around the neck
+            like a shawl) and is a visually distinct piece of fabric, not a
+            continuation of the skirt fabric itself.
+          • If you see that diagonal pallu drape (even with vertical pleats
+            visible at the front where the fabric is tucked), it is a SAREE —
+            the vertical pleats are the saree's own front pleat-tuck, not a
+            separate lehenga skirt panel. Do not call it a lehenga just because
+            the pleats look full or flared.
+          • Only call it a LEHENGA if there is NO diagonal pallu and instead a
+            clearly separate, distinctly different-looking dupatta draped
+            symmetrically, with an obviously separate stitched flared skirt and
+            a short cropped choli blouse.
         Do not default to "lehenga" just because the outfit looks bridal or heavily
-        embellished — sarees are also worn for weddings and formal occasions.
+        embellished — sarees are also worn for weddings and formal occasions, and
+        this diagonal-pallu check is far more reliable than "does it look bridal".
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
         "royal blue", "mustard"). If the garment genuinely has two significant
