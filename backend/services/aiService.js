@@ -198,14 +198,29 @@ entirely absent (e.g. they might only give the occasion, or only a body type). G
 advice possible with whatever is provided; never refuse or demand more information.
 
 Decide your styling recommendation in two steps:
-  STEP 1 — What garment would be IDEAL here, purely by global/traditional styling logic, ignoring
-    what our catalog stocks? (This might genuinely be a maxi, gown, sharara, anarkali, etc.)
-  STEP 2 — Our catalog ONLY has real inventory in: kurta, shalwar-kameez, western, lehenga, co-ord,
-    abaya, saree (shalwar-kameez and kurta are by far the largest). It has ZERO or almost zero items
-    in: frock, maxi, gown, tunic, palazzo, sherwani, and doesn't carry sharara/gharara/anarkali as a
-    distinct category (those map into shalwar-kameez in our stock). If your Step 1 ideal falls in the
-    unavailable list, note that honestly and pivot to the closest available style that achieves a
-    similar effect (usually shalwar-kameez or kurta; lehenga only for genuinely bridal looks).
+  STEP 1 — What garment would be IDEAL here, purely by global/traditional styling logic, COMPLETELY
+    ignoring what our catalog stocks? Answer this as a real stylist would, with zero regard for
+    inventory. Get specific, well-known occasion norms right — do not default to shalwar-kameez as a
+    generic safe answer. Known examples where shalwar-kameez is NOT the norm:
+      • University/college farewell parties in Pakistan — students overwhelmingly wear sarees, maxis,
+        or long Western-style gowns, not shalwar-kameez; this is a well-established, photographed
+        tradition, not a niche choice.
+      • Red carpet / award-show style events — Western gowns.
+      • Garden parties / high tea — maxis or flowy Western dresses are common alongside eastern wear.
+    Shalwar-kameez/kurta ARE the right call for everyday wear, office, casual outings, and many
+    religious/family occasions (eid namaz, mehndi in some families, casual get-togethers) — use them
+    there. The point is to be accurate to the specific occasion, not to lean any particular direction.
+  STEP 2 — SEPARATELY, now map Step 1's ideal to what's actually searchable. Our catalog ONLY has
+    real inventory in: kurta, shalwar-kameez, western, lehenga, co-ord, abaya, saree (shalwar-kameez
+    and kurta are by far the largest). It has ZERO or almost zero items in: frock, maxi, gown, tunic,
+    palazzo, sherwani, and doesn't carry sharara/gharara/anarkali as a distinct category (those map
+    into shalwar-kameez in our stock). If your Step 1 ideal falls in the unavailable list, note that
+    honestly via idealStyleNotAvailable and pivot searchPrompt to the closest available style (maxi/
+    gown/long frock → "western" or "saree" if it's a draped look; sharara/gharara/anarkali →
+    "shalwar-kameez"; genuinely bridal looks → "lehenga"). NEVER let this catalog constraint change
+    what you said in Step 1 — a thin category (e.g. saree has few listings) still gets recommended
+    honestly in the advice text if it's the real answer; the catalog limitation only affects
+    searchPrompt/dressStyle and triggers the disclosure note.
 
 Return ONLY a JSON object:
 {
@@ -251,7 +266,7 @@ Return ONLY a JSON object:
 
     return {
       advice,
-      searchPrompt: stripRegionalQualifiers(stripAlternatives(String(parsed.searchPrompt).trim())),
+      searchPrompt: stripUnavailableGarmentWords(stripRegionalQualifiers(stripAlternatives(String(parsed.searchPrompt).trim())), dressStyle),
       dressStyle,
       occasion: parsed.occasion ? String(parsed.occasion).trim() : null,
       idealStyleNotAvailable: idealUnavailable && idealUnavailable.toLowerCase() !== 'null' ? idealUnavailable : null
@@ -298,6 +313,25 @@ function stripRegionalQualifiers(text) {
     .replace(/\b(sharara|gharara|anarkali|angrakha)(-style)?\s+/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Defensive cleanup: the LLM is told "never put maxi/gown/frock/tunic/palazzo/
+ * sherwani directly in searchPrompt", but when Step 1's genuine ideal is one of
+ * these (e.g. a farewell-party maxi), it sometimes still writes the real word
+ * into searchPrompt even after correctly pivoting dressStyle to a catalog term
+ * like "western". A searchPrompt containing "maxi dress" can get re-matched to
+ * the (empty) maxi category downstream, silently zeroing out results — so swap
+ * any leaked unavailable-category noun for the actual pivoted dressStyle.
+ */
+function stripUnavailableGarmentWords(text, dressStyle) {
+  if (!dressStyle) return text;
+  const banned = ['maxi dress', 'maxi', 'gown', 'long frock', 'frock', 'tunic', 'palazzo', 'sherwani'];
+  let out = text;
+  for (const word of banned) {
+    out = out.replace(new RegExp(`\\b${word}\\b`, 'gi'), dressStyle);
+  }
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 /**
