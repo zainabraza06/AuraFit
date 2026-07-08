@@ -197,11 +197,22 @@ The user will describe themselves and the occasion in their own words — detail
 entirely absent (e.g. they might only give the occasion, or only a body type). Give the best specific
 advice possible with whatever is provided; never refuse or demand more information.
 
+Decide your styling recommendation in two steps:
+  STEP 1 — What garment would be IDEAL here, purely by global/traditional styling logic, ignoring
+    what our catalog stocks? (This might genuinely be a maxi, gown, sharara, anarkali, etc.)
+  STEP 2 — Our catalog ONLY has real inventory in: kurta, shalwar-kameez, western, lehenga, co-ord,
+    abaya, saree (shalwar-kameez and kurta are by far the largest). It has ZERO or almost zero items
+    in: frock, maxi, gown, tunic, palazzo, sherwani, and doesn't carry sharara/gharara/anarkali as a
+    distinct category (those map into shalwar-kameez in our stock). If your Step 1 ideal falls in the
+    unavailable list, note that honestly and pivot to the closest available style that achieves a
+    similar effect (usually shalwar-kameez or kurta; lehenga only for genuinely bridal looks).
+
 Return ONLY a JSON object:
 {
   "advice": "2-4 sentences of SPECIFIC styling advice — name actual colors, silhouettes, and garment
              types, and briefly explain WHY (skin tone / body shape / occasion reasoning). Warm,
-             confident, stylist tone — not generic.",
+             confident, stylist tone — not generic. Do NOT mention catalog availability here — that
+             disclosure is added separately from idealStyleNotAvailable below.",
   "searchPrompt": "ONE natural-language sentence formatted exactly like a normal outfit search query
                   our catalog engine can run directly — e.g. 'emerald green 3-piece embroidered
                   lehenga for wedding' or 'pastel pink unstitched 2-piece for eid under 8000'.
@@ -211,30 +222,39 @@ Return ONLY a JSON object:
                   'yellow or green' or 'lehenga or gharara'; the advice text can mention options,
                   but searchPrompt is a single decisive query, not a choice.
                   The garment word in searchPrompt MUST be one of: kurta, shalwar-kameez, western,
-                  lehenga, co-ord, abaya, saree — these are the catalog styles with real inventory.
-                  STRONGLY PREFER shalwar-kameez or kurta (the catalog's largest categories) whenever
-                  the occasion reasonably allows it — this is what most Pakistani formal/casual wear
-                  actually is. Reserve 'lehenga' for genuinely bridal/heavy-festive looks only. Do NOT
-                  use frock, maxi, gown, tunic, palazzo, or sherwani in searchPrompt — the catalog has
-                  zero or almost zero items in these categories, so a search for them reliably returns
-                  nothing. The advice text is free to use authentic regional terms (sharara, gharara,
-                  anarkali, etc.) since that reads naturally to the user, but map them to a real
-                  catalog term for searchPrompt: sharara/gharara/anarkali → shalwar-kameez (or lehenga
-                  only if genuinely bridal), angrakha → kurta. Never put an unsupported term (sharara,
-                  gharara, anarkali, frock, maxi, gown, etc.) directly in searchPrompt.",
+                  lehenga, co-ord, abaya, saree — your Step 2 pivoted style, never the Step 1 ideal
+                  if that one is unavailable. Never put sharara, gharara, anarkali, frock, maxi, gown,
+                  tunic, palazzo, or sherwani directly in searchPrompt.",
   "dressStyle": "the catalog garment-type word actually used in searchPrompt, e.g. 'lehenga' or 'shalwar-kameez'",
-  "occasion": "the occasion as stated or inferred, e.g. 'wedding'"
+  "occasion": "the occasion as stated or inferred, e.g. 'wedding'",
+  "idealStyleNotAvailable": "the Step 1 ideal garment name (e.g. 'maxi dress', 'anarkali', 'gharara')
+                            ONLY if it differs from your Step 2 pivoted style because we don't stock
+                            it. Set to null if your ideal recommendation was already one of the
+                            available styles (kurta, shalwar-kameez, western, lehenga, co-ord, abaya, saree)."
 }`;
 
   try {
     const { text } = await completeJsonWithProviderFallback({ system, user: userMessage, temperature: 0.4 });
     const parsed = JSON.parse(extractJson(text));
     if (!parsed?.advice || !parsed?.searchPrompt) throw new Error('Incomplete style advice response');
+    const dressStyle = parsed.dressStyle ? String(parsed.dressStyle).trim() : null;
+    let advice = String(parsed.advice).trim();
+
+    // Guarantee the disclosure happens even if the AI's own prose forgot to
+    // mention it — same "don't trust prose alone" principle used elsewhere
+    // (e.g. describeMatch() fact-checking AI-written match reasons).
+    const idealUnavailable = parsed.idealStyleNotAvailable ? String(parsed.idealStyleNotAvailable).trim() : null;
+    if (idealUnavailable && idealUnavailable.toLowerCase() !== 'null') {
+      const article = (w) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
+      advice += ` (Note: ${article(idealUnavailable)} ${idealUnavailable} would suit this look too, but that style isn't currently available from our partner brands — I've adapted the recommendation to ${article(dressStyle || 'similar')} ${dressStyle || 'similar'} instead, which achieves a comparable effect.)`;
+    }
+
     return {
-      advice: String(parsed.advice).trim(),
-      searchPrompt: stripAlternatives(String(parsed.searchPrompt).trim()),
-      dressStyle: parsed.dressStyle ? String(parsed.dressStyle).trim() : null,
-      occasion: parsed.occasion ? String(parsed.occasion).trim() : null
+      advice,
+      searchPrompt: stripRegionalQualifiers(stripAlternatives(String(parsed.searchPrompt).trim())),
+      dressStyle,
+      occasion: parsed.occasion ? String(parsed.occasion).trim() : null,
+      idealStyleNotAvailable: idealUnavailable && idealUnavailable.toLowerCase() !== 'null' ? idealUnavailable : null
     };
   } catch (e) {
     console.warn('[generatePersonalStyleAdvice] failed:', e.message);
@@ -264,6 +284,20 @@ function stripAlternatives(text) {
   const anchor = `(?:${anchorWords.join('|')}|for\\s|\\d+-piece)`;
   const re = new RegExp(`\\b(\\w+(?:\\s\\w+)?)\\s+or\\s+(\\w+(?:\\s\\w+)?)\\s+(?=${anchor})`, 'i');
   return text.replace(re, '$1 ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Defensive cleanup: despite the prompt saying "never put sharara/gharara/
+ * anarkali/etc. in searchPrompt", the LLM occasionally still tacks one on as a
+ * decorative qualifier ("anarkali-style shalwar-kameez", "sharara-style
+ * shalwar-kameez"). Harmless to search (dressStyle still resolves to the real
+ * noun) but noisy — strip these regional-term qualifiers so the query reads clean.
+ */
+function stripRegionalQualifiers(text) {
+  return text
+    .replace(/\b(sharara|gharara|anarkali|angrakha)(-style)?\s+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
