@@ -216,6 +216,9 @@ export default function ProductDetailsPage() {
                 Matching Shoes
                 <span className="tag" style={{ background: 'rgba(45, 212, 191, 0.1)', color: 'var(--accent-teal)', borderColor: 'rgba(45, 212, 191, 0.2)' }}>High Compatibility</span>
               </h3>
+              {recommendations.shoesNote && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem', fontStyle: 'italic' }}>{recommendations.shoesNote}</p>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
                 {recommendations.shoes?.map((rec: any) => (
                   <div key={rec.product._id}>
@@ -245,6 +248,9 @@ export default function ProductDetailsPage() {
             {/* Complementary Products */}
             <div>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: '2rem' }}>Complementary Styles</h3>
+              {recommendations.complementaryNote && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem', fontStyle: 'italic' }}>{recommendations.complementaryNote}</p>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
                 {recommendations.complementaryClothing?.map((rec: any) => (
                   <div key={rec.product._id}>

@@ -357,7 +357,7 @@ const SELECT_CLOTHING =
   'name brand category subCategory dressStyle stitchedType pattern pieceType pieceDetails fashionType fabric price primaryColor colors primaryExactColor exactColors occasion season style tags imageUrl images productUrl description neckline gender metadataScore embedding';
 
 const SELECT_SHOE =
-  'name brand price images primaryColor primaryExactColor colors occasion shoeType subCategory gender tags productUrl style embedding';
+  'name brand price images primaryColor primaryExactColor colors occasion shoeType subCategory gender tags productUrl style embedding description';
 const SELECT_JEWELRY =
   'name brand price images primaryColor colors occasion jewelryType jewelryCategory metalFinish stoneWork gender productUrl description tags';
 const SELECT_WATCH =
@@ -1116,6 +1116,87 @@ export async function getOutfitForQuery(intent) {
   };
 }
 
+const MAX_ACCESSORY_ROUNDS = 3;
+
+/**
+ * Agentic widen-and-retry loop for shoe picks. Round 1 hands the AI a modest,
+ * heuristically pre-filtered pool (footwearFashionScore — color harmony +
+ * contrast + occasion + silhouette-appropriateness, so sneakers are already
+ * deprioritized against eastern wear) WITH full description text, not just
+ * structured fields. If the AI judges that pool genuinely insufficient
+ * (sufficientMatch: false, or it couldn't fill the requested count), the pool
+ * is widened to draw from more of the catalog and the AI is asked again — up
+ * to MAX_ACCESSORY_ROUNDS — instead of ever settling for the first, possibly-
+ * too-narrow batch. Falls back to the deterministic heuristic order/reasons
+ * if every AI provider is unavailable.
+ */
+async function pickShoesWithAgenticLoop(source, shoePool, maxShoes) {
+  let candidateCount = Math.max(maxShoes * 3, 15);
+  const usedIds = new Set();
+  let candidatePicks = [];
+  let result = null;
+
+  for (let round = 0; round < MAX_ACCESSORY_ROUNDS; round++) {
+    usedIds.clear();
+    candidatePicks = [];
+    for (let i = 0; i < candidateCount; i++) {
+      const pick = pickBestShoe(source, shoePool, usedIds);
+      if (!pick) break;
+      candidatePicks.push(pick);
+    }
+
+    const attempt = await rankShoesWithAI(source, candidatePicks.map((p) => p.product), maxShoes);
+    if (!attempt) { result = null; break; } // every AI provider down — fall back to deterministic below
+    result = attempt;
+
+    const gotEnough = attempt.picks.length >= Math.min(maxShoes, candidatePicks.length);
+    if (attempt.sufficientMatch && gotEnough) break;
+    if (candidatePicks.length >= shoePool.length) break; // whole pool already considered
+    candidateCount = Math.min(shoePool.length, candidateCount * 2);
+  }
+
+  const scoredShoes = result
+    ? result.picks.map((ai) => {
+        const det = candidatePicks.find((p) => p.product === ai.product);
+        return { product: ai.product, scores: { total: det?.score ?? 0.5 }, reason: ai.reason || det?.reason };
+      })
+    : candidatePicks.slice(0, maxShoes).map((pick) => ({ product: pick.product, scores: { total: pick.score }, reason: pick.reason }));
+
+  return { scoredShoes, result };
+}
+
+/** Same widen-and-retry agentic loop as pickShoesWithAgenticLoop, for complementary clothing. */
+async function pickComplementaryClothingWithAgenticLoop(source, clothingPool, maxClothing) {
+  let candidateCount = Math.max(maxClothing * 3, 15);
+  let candidates = [];
+  let result = null;
+
+  for (let round = 0; round < MAX_ACCESSORY_ROUNDS; round++) {
+    candidates = clothingPool
+      .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
+      .sort((a, b) => b.scores.total - a.scores.total)
+      .slice(0, candidateCount);
+
+    const attempt = await rankComplementaryClothingWithAI(source, candidates.map((c) => c.product), maxClothing);
+    if (!attempt) { result = null; break; }
+    result = attempt;
+
+    const gotEnough = attempt.picks.length >= Math.min(maxClothing, candidates.length);
+    if (attempt.sufficientMatch && gotEnough) break;
+    if (candidates.length >= clothingPool.length) break;
+    candidateCount = Math.min(clothingPool.length, candidateCount * 2);
+  }
+
+  const scoredClothing = result
+    ? result.picks.map((ai) => {
+        const det = candidates.find((c) => c.product === ai.product);
+        return { product: ai.product, scores: det?.scores ?? { total: 0.5 }, reason: ai.reason };
+      })
+    : candidates.slice(0, maxClothing);
+
+  return { scoredClothing, result };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC: Product-detail-page recommendations
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1146,50 +1227,21 @@ export async function getRecommendations(productId, options = {}) {
   const clothingPoolRaw = await ClothingProduct.find(baseQuery).limit(100).lean();
   const clothingPool = clothingPoolRaw.map(formatClothingForApi);
 
-  // Shoes: first pre-filter/score with the SAME footwear-matching logic as the
-  // "Style Me" outfit builder (accessoryMatcher.js's footwearFashionScore —
-  // color harmony + contrast + occasion + silhouette-appropriateness, e.g.
-  // never scoring sneakers highly against eastern traditional wear) to get a
-  // sane candidate pool, THEN send that pool through an AI reasoning pass
-  // (rankShoesWithAI) for a genuine, specific explanation grounded in real
-  // global + Pakistani pairing standards — replacing the old templated
-  // "color harmony + contrast" string. Falls back to the deterministic
-  // picks/reasons if every AI provider is unavailable.
-  const usedShoeIds = new Set();
-  const candidatePicks = [];
-  for (let i = 0; i < Math.max(maxShoes * 3, 15); i++) {
-    const pick = pickBestShoe(source, shoePool, usedShoeIds);
-    if (!pick) break;
-    candidatePicks.push(pick);
-  }
+  const [shoeOutcome, clothingOutcome] = await Promise.all([
+    pickShoesWithAgenticLoop(source, shoePool, maxShoes),
+    pickComplementaryClothingWithAgenticLoop(source, clothingPool, maxClothing)
+  ]);
+  const { scoredShoes, result: shoeResult } = shoeOutcome;
+  const { scoredClothing, result: clothingResult } = clothingOutcome;
 
-  const aiPicks = await rankShoesWithAI(source, candidatePicks.map((p) => p.product), maxShoes);
-  const scoredShoes = aiPicks
-    ? aiPicks.map((ai) => {
-        const det = candidatePicks.find((p) => p.product === ai.product);
-        return { product: ai.product, scores: { total: det?.score ?? 0.5 }, reason: ai.reason || det?.reason };
-      })
-    : candidatePicks.slice(0, maxShoes).map((pick) => ({ product: pick.product, scores: { total: pick.score }, reason: pick.reason }));
-
-  // Complementary clothing: same two-stage pattern as shoes above — a
-  // deterministic pre-filter (scoreProduct's embedding/color/occasion/style
-  // heuristic) narrows the pool, then an AI reasoning pass picks the final N
-  // and explains each as a genuine styling/coordination choice rather than a
-  // bare percentage.
-  const clothingCandidates = clothingPool
-    .map((c) => ({ product: c, scores: scoreProduct(source, c) }))
-    .sort((a, b) => b.scores.total - a.scores.total)
-    .slice(0, Math.max(maxClothing * 3, 15));
-
-  const clothingAiPicks = await rankComplementaryClothingWithAI(source, clothingCandidates.map((c) => c.product), maxClothing);
-  const scoredClothing = clothingAiPicks
-    ? clothingAiPicks.map((ai) => {
-        const det = clothingCandidates.find((c) => c.product === ai.product);
-        return { product: ai.product, scores: det?.scores ?? { total: 0.5 }, reason: ai.reason };
-      })
-    : clothingCandidates.slice(0, maxClothing);
-
-  return { source, shoes: scoredShoes, complementaryClothing: scoredClothing, generatedAt: new Date() };
+  return {
+    source,
+    shoes: scoredShoes,
+    complementaryClothing: scoredClothing,
+    shoesNote: shoeResult?.sufficientMatch === false ? shoeResult.note : null,
+    complementaryNote: clothingResult?.sufficientMatch === false ? clothingResult.note : null,
+    generatedAt: new Date()
+  };
 }
 
 export { scoreProductAgainstIntent, textualMatchScore } from './intentScoring.js';

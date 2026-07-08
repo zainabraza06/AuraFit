@@ -105,24 +105,29 @@ productIndex is 0-based (0 = first product listed above). Include all ${products
  * rankShoesWithAI
  * Given one dress and a pre-filtered candidate shoe pool (already scored by
  * accessoryMatcher.js's footwearFashionScore, so silhouette-mismatched shoes
- * like sneakers-for-eastern-wear are already deprioritized), asks the LLM to
- * pick the best N and explain each choice against REAL global + Pakistani
- * fashion pairing standards — replacing the templated "color harmony" string
- * with a genuine, specific reason. Falls back to the pre-filtered order (with
- * a null reason) if all providers fail, same pattern as rankProductsWithAI.
+ * like sneakers-for-eastern-wear are already deprioritized), sends the FULL
+ * description text (not just structured fields) and asks the LLM to pick the
+ * best N and explain each choice against REAL global + Pakistani fashion
+ * pairing standards. Also returns `sufficientMatch: false` when it judges the
+ * candidate pool itself too weak/narrow — the caller (recommendationEngine.js)
+ * uses that signal to widen the pool and ask again, instead of ever settling
+ * for a bad match just because it was in the first batch handed over.
+ * Falls back to the pre-filtered order (with a null reason) if all providers fail.
  */
 export async function rankShoesWithAI(dress, candidates, maxPicks = 6) {
-  if (!candidates.length) return [];
+  if (!candidates.length) return { picks: [], sufficientMatch: true, note: null };
 
   const shoeList = candidates
-    .map((s, i) => `[${i}] "${s.name}" — type: ${s.shoeType || 'N/A'}, color: ${s.primaryColor || 'N/A'}, occasion: ${(s.occasion || []).join(', ') || 'N/A'}`)
+    .map((s, i) => `[${i}] "${s.name}" — type: ${s.shoeType || 'N/A'}, color: ${s.primaryColor || 'N/A'}, occasion: ${(s.occasion || []).join(', ') || 'N/A'}
+  Description: ${(s.description || '').slice(0, 800) || 'N/A'}`)
     .join('\n');
 
   const prompt = `You are AuraFit's footwear stylist for Pakistani women's fashion.
 
 The outfit: "${dress.name}" — dress style: ${dress.dressStyle || dress.subCategory || 'N/A'}, color: ${dress.primaryColor || 'N/A'}, occasion: ${(dress.occasion || []).join(', ') || 'N/A'}.
+Description: ${(dress.description || '').slice(0, 1200) || 'N/A'}
 
-Candidate shoes:
+Candidate shoes (read each description — it often carries texture/embellishment/heel-height detail the structured fields miss):
 ${shoeList}
 
 Pick the best ${Math.min(maxPicks, candidates.length)} shoes for this specific outfit, applying REAL global + Pakistani fashion pairing standards:
@@ -131,13 +136,17 @@ Pick the best ${Math.min(maxPicks, candidates.length)} shoes for this specific o
   • Bridal/wedding/formal occasions favor heels, khussa, or mules — never sneakers/flats/joggers.
   • Color harmony and occasion tags matter, but silhouette-appropriateness above is the deciding factor when they conflict.
 
+Be honest: if NONE of these candidates are a genuinely good pairing (e.g. every option is silhouette-mismatched, or the pool is all wrong formality), set "sufficientMatch" to false and explain why in "note" — don't force a bad pick just to fill the list.
+
 Return ONLY valid JSON:
 {
+  "sufficientMatch": true,
+  "note": "one sentence if sufficientMatch is false explaining what's missing from this candidate pool, else null",
   "picks": [
     { "shoeIndex": 0, "reason": "one specific sentence grounded in the actual pairing logic above" }
   ]
 }
-shoeIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)}.`;
+shoeIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)} — fewer is fine if that's all that's genuinely good.`;
 
   try {
     const { text, provider } = await completeJsonWithProviderFallback({
@@ -150,7 +159,11 @@ shoeIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPick
     const picks = (parsed.picks || [])
       .map((p) => ({ product: candidates[p.shoeIndex], reason: typeof p.reason === 'string' ? p.reason.trim() : null }))
       .filter((p) => p.product != null);
-    return picks.length ? picks : null;
+    return {
+      picks,
+      sufficientMatch: parsed.sufficientMatch !== false,
+      note: typeof parsed.note === 'string' ? parsed.note.trim() : null
+    };
   } catch (err) {
     console.warn('[rankShoesWithAI] All providers exhausted:', err.message);
     return null;
@@ -161,35 +174,42 @@ shoeIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPick
  * rankComplementaryClothingWithAI
  * Given the product-page source garment and a pre-filtered candidate pool
  * (already scored by the deterministic scoreProduct() heuristic — embedding
- * similarity + color/occasion/style overlap), asks the LLM to pick the best N
- * and explain each as a genuine styling/coordination choice — e.g. "pairs as a
- * matching bottom", "same occasion tier, complementary accent color", "similar
- * silhouette for a mix-and-match wardrobe" — rather than a bare percentage.
+ * similarity + color/occasion/style overlap), sends the FULL description text
+ * and asks the LLM to pick the best N and explain each as a genuine styling/
+ * coordination choice. Also returns `sufficientMatch: false` when the pool
+ * itself is judged too weak, so the caller can widen the search and retry
+ * rather than settling for the first batch handed over.
  * Falls back to the pre-filtered order (no reason) if all providers fail.
  */
 export async function rankComplementaryClothingWithAI(source, candidates, maxPicks = 6) {
-  if (!candidates.length) return [];
+  if (!candidates.length) return { picks: [], sufficientMatch: true, note: null };
 
   const list = candidates
-    .map((c, i) => `[${i}] "${c.name}" — style: ${c.dressStyle || c.subCategory || 'N/A'}, color: ${c.primaryColor || 'N/A'}, occasion: ${(c.occasion || []).join(', ') || 'N/A'}, fabric: ${c.fabric || 'N/A'}`)
+    .map((c, i) => `[${i}] "${c.name}" — style: ${c.dressStyle || c.subCategory || 'N/A'}, color: ${c.primaryColor || 'N/A'}, occasion: ${(c.occasion || []).join(', ') || 'N/A'}, fabric: ${c.fabric || 'N/A'}
+  Description: ${(c.description || '').slice(0, 800) || 'N/A'}`)
     .join('\n');
 
   const prompt = `You are AuraFit's fashion stylist for Pakistani women's fashion, picking "Complementary Styles" for a shopper viewing this item:
 
 "${source.name}" — dress style: ${source.dressStyle || source.subCategory || 'N/A'}, color: ${source.primaryColor || 'N/A'}, occasion: ${(source.occasion || []).join(', ') || 'N/A'}, fabric: ${source.fabric || 'N/A'}.
+Description: ${(source.description || '').slice(0, 1200) || 'N/A'}
 
-Candidate pieces:
+Candidate pieces (read each description — it often carries fabric/embellishment/silhouette detail the structured fields miss):
 ${list}
 
 Pick the best ${Math.min(maxPicks, candidates.length)} pieces that genuinely complement or coordinate with this item — same occasion tier and formality level, a harmonious (not clashing) color relationship, and a style/silhouette a real stylist would suggest pairing or wearing on a similar occasion. Apply real global + Pakistani fashion standards: don't suggest a heavily bridal-embellished piece alongside a plain casual lawn suit, don't mix mismatched formality levels, and favor genuine color harmony over a same-hue coincidence.
 
+Be honest: if NONE of these candidates genuinely coordinate well, set "sufficientMatch" to false and explain why in "note" — don't force a weak pick just to fill the list.
+
 Return ONLY valid JSON:
 {
+  "sufficientMatch": true,
+  "note": "one sentence if sufficientMatch is false explaining what's missing from this candidate pool, else null",
   "picks": [
     { "productIndex": 0, "reason": "one specific sentence about why this coordinates well" }
   ]
 }
-productIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)}.`;
+productIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxPicks, candidates.length)} — fewer is fine if that's all that's genuinely good.`;
 
   try {
     const { text, provider } = await completeJsonWithProviderFallback({
@@ -202,7 +222,11 @@ productIndex is 0-based. Order picks BEST first. Include at most ${Math.min(maxP
     const picks = (parsed.picks || [])
       .map((p) => ({ product: candidates[p.productIndex], reason: typeof p.reason === 'string' ? p.reason.trim() : null }))
       .filter((p) => p.product != null);
-    return picks.length ? picks : null;
+    return {
+      picks,
+      sufficientMatch: parsed.sufficientMatch !== false,
+      note: typeof parsed.note === 'string' ? parsed.note.trim() : null
+    };
   } catch (err) {
     console.warn('[rankComplementaryClothingWithAI] All providers exhausted:', err.message);
     return null;
