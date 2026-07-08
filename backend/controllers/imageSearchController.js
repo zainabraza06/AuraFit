@@ -192,6 +192,20 @@ export async function searchByImage(req, res) {
         Do not default to "lehenga" just because the outfit looks bridal or heavily
         embellished — sarees are also worn for weddings and formal occasions, and
         this diagonal-pallu check is far more reliable than "does it look bridal".
+        Separately, KURTA/SHALWAR-KAMEEZ with wide-leg PALAZZO or sharara-style
+        trousers is also frequently confused with a lehenga, because voluminous
+        flowing palazzo pants can visually read as a flared lehenga skirt in a
+        standing photo. Use this decisive tell: look at the TOP garment's length.
+          • If the top extends down to at least mid-thigh or knee-length (a long
+            kurta/tunic covering the hips and upper legs), it is a KURTA/
+            SHALWAR-KAMEEZ or CO-ORD SET — the wide bottom is trousers (two
+            separate leg openings, even if voluminous), not a skirt. Long kurtas
+            over wide palazzo/sharara trousers are extremely common everyday and
+            festive wear and must not be called a lehenga.
+          • Only call it a LEHENGA if the TOP is short/cropped (ending at or
+            above the natural waist, like a choli/blouse) AND the bottom is a
+            single continuous flared skirt attached at that waistline with no
+            visible separate leg openings.
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
         "royal blue", "mustard"). If the garment genuinely has two significant
