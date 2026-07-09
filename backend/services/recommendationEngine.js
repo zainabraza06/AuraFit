@@ -351,7 +351,13 @@ function buildDBQuery(intent, dropped, colorMode) {
     const safe = escapeRegex(String(intent.colorExact).trim());
     if (safe) query.exactColors = { $elemMatch: { $regex: new RegExp(`^${safe}$`, 'i') } };
   } else if (colorMode === 'family' && intent.colorFamily && intent.colorFamily !== 'Any') {
-    query.primaryColor = intent.colorFamily;
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { primaryColor: intent.colorFamily },
+        { colors: intent.colorFamily }
+      ]
+    });
   }
   // colorMode === 'none': no color filter
 
@@ -832,14 +838,6 @@ export async function agenticRelax(intent, { minResults = 1 } = {}) {
       String(decision.constraint || '').toLowerCase().includes(relaxLabel(intent, c).toLowerCase().split(' ')[0]));
     let relaxingColor = String(decision.constraint || '').toLowerCase().includes('colo') && colorMode !== 'none';
 
-    // Hard override: planNextRelaxation is a per-call LLM judgment and has been
-    // observed to be non-deterministic on which constraint "matters more" —
-    // sometimes correctly relaxing color, sometimes wrongly dropping the exact
-    // silhouette noun the user named (e.g. "maroon lehenga" → drops "lehenga"
-    // and returns shalwar-kameez suits instead of just widening the color).
-    // A DISTINCTIVE style word is the defining noun of the search; never let it
-    // be the first thing sacrificed while any other relaxable option —
-    // including color — still has real results.
     if (target === 'dressStyle' && DISTINCTIVE_STYLES.includes(intent.dressStyle)) {
       if (colorMode !== 'none' && colorCount > 0) {
         target = null;
@@ -848,8 +846,16 @@ export async function agenticRelax(intent, { minResults = 1 } = {}) {
         const betterAlt = relaxOptionsList
           .filter((o) => o.constraint !== 'dressStyle' && o.count > 0)
           .sort((a, b) => b.count - a.count)[0];
-        if (betterAlt) target = betterAlt.constraint;
-        // else: genuinely nothing else to relax — allow dropping dressStyle as a last resort.
+        if (betterAlt) {
+          target = betterAlt.constraint;
+        } else {
+          // Genuinely nothing else to relax. If we have some products in the pool,
+          // accept them immediately instead of dropping the distinctive style.
+          if (pool.length > 0) {
+            return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
+          }
+          // else: allow dropping dressStyle as a last resort if pool is empty.
+        }
       }
     }
 
@@ -927,6 +933,13 @@ async function fetchCandidatesDeterministic(intent, { minResults = 8 } = {}) {
     const relaxedForLevel = [...level.dropped];
     if (level.label === 'colorExact') relaxedForLevel.push('exact color → showing color family');
     else if (level.label === 'color') relaxedForLevel.push('color');
+
+    // If this level has dropped a distinctive dressStyle, and we already found some
+    // results matching the distinctive style in previous levels, STOP and return those
+    // instead of letting the search broaden to unrelated clothing categories.
+    if (level.dropped.has('dressStyle') && DISTINCTIVE_STYLES.includes(intent.dressStyle) && bestProducts.length > 0) {
+      break;
+    }
 
     if (pool.length >= MIN_RESULTS) {          // tightest sufficient level — stop here
       bestProducts = pool;

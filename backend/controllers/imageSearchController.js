@@ -62,38 +62,76 @@ function normalizeAnalysis(raw) {
  * self-reported words afterward doesn't fix this — it's checking the model's
  * story against itself, not against the photo.
  *
- * This instead asks a SECOND, independent vision call with ONE narrow,
- * structural, low-level question the model can answer by actually looking at
- * pixels rather than composing a fashion narrative: "does the top garment
- * extend past the hip, or end at/above the waist?" That single fact is
- * mechanically decisive (see the definitions in the main prompt) and much
- * harder to get wrong than an open-ended category guess, because there's
- * nothing to rationalize — it's a direct, constrained yes/no-style read of
- * the image. Only triggers when the first pass said saree/lehenga, since
- * that's the ambiguous pair; leaves an unambiguous kurta/western/etc. alone.
+ * This instead asks a SECOND, independent vision call that looks at three
+ * structural questions: (1) pallu/diagonal drape presence — the ONLY reliable
+ * visual difference between a saree and a lehenga, (2) bottom garment type —
+ * separate skirt vs. continuous draped fabric, (3) top length — for the
+ * lehenga-vs-kurta distinction. The old single-question approach buried the
+ * pallu check as an "also note" after asking about top length, giving it
+ * insufficient model attention. Leading with the pallu as the primary question
+ * catches sarees that the first pass mislabelled as lehenga.
  */
 async function verifyLehengaVsKurta(imageBase64, mimeType, analysis) {
   if (!/\b(lehenga|lehnga|saree|sari)\b/i.test(analysis.category)) return analysis;
 
   const verifyPrompt = `
-    Look ONLY at the person's TOP garment in this photo (ignore color, embroidery, occasion — just its length and structure).
-    Answer ONE question: does the top garment end AT OR ABOVE the natural waist (a short, cropped choli/blouse), or does it extend BELOW the waist, past the hip (a long kurta/tunic)?
-    Also note: is there a single length of fabric draped diagonally across the torso with a loose end over one shoulder (a saree's pallu)?
-    Return ONLY this JSON: { "topLength": "short-cropped" | "long-past-hip", "hasDiagonalPallu": boolean }
+    You are checking whether this garment is a SAREE, a LEHENGA, or a KURTA/SHALWAR-KAMEEZ.
+    Ignore color, embroidery, occasion, and brand — look only at FABRIC STRUCTURE AND DRAPE.
+
+    QUESTION 1 — PALLU CHECK (the only reliable saree signal):
+    Scan the full image for a length of fabric that:
+      • starts at the waist or hip
+      • crosses the torso DIAGONALLY
+      • has a loose end draped over ONE shoulder or forearm (this loose end = pallu/aanchal)
+      • is made of the SAME fabric/pattern as the rest of the garment
+    Note: the pallu may fall to the front or back, over the left or right shoulder. Even if mostly
+    tucked, the diagonal cross-body line of fabric is the key visual cue. A lehenga has NO such drape.
+
+    QUESTION 2 — BOTTOM GARMENT CHECK:
+    Is the bottom garment:
+      (a) a SEPARATE circular or flared skirt — clearly a distinct piece from the top (→ lehenga)
+      (b) a CONTINUOUS drape of fabric folded into front pleats at the waist — same piece as the pallu (→ saree)
+      (c) trousers/shalwar worn under a long top (→ kurta)
+
+    QUESTION 3 — TOP LENGTH CHECK:
+    Does the top garment (blouse/choli/kameez) end:
+      (a) AT or ABOVE the natural waist / navel (short-cropped)
+      (b) BELOW the hip, at mid-thigh or lower (long-past-hip)
+
+    Return ONLY this JSON (no extra text):
+    {
+      "hasPallu": boolean,
+      "bottomType": "separate-skirt" | "draped-fabric" | "trousers",
+      "topLength": "short-cropped" | "long-past-hip"
+    }
   `;
   try {
     const { data } = await analyzeImageWithProviderFallback({ prompt: verifyPrompt, imageBase64, mimeType });
-    const topLength = String(data?.topLength || '').toLowerCase();
-    const hasDiagonalPallu = data?.hasDiagonalPallu === true;
+    const hasPallu   = data?.hasPallu === true;
+    const bottomType = String(data?.bottomType || '').toLowerCase();
+    const topLength  = String(data?.topLength  || '').toLowerCase();
 
-    if (hasDiagonalPallu && !/\b(saree|sari)\b/i.test(analysis.category)) {
-      console.warn('[VisualSearch] Verification pass corrected → saree (diagonal pallu confirmed)');
+    // ── Saree corrections ────────────────────────────────────────────────────
+    // Pallu is the definitive structural signal — a lehenga cannot have one.
+    if (hasPallu && !/\b(saree|sari)\b/i.test(analysis.category)) {
+      console.warn('[VisualSearch] Verification corrected → saree (pallu/diagonal drape confirmed)');
       return { ...analysis, category: 'saree' };
     }
+    // Draped continuous fabric bottom (not a separate skirt) also means saree,
+    // even if the pallu wasn't clearly visible, when the first pass said lehenga.
+    if (bottomType === 'draped-fabric' && /\b(lehenga|lehnga)\b/i.test(analysis.category)) {
+      console.warn('[VisualSearch] Verification corrected lehenga → saree (continuous draped fabric, no separate skirt)');
+      return { ...analysis, category: 'saree' };
+    }
+
+    // ── Lehenga → kurta correction ───────────────────────────────────────────
+    // A long top (past the hip) means kurta/kameez over trousers —
+    // lehenga REQUIRES a short choli ending at/above the waist.
     if (topLength === 'long-past-hip' && /\b(lehenga|lehnga)\b/i.test(analysis.category)) {
-      console.warn('[VisualSearch] Verification pass corrected lehenga → kurta (top confirmed long-past-hip)');
+      console.warn('[VisualSearch] Verification corrected lehenga → kurta (top confirmed long-past-hip)');
       return { ...analysis, category: analysis.category.replace(/lehenga|lehnga/gi, 'kurta') };
     }
+
     return analysis;
   } catch (e) {
     console.warn('[VisualSearch] Verification pass unavailable, keeping first-pass classification:', e.message);
