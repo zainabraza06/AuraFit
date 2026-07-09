@@ -243,30 +243,128 @@ async function tryFreeHfSpace({ personInput, clothingInput, description, cropMod
 }
 
 /**
- * Runs a single try-on pass through the provider waterfall (HF free → Replicate).
+ * OOTDiffusion — specifically handles full-body / dress / eastern outfit try-on via
+ * the "Overall" garment category. Unlike IDM-VTON (which body-parses to find the
+ * shirt/trouser region on the person), OOTDiffusion "Overall" mode replaces the
+ * entire body silhouette, making it the correct model for shalwar kameez / maxi /
+ * lehenga / gown on a person wearing a shirt+pants profile picture.
+ *
+ * Space: levihsu/OOTDiffusion (free, ZeroGPU, shared queue — same class as IDM-VTON free).
+ * Category arg: 'Upper-body' | 'Lower-body' | 'Overall'
+ */
+async function tryOOTDiffusion({ personInput, clothingInput, category = 'Overall' }) {
+  const { Client, handle_file } = await import('@gradio/client');
+  const toInput = (x) => handle_file(Buffer.isBuffer(x.buffer) ? x.buffer : x.url);
+
+  // Helper: extract a URL from any known OOTDiffusion output shape
+  const extractUrl = (data) => {
+    const flat = (Array.isArray(data) ? data : [data]).flat(3).filter(Boolean);
+    for (const item of flat) {
+      if (typeof item === 'string' && /^https?:\/\//.test(item)) return item;
+      if (item?.url) return item.url;
+      if (item?.path) return item.path;
+    }
+    return null;
+  };
+
+  // Positional args that work across OOTDiffusion Space versions
+  const args = [
+    toInput(personInput),   // vton_img
+    toInput(clothingInput), // garm_img
+    category,               // 'Upper-body' | 'Lower-body' | 'Overall'
+    1,                      // n_samples
+    20,                     // n_steps
+    2,                      // image_scale (guidance scale)
+    -1                      // seed
+  ];
+
+  // Try primary Space first, then a known mirror
+  const spaces = ['levihsu/OOTDiffusion', 'Zheng-Chong/OOTDiffusion'];
+  // Try multiple known endpoint names for the same Space
+  const endpoints = ['/process_dc_hd', '/process_hd', '/run/predict'];
+
+  for (const spaceName of spaces) {
+    let app;
+    try {
+      console.log(`[TryOn] Connecting to OOTDiffusion space: ${spaceName}...`);
+      app = await Client.connect(spaceName, {
+        hf_token: process.env.HUGGING_FACE_API_KEY || undefined
+      });
+    } catch (connErr) {
+      console.warn(`[TryOn] OOTDiffusion ${spaceName} connect failed:`, connErr.message);
+      continue;
+    }
+
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[TryOn] OOTDiffusion ${spaceName} → trying endpoint ${endpoint} (category=${category})...`);
+        const result = await app.predict(endpoint, args);
+        const resultUrl = extractUrl(result?.data);
+        if (resultUrl) {
+          console.log(`[TryOn] OOTDiffusion succeeded via ${spaceName}${endpoint}`);
+          return { resultUrl, provider: 'ootdiffusion' };
+        }
+        console.warn(`[TryOn] OOTDiffusion ${endpoint} returned data but no URL, trying next endpoint`);
+      } catch (endpointErr) {
+        console.warn(`[TryOn] OOTDiffusion ${spaceName}${endpoint} failed:`, endpointErr.message);
+      }
+    }
+  }
+
+  throw new Error('OOTDiffusion: all spaces and endpoints failed');
+}
+
+
+/**
+ * Runs a single try-on pass through the provider waterfall.
  * Returns { resultUrl, provider } — resultUrl is already finalized (Cloudinary or raw).
  *
- * cropMode: 'full-body' for long eastern garments (kameez, maxi, lehenga…) so the
- *           model maps the outfit across the whole body, not just the shirt region.
- *           'auto' (default) for short/western garments — lets IDM-VTON crop to the
- *           existing garment region on partial photos.
+ * For LONG EASTERN GARMENTS (kameez, shalwar, kurta, maxi, lehenga…):
+ *   1. OOTDiffusion "Overall" category — replaces the whole body silhouette,
+ *      NOT just the shirt region. This is the correct model for shalwar kameez.
+ *   2. IDM-VTON (free HF) with is_checked_crop=false — fallback.
+ *   3. Replicate IDM-VTON — last-resort paid fallback.
+ *
+ * For SHORT / WESTERN GARMENTS (shirt, top, jacket…):
+ *   1. IDM-VTON (free HF) with is_checked_crop=true — standard crop mode.
+ *   2. Replicate IDM-VTON — fallback.
  */
 async function runSingleTryon({ personInput, clothingInput, description, cropMode }) {
-  // Derive crop mode from description if not explicitly provided
-  const resolvedCropMode = cropMode || (isLongEasternGarment(description) ? 'full-body' : 'auto');
-  console.log(`[TryOn] Garment crop mode: ${resolvedCropMode} (description: "${(description || '').slice(0, 60)}")`);
+  const isLong = isLongEasternGarment(description);
+  const resolvedCropMode = cropMode || (isLong ? 'full-body' : 'auto');
+  console.log(`[TryOn] Garment type: ${isLong ? 'long-eastern' : 'western'}, crop mode: ${resolvedCropMode}, description: "${(description || '').slice(0, 60)}"`);
 
+  // ── Long eastern garments: try OOTDiffusion "Overall" first ─────────────────
+  if (isLong || resolvedCropMode === 'full-body') {
+    try {
+      const { resultUrl, provider } = await tryOOTDiffusion({
+        personInput, clothingInput, category: 'Overall'
+      });
+      const finalUrl = await finalizeResultUrl(resultUrl);
+      console.log('[TryOn] OOTDiffusion succeeded.');
+      return { resultUrl: finalUrl, provider };
+    } catch (ootdErr) {
+      console.warn('[TryOn] OOTDiffusion failed, falling back to IDM-VTON full-body:', ootdErr.message);
+    }
+  }
+
+  // ── IDM-VTON free (primary for western, fallback for eastern) ────────────
   let freeError = null;
   try {
-    const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description, cropMode: resolvedCropMode });
+    const { resultUrl, provider } = await tryFreeHfSpace({
+      personInput, clothingInput, description, cropMode: resolvedCropMode
+    });
     const finalUrl = await finalizeResultUrl(resultUrl);
     return { resultUrl: finalUrl, provider };
   } catch (err) {
     freeError = err;
-    console.warn('[TryOn] Free provider failed, trying Replicate fallback:', err.message);
+    console.warn('[TryOn] IDM-VTON free failed, trying Replicate fallback:', err.message);
   }
 
-  const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description, cropMode: resolvedCropMode });
+  // ── Replicate IDM-VTON (paid fallback) ─────────────────────────────
+  const { resultUrl, provider } = await tryReplicate({
+    personInput, clothingInput, description, cropMode: resolvedCropMode
+  });
   const finalUrl = await finalizeResultUrl(resultUrl);
   return { resultUrl: finalUrl, provider };
 }
