@@ -9,9 +9,9 @@ async function main() {
   await mongoose.connect(MONGO_URI);
   console.log('Connected to MongoDB');
 
-  const lehengas = await ClothingProduct.find({ dressStyle: 'lehenga' }).lean();
-  console.log(`Found ${lehengas.length} lehengas:`);
-  lehengas.forEach((p, idx) => {
+  const sarees = await ClothingProduct.find({ dressStyle: 'saree' }).lean();
+  console.log(`Found ${sarees.length} sarees:`);
+  sarees.forEach((p, idx) => {
     console.log(`${idx + 1}. Name: ${p.name}`);
     console.log(`   PrimaryColor: ${p.primaryColor}`);
     console.log(`   Colors:`, p.colors);

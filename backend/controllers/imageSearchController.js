@@ -263,6 +263,7 @@ function buildIntentFromPhotoAnalysis(analysis, signals) {
     // completely unrelated colors, without zeroing out on "not exactly off-white".
     colorExact: null,
     colorFamily: colorsFamily[0] || 'Any',
+    colorFamilies: colorsFamily.length > 0 ? colorsFamily : null,
     gender: signals.genderHint || 'women',
     maxBudget: 0,
     print: null,

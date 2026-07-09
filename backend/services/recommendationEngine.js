@@ -204,6 +204,9 @@ function buildRelaxationMessage(intent, relaxedFields) {
   const colorFullyDropped = relaxedFields.includes('color');
   const colorDowngraded   = relaxedFields.some((f) => f.startsWith('exact color'));
 
+  const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : (intent.colorFamily && intent.colorFamily !== 'Any' ? [intent.colorFamily] : []);
+  const familyText = families.join(' & ');
+
   // ── What was relaxed ──
   const relaxedParts = [];
 
@@ -228,22 +231,22 @@ function buildRelaxationMessage(intent, relaxedFields) {
 
   if (colorDowngraded) {
     const exact  = intent.colorExact;
-    const family = intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null;
+    const family = familyText || null;
     relaxedParts.push(
       exact && family ? `exact ${exact} → showing ${family} shades` : 'exact shade → showing color family'
     );
   } else if (colorFullyDropped) {
-    const col = intent.colorExact || (intent.colorFamily !== 'Any' ? intent.colorFamily : null);
+    const col = intent.colorExact || (familyText || null);
     relaxedParts.push(col ? `${col} color` : 'color');
   }
 
   // ── What's still being applied ──
   const stillParts = [];
-  const baseCol = intent.colorExact || (intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null);
+  const baseCol = intent.colorExact || (familyText || null);
 
   if (!colorFullyDropped && !colorDowngraded && baseCol) stillParts.push(baseCol);
-  if (colorDowngraded && intent.colorFamily && intent.colorFamily !== 'Any')
-    stillParts.push(`${intent.colorFamily} shades`);
+  if (colorDowngraded && familyText)
+    stillParts.push(`${familyText} shades`);
   if (!droppedKeys.has('neckline') && intent.neckline)   stillParts.push(`${intent.neckline} neckline`);
   if (!droppedKeys.has('print') && intent.print)         stillParts.push(intent.print);
   if (!droppedKeys.has('dressStyle') && intent.dressStyle) stillParts.push(intent.dressStyle);
@@ -351,11 +354,12 @@ function buildDBQuery(intent, dropped, colorMode) {
     const safe = escapeRegex(String(intent.colorExact).trim());
     if (safe) query.exactColors = { $elemMatch: { $regex: new RegExp(`^${safe}$`, 'i') } };
   } else if (colorMode === 'family' && intent.colorFamily && intent.colorFamily !== 'Any') {
+    const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : [intent.colorFamily];
     query.$and = query.$and || [];
     query.$and.push({
       $or: [
-        { primaryColor: intent.colorFamily },
-        { colors: intent.colorFamily }
+        { primaryColor: { $in: families } },
+        { colors: { $in: families } }
       ]
     });
   }
@@ -492,8 +496,11 @@ function buildAccessoryOnlyDbQuery(intent, catalog, dropped = new Set()) {
 
 function scoreAccessoryAgainstIntent(p, intent) {
   let s = 0;
-  if (intent.colorFamily && intent.colorFamily !== 'Any' && p.primaryColor === intent.colorFamily) {
-    s += 3;
+  if (intent.colorFamily && intent.colorFamily !== 'Any') {
+    const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : [intent.colorFamily];
+    if (families.includes(p.primaryColor)) {
+      s += 3;
+    }
   }
   const occI = (intent.occasion || []).map((o) => String(o).toLowerCase());
   const occP = (p.occasion || []).map((o) => String(o).toLowerCase());
@@ -507,8 +514,9 @@ function accessoryMatchReason(p, intent) {
   const matched = [];
   const missed = [];
   if (intent.colorFamily && intent.colorFamily !== 'Any') {
-    if (p.primaryColor === intent.colorFamily) matched.push(`${p.primaryColor} colour`);
-    else missed.push(`colour is ${p.primaryExactColor || p.primaryColor || 'unknown'}, not ${intent.colorFamily}`);
+    const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : [intent.colorFamily];
+    if (families.includes(p.primaryColor)) matched.push(`${p.primaryColor} colour`);
+    else missed.push(`colour is ${p.primaryExactColor || p.primaryColor || 'unknown'}, not ${families.join('/')}`);
   }
   const occI = (intent.occasion || []).map((o) => String(o).toLowerCase());
   if (occI.length) {
@@ -981,8 +989,14 @@ async function fetchCandidatesDeterministic(intent, { minResults = 8 } = {}) {
 // ─── Quick local intent-match score (used to pre-sort before AI) ─────────────
 function scoreAgainstIntent(product, intent) {
   let score = 0;
-  if (intent.colorExact && product.exactColors?.some((c) => c.toLowerCase() === intent.colorExact.toLowerCase())) score += 3;
-  else if (intent.colorFamily && intent.colorFamily !== 'Any' && product.primaryColor === intent.colorFamily) score += 2;
+  if (intent.colorExact && product.exactColors?.some((c) => c.toLowerCase() === intent.colorExact.toLowerCase())) {
+    score += 3;
+  } else if (intent.colorFamily && intent.colorFamily !== 'Any') {
+    const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : [intent.colorFamily];
+    if (families.includes(product.primaryColor) || product.colors?.some((c) => families.includes(c))) {
+      score += 2;
+    }
+  }
   if (intent.pieces    && product.pieces    === intent.pieces)    score += 2;
   if (intent.stitching && product.stitching === intent.stitching) score += 2;
   if (intent.dressStyle && product.dressStyle === intent.dressStyle) score += 4; // strongest signal — correct type always wins
@@ -1012,9 +1026,14 @@ function describeMatch(product, intent) {
   const wantFam = intent.colorFamily && intent.colorFamily !== 'Any' ? intent.colorFamily : null;
   if (wantExact || wantFam) {
     const got = product.primaryExactColor || product.primaryColor || 'unknown';
-    if (wantExact && got.toLowerCase() === wantExact.toLowerCase()) matched.push(`${got} (exact colour)`);
-    else if (wantFam && product.primaryColor === wantFam) matched.push(`${product.primaryColor} colour`);
-    else missed.push(`colour is ${got}, not ${wantExact || wantFam}`);
+    const families = intent.colorFamilies && Array.isArray(intent.colorFamilies) ? intent.colorFamilies : (wantFam ? [wantFam] : []);
+    if (wantExact && got.toLowerCase() === wantExact.toLowerCase()) {
+      matched.push(`${got} (exact colour)`);
+    } else if (families.length && (families.includes(product.primaryColor) || product.colors?.some((c) => families.includes(c)))) {
+      matched.push(`${product.primaryColor} colour`);
+    } else {
+      missed.push(`colour is ${got}, not ${wantExact || families.join('/')}`);
+    }
   }
   if (intent.pieces) {
     const pc = product.pieces ?? product.pieceDetails?.totalCount;
