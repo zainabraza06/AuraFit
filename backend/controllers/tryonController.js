@@ -159,6 +159,35 @@ function isLongEasternGarment(description = '') {
   return /\b(kameez|shalwar|kurta|maxi|frock|gown|lehenga|saree|abaya|anarkali|sharara|gharara|palazzo)\b/.test(desc);
 }
 
+/**
+ * Uses the vision fallback chain to inspect the clothing image and determine if it's
+ * a full-length / long eastern garment (kameez, maxi, lehenga, saree, gown, frock)
+ * vs a short western garment (shirt, t-shirt, top, pants).
+ */
+async function detectGarmentType(clothingInput) {
+  try {
+    const { imageBase64, mimeType } = await resolveImageBytes(clothingInput);
+    const prompt = `
+      Look at this clothing item image.
+      Return ONLY a JSON object:
+      {
+        "isLongOrFullBody": boolean, // true if it is a full-length or long garment (like a kameez, kurti, shalwar kameez, maxi dress, lehenga, saree, gown, frock), false if it is a short top (shirt, t-shirt, crop top, jacket) or pants.
+        "garmentType": "top" | "bottom" | "full-body" | "unknown"
+      }
+    `;
+    const { data } = await analyzeImageWithProviderFallback({ prompt, imageBase64, mimeType });
+    console.log('[TryOn] Vision LLM garment detection raw data:', data);
+    return {
+      isLongOrFullBody: data?.isLongOrFullBody === true || data?.garmentType === 'full-body',
+      garmentType: data?.garmentType || 'unknown'
+    };
+  } catch (e) {
+    console.warn('[TryOn] Clothing type detection skipped/failed:', e.message);
+    return { isLongOrFullBody: false, garmentType: 'unknown' };
+  }
+}
+
+
 async function tryReplicate({ personInput, clothingInput, description, cropMode }) {
   // .trim() guards against a stray trailing newline/space from copy-pasting the
   // key into a hosting dashboard's env var UI — Replicate rejects the whole
@@ -330,8 +359,23 @@ async function tryOOTDiffusion({ personInput, clothingInput, category = 'Overall
  *   2. Replicate IDM-VTON — fallback.
  */
 async function runSingleTryon({ personInput, clothingInput, description, cropMode }) {
-  const isLong = isLongEasternGarment(description);
-  const resolvedCropMode = cropMode || (isLong ? 'full-body' : 'auto');
+  let isLong = isLongEasternGarment(description);
+  let resolvedCropMode = cropMode || (isLong ? 'full-body' : 'auto');
+
+  // If text classification returned false and cropMode wasn't explicitly set,
+  // run the clothing image through Vision LLM as a fallback to see if it is a kameez/frock/maxi.
+  if (!isLong && !cropMode) {
+    console.log('[TryOn] Text description check returned false. Invoking Vision LLM to inspect clothing image...');
+    const detection = await detectGarmentType(clothingInput);
+    if (detection.isLongOrFullBody) {
+      console.log(`[TryOn] Vision LLM detected full-body/long eastern garment: ${detection.garmentType}`);
+      isLong = true;
+      resolvedCropMode = 'full-body';
+    } else {
+      console.log(`[TryOn] Vision LLM confirmed garment type: ${detection.garmentType}`);
+    }
+  }
+
   console.log(`[TryOn] Garment type: ${isLong ? 'long-eastern' : 'western'}, crop mode: ${resolvedCropMode}, description: "${(description || '').slice(0, 60)}"`);
 
   // ── Long eastern garments: try OOTDiffusion "Overall" first ─────────────────
