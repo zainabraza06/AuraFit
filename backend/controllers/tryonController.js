@@ -141,8 +141,25 @@ async function finalizeResultUrl(resultUrl) {
   }
 }
 
-/** Paid path — Replicate-hosted IDM-VTON. Fast (~30-90s), needs REPLICATE_API_KEY + account credit. */
-async function tryReplicate({ personInput, clothingInput, description }) {
+/**
+ * Returns true when the description clearly describes a long/full-length eastern garment
+ * (kameez, shalwar, shalwar kameez, maxi, frock, gown, lehenga, saree, abaya, anarkali…).
+ *
+ * WHY THIS MATTERS — IDM-VTON's `is_checked_crop` flag:
+ *   true  → model crops to the EXISTING garment region on the person photo (shirt/torso)
+ *            and maps the new garment only onto that cropped area. Great for short western
+ *            garments on partial photos; WRONG for long eastern wear — it squishes a
+ *            full-length kameez into the shirt-region, making it look like a shirt.
+ *   false → model maps the garment onto the whole body frame. Correct for kameez / lehenga
+ *            / maxi; may slightly over-stretch on half-body photos, but far better than
+ *            the crop artefact for long garments.
+ */
+function isLongEasternGarment(description = '') {
+  const desc = description.toLowerCase();
+  return /\b(kameez|shalwar|kurta|maxi|frock|gown|lehenga|saree|abaya|anarkali|sharara|gharara|palazzo)\b/.test(desc);
+}
+
+async function tryReplicate({ personInput, clothingInput, description, cropMode }) {
   // .trim() guards against a stray trailing newline/space from copy-pasting the
   // key into a hosting dashboard's env var UI — Replicate rejects the whole
   // token as invalid (401) if it's not byte-for-byte exact, and a trailing
@@ -162,7 +179,14 @@ async function tryReplicate({ personInput, clothingInput, description }) {
   const humanImg = toReplicateInput(personInput);
   const garmImg = toReplicateInput(clothingInput);
 
-  console.log('[TryOn] Trying Replicate (paid, fast)...');
+  // cropMode controls is_checked_crop:
+  //   'full-body' → false: map garment across the whole body frame. Required for long
+  //                  eastern garments (kameez, lehenga, maxi) — without this, the model
+  //                  crops to the existing shirt region and squishes the kameez to shirt-length.
+  //   'auto'      → true:  crop to the detected garment/torso region — prevents the outfit
+  //                  from over-stretching on partial/half-body photos (correct for western wear).
+  const is_checked_crop = (cropMode === 'full-body') ? false : true;
+  console.log(`[TryOn] Trying Replicate (paid, fast) — is_checked_crop=${is_checked_crop}...`);
   const output = await replicate.run(
     'yisol/idm-vton:906425dbca90663ff5427624839572cc56ea7d380343d13e2a4c4b09d3f0c30f',
     {
@@ -171,10 +195,7 @@ async function tryReplicate({ personInput, clothingInput, description }) {
         garm_img: garmImg,
         garment_des: description || 'A fashionable clothing item',
         is_checked: true,
-        // Auto-crop to the detected garment/torso region instead of stretching the
-        // full garment silhouette to fill the whole photo — the fix for outfits
-        // looking "shortened" on a half-body / non-full-length person photo.
-        is_checked_crop: true,
+        is_checked_crop,
         denoise_steps: 30,
         seed: 42
       }
@@ -192,12 +213,14 @@ async function tryReplicate({ personInput, clothingInput, description }) {
  * than Replicate (community-shared queue) — used automatically when Replicate
  * isn't configured or fails (e.g. no credit).
  */
-async function tryFreeHfSpace({ personInput, clothingInput, description }) {
+async function tryFreeHfSpace({ personInput, clothingInput, description, cropMode }) {
   const { Client, handle_file } = await import('@gradio/client');
 
   const toGradioInput = (x) => handle_file(Buffer.isBuffer(x.buffer) ? x.buffer : x.url);
 
-  console.log('[TryOn] Trying free Hugging Face Space (yisol/IDM-VTON, shared hardware — may queue)...');
+  // cropMode controls is_checked_crop (see tryReplicate comment for full explanation).
+  const is_checked_crop = (cropMode === 'full-body') ? false : true;
+  console.log(`[TryOn] Trying free Hugging Face Space (yisol/IDM-VTON, shared hardware — may queue) — is_checked_crop=${is_checked_crop}...`);
   const app = await Client.connect('yisol/IDM-VTON', {
     hf_token: process.env.HUGGING_FACE_API_KEY || undefined
   });
@@ -207,9 +230,7 @@ async function tryFreeHfSpace({ personInput, clothingInput, description }) {
     garm_img: toGradioInput(clothingInput),
     garment_des: description || 'a fashionable clothing item',
     is_checked: true,
-    // Same fix as Replicate — crop to the actual garment region instead of
-    // stretching the outfit onto the full (possibly partial-body) photo.
-    is_checked_crop: true,
+    is_checked_crop,
     denoise_steps: 20,
     seed: 42
   });
@@ -224,11 +245,20 @@ async function tryFreeHfSpace({ personInput, clothingInput, description }) {
 /**
  * Runs a single try-on pass through the provider waterfall (HF free → Replicate).
  * Returns { resultUrl, provider } — resultUrl is already finalized (Cloudinary or raw).
+ *
+ * cropMode: 'full-body' for long eastern garments (kameez, maxi, lehenga…) so the
+ *           model maps the outfit across the whole body, not just the shirt region.
+ *           'auto' (default) for short/western garments — lets IDM-VTON crop to the
+ *           existing garment region on partial photos.
  */
-async function runSingleTryon({ personInput, clothingInput, description }) {
+async function runSingleTryon({ personInput, clothingInput, description, cropMode }) {
+  // Derive crop mode from description if not explicitly provided
+  const resolvedCropMode = cropMode || (isLongEasternGarment(description) ? 'full-body' : 'auto');
+  console.log(`[TryOn] Garment crop mode: ${resolvedCropMode} (description: "${(description || '').slice(0, 60)}")`);
+
   let freeError = null;
   try {
-    const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
+    const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description, cropMode: resolvedCropMode });
     const finalUrl = await finalizeResultUrl(resultUrl);
     return { resultUrl: finalUrl, provider };
   } catch (err) {
@@ -236,7 +266,7 @@ async function runSingleTryon({ personInput, clothingInput, description }) {
     console.warn('[TryOn] Free provider failed, trying Replicate fallback:', err.message);
   }
 
-  const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
+  const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description, cropMode: resolvedCropMode });
   const finalUrl = await finalizeResultUrl(resultUrl);
   return { resultUrl: finalUrl, provider };
 }
@@ -293,35 +323,18 @@ export async function virtualTryon(req, res) {
 
     const { personInput, clothingInput, description } = inputs;
 
-    // Free Hugging Face Space is primary — no billing required. Replicate is only
-    // an opportunistic fallback (useful if paid credit is ever added later), since
-    // it costs money per generation and the account currently has none.
-    let freeError = null;
+    // runSingleTryon handles the provider waterfall (HF free → Replicate) AND
+    // automatically sets is_checked_crop correctly: false for long eastern garments
+    // (kameez, shalwar, maxi, lehenga…) so the outfit covers the full body instead
+    // of being squished into the shirt/torso crop region.
     try {
-      const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
-      const finalUrl = await finalizeResultUrl(resultUrl);
-      return res.json({ success: true, resultUrl: finalUrl, provider, message: 'Virtual try-on generated successfully!' });
+      const { resultUrl, provider } = await runSingleTryon({ personInput, clothingInput, description });
+      return res.json({ success: true, resultUrl, provider, message: 'Virtual try-on generated successfully!' });
     } catch (err) {
-      freeError = err;
-      console.warn('[TryOn] Free provider failed, trying Replicate fallback:', err.message);
-    }
-
-    try {
-      const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
-      const finalUrl = await finalizeResultUrl(resultUrl);
-      return res.json({
-        success: true,
-        resultUrl: finalUrl,
-        provider,
-        message: 'Virtual try-on generated successfully!'
-      });
-    } catch (replicateErr) {
-      console.error('[TryOn] Replicate fallback also failed:', replicateErr.message);
+      console.error('[TryOn] All providers failed:', err.message);
       return res.status(503).json({
-        error: 'Virtual try-on is temporarily unavailable',
-        hint: replicateErr.notConfigured
-          ? `Our free provider is busy or down (${freeError?.message || 'failed'}) — please try again shortly.`
-          : `Free provider: ${freeError?.message || 'failed'}. Replicate: ${replicateErr?.message || 'failed'}. Please try again shortly.`
+        error: 'Virtual try-on is temporarily unavailable. Please try again shortly.',
+        hint: err.message
       });
     }
   } catch (err) {
@@ -390,14 +403,17 @@ export async function virtualTryonMulti(req, res) {
       }
     }
 
-    // ── Pass 1: apply top garment ────────────────────────────────────────────
-    console.log('[TryOn/Multi] Pass 1 — applying top garment...');
+    // ── Pass 1: apply top garment (kameez / shirt) ───────────────────────────
+    // Always use 'full-body' for the top piece of a 2-piece outfit — the kameez
+    // reaches the knee and must cover the full body frame, not just the shirt region.
+    console.log('[TryOn/Multi] Pass 1 — applying top garment (full-body crop mode)...');
     let pass1Url, pass1Provider;
     try {
       ({ resultUrl: pass1Url, provider: pass1Provider } = await runSingleTryon({
         personInput,
         clothingInput: clothingTopInput,
-        description: descTop
+        description: descTop,
+        cropMode: 'full-body'
       }));
     } catch (err) {
       console.error('[TryOn/Multi] Pass 1 failed:', err.message);
@@ -419,14 +435,17 @@ export async function virtualTryonMulti(req, res) {
     }
 
     // ── Pass 2: use pass-1 result as the new person, apply bottom garment ────
-    console.log('[TryOn/Multi] Pass 2 — applying bottom garment to pass-1 result...');
+    // Also full-body mode — the trouser/shalwar covers the lower body and the
+    // intermediate image (person already wearing the kameez) is now the reference.
+    console.log('[TryOn/Multi] Pass 2 — applying bottom garment (full-body crop mode)...');
     const intermediatePersonInput = { url: pass1Url };
     let pass2Url, pass2Provider;
     try {
       ({ resultUrl: pass2Url, provider: pass2Provider } = await runSingleTryon({
         personInput: intermediatePersonInput,
         clothingInput: clothingBotInput,
-        description: descBot
+        description: descBot,
+        cropMode: 'full-body'
       }));
     } catch (err) {
       // Pass 2 failed — still return the pass-1 result so the user sees *something*

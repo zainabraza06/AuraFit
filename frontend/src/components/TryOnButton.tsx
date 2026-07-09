@@ -7,14 +7,18 @@ import { tryonApi, authApi } from '@/lib/api';
 type Step = 'idle' | 'processing' | 'done' | 'error' | 'no-auth' | 'no-pic' | 'bad-photo';
 
 /** Builds a clean garment description from a product's real fields (color, dress style,
- * pieces, print) instead of the raw scraped title — better text-conditioning for the AI. */
+ * pieces, print) instead of the raw scraped title — better text-conditioning for the AI.
+ * IMPORTANT: dressStyle (e.g. 'kameez', 'shalwar-kameez', 'maxi', 'lehenga') is always
+ * included because the backend uses it to set is_checked_crop correctly — long eastern
+ * garments need crop=false so the kameez covers the full body, not just the shirt region. */
 export function buildGarmentDescription(p: any): string {
   if (!p) return '';
   const parts = [
     p.primaryExactColor || p.primaryColor,
     p.print,
     p.pieces ? `${p.pieces}-piece` : null,
-    p.dressStyle,
+    p.dressStyle,          // e.g. 'kameez', 'shalwar-kameez', 'maxi', 'lehenga' — drives crop-mode
+    p.subCategory,         // e.g. 'mens-shalwar-kameez', '2-piece' — backup keyword
     p.fabric
   ].filter(Boolean);
   return parts.length ? parts.join(' ') : p.name;
