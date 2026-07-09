@@ -52,25 +52,53 @@ function normalizeAnalysis(raw) {
 }
 
 /**
- * Deterministic safety net for the kurta/lehenga confusion: prompt instructions
- * alone aren't 100% reliable (vision models can still misread a long kurta +
- * voluminous sharara/gharara/palazzo trousers as a lehenga's flared skirt,
- * despite explicit criteria in the prompt above). If the model said "lehenga"
- * but its OWN keywords/style text also names trouser-type bottoms with no
- * skirt-specific language, trust the trouser signal and correct the category —
- * same "don't trust prose alone" principle used elsewhere in this codebase
- * (e.g. describeMatch() fact-checking AI-written match reasons).
+ * Agentic verification pass for the saree/lehenga/kurta confusion.
+ *
+ * A single monolithic "classify this photo" call juggling category + color +
+ * style + occasion + keywords all at once is prone to hallucination: when the
+ * model leans toward "lehenga", it can generate matching-sounding details
+ * ("choli", "flared skirt") that don't actually match the image, just to be
+ * internally consistent with its own first guess. Regex-checking those
+ * self-reported words afterward doesn't fix this — it's checking the model's
+ * story against itself, not against the photo.
+ *
+ * This instead asks a SECOND, independent vision call with ONE narrow,
+ * structural, low-level question the model can answer by actually looking at
+ * pixels rather than composing a fashion narrative: "does the top garment
+ * extend past the hip, or end at/above the waist?" That single fact is
+ * mechanically decisive (see the definitions in the main prompt) and much
+ * harder to get wrong than an open-ended category guess, because there's
+ * nothing to rationalize — it's a direct, constrained yes/no-style read of
+ * the image. Only triggers when the first pass said saree/lehenga, since
+ * that's the ambiguous pair; leaves an unambiguous kurta/western/etc. alone.
  */
-function correctKurtaLehengaConfusion(analysis) {
-  const text = `${analysis.category} ${analysis.style} ${analysis.keywords.join(' ')}`.toLowerCase();
-  if (!/\b(lehenga|lehnga)\b/.test(text)) return analysis;
-  const trouserSignal = /\b(trouser|trousers|pant|pants|palazzo|sharara|gharara|wide[- ]?leg)\b/.test(text);
-  const skirtSignal = /\b(flared skirt|circular skirt|gathered skirt|choli|blouse)\b/.test(text);
-  if (trouserSignal && !skirtSignal) {
-    console.warn('[VisualSearch] Corrected lehenga→kurta misclassification (trouser keywords present, no skirt signal):', text);
-    return { ...analysis, category: analysis.category.replace(/lehenga|lehnga/gi, 'kurta') };
+async function verifyLehengaVsKurta(imageBase64, mimeType, analysis) {
+  if (!/\b(lehenga|lehnga|saree|sari)\b/i.test(analysis.category)) return analysis;
+
+  const verifyPrompt = `
+    Look ONLY at the person's TOP garment in this photo (ignore color, embroidery, occasion — just its length and structure).
+    Answer ONE question: does the top garment end AT OR ABOVE the natural waist (a short, cropped choli/blouse), or does it extend BELOW the waist, past the hip (a long kurta/tunic)?
+    Also note: is there a single length of fabric draped diagonally across the torso with a loose end over one shoulder (a saree's pallu)?
+    Return ONLY this JSON: { "topLength": "short-cropped" | "long-past-hip", "hasDiagonalPallu": boolean }
+  `;
+  try {
+    const { data } = await analyzeImageWithProviderFallback({ prompt: verifyPrompt, imageBase64, mimeType });
+    const topLength = String(data?.topLength || '').toLowerCase();
+    const hasDiagonalPallu = data?.hasDiagonalPallu === true;
+
+    if (hasDiagonalPallu && !/\b(saree|sari)\b/i.test(analysis.category)) {
+      console.warn('[VisualSearch] Verification pass corrected → saree (diagonal pallu confirmed)');
+      return { ...analysis, category: 'saree' };
+    }
+    if (topLength === 'long-past-hip' && /\b(lehenga|lehnga)\b/i.test(analysis.category)) {
+      console.warn('[VisualSearch] Verification pass corrected lehenga → kurta (top confirmed long-past-hip)');
+      return { ...analysis, category: analysis.category.replace(/lehenga|lehnga/gi, 'kurta') };
+    }
+    return analysis;
+  } catch (e) {
+    console.warn('[VisualSearch] Verification pass unavailable, keeping first-pass classification:', e.message);
+    return analysis;
   }
-  return analysis;
 }
 
 /**
@@ -225,12 +253,10 @@ export async function searchByImage(req, res) {
 
     let analysis, visionProvider;
     try {
-      const { data, provider } = await analyzeImageWithProviderFallback({
-        prompt,
-        imageBase64: req.file.buffer.toString('base64'),
-        mimeType: req.file.mimetype
-      });
-      analysis = correctKurtaLehengaConfusion(normalizeAnalysis(data));
+      const imageBase64 = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      const { data, provider } = await analyzeImageWithProviderFallback({ prompt, imageBase64, mimeType });
+      analysis = await verifyLehengaVsKurta(imageBase64, mimeType, normalizeAnalysis(data));
       visionProvider = provider;
     } catch (e) {
       return res.status(503).json({
