@@ -221,49 +221,77 @@ async function tryFreeHfSpace({ personInput, clothingInput, description }) {
   return { resultUrl, provider: 'huggingface-free' };
 }
 
+/**
+ * Runs a single try-on pass through the provider waterfall (HF free → Replicate).
+ * Returns { resultUrl, provider } — resultUrl is already finalized (Cloudinary or raw).
+ */
+async function runSingleTryon({ personInput, clothingInput, description }) {
+  let freeError = null;
+  try {
+    const { resultUrl, provider } = await tryFreeHfSpace({ personInput, clothingInput, description });
+    const finalUrl = await finalizeResultUrl(resultUrl);
+    return { resultUrl: finalUrl, provider };
+  } catch (err) {
+    freeError = err;
+    console.warn('[TryOn] Free provider failed, trying Replicate fallback:', err.message);
+  }
+
+  const { resultUrl, provider } = await tryReplicate({ personInput, clothingInput, description });
+  const finalUrl = await finalizeResultUrl(resultUrl);
+  return { resultUrl: finalUrl, provider };
+}
+
+/**
+ * Shared input-parsing + photo-validation logic used by both single and multi endpoints.
+ * Returns { personInput, clothingInput, description } or throws/responds on error.
+ */
+async function parseAndValidateInputs(req, res, { requireClothing = true } = {}) {
+  const personFile   = req.files?.['person']?.[0];
+  const clothingFile = req.files?.['clothing']?.[0];
+
+  const httpUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+  const personUrl   = personFile   ? null : (req.body.personUrl   || null);
+  const clothingUrl = clothingFile ? null : (req.body.clothingUrl || null);
+
+  const hasPerson   = !!personFile   || httpUrl(personUrl);
+  const hasClothing = !!clothingFile || httpUrl(clothingUrl);
+  if (!hasPerson || (requireClothing && !hasClothing)) {
+    res.status(400).json({ error: 'A person image (or profile picture) and a clothing image are required.' });
+    return null;
+  }
+
+  let personInput    = personFile   ? { buffer: personFile.buffer,   mimetype: personFile.mimetype   } : { url: personUrl };
+  const clothingInput = clothingFile ? { buffer: clothingFile.buffer, mimetype: clothingFile.mimetype } : { url: clothingUrl };
+  const description   = req.body.description || '';
+
+  const photoCheck = await validatePersonPhoto(personInput);
+  if (!photoCheck.ok) {
+    res.status(422).json({ error: photoCheck.message, reason: 'bad_person_photo' });
+    return null;
+  }
+  if (photoCheck.needsExtension) {
+    try {
+      const extendedUrl = await extendPersonPhoto(personInput);
+      personInput = { url: extendedUrl };
+    } catch (e) {
+      console.warn('[TryOn] Photo extension failed:', e.message);
+      res.status(422).json({
+        error: 'This photo is almost full-length, but we couldn\'t extend it right now (our free extension tool is busy). Please try again shortly, or upload a full-length photo.',
+        reason: 'bad_person_photo'
+      });
+      return null;
+    }
+  }
+
+  return { personInput, clothingInput, description };
+}
+
 export async function virtualTryon(req, res) {
   try {
-    const personFile  = req.files?.['person']?.[0];
-    const clothingFile = req.files?.['clothing']?.[0];
+    const inputs = await parseAndValidateInputs(req, res);
+    if (!inputs) return; // response already sent
 
-    // Two ways to supply images:
-    //  1. multipart file uploads (person / clothing) — used by the /try-on page
-    //  2. direct URLs in the JSON body (personUrl / clothingUrl) — used by the
-    //     "Try On Yourself" button on product cards (profile pic + product image).
-    const httpUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
-    const personUrl   = personFile   ? null : (req.body.personUrl || null);
-    const clothingUrl = clothingFile ? null : (req.body.clothingUrl || null);
-
-    const hasPerson   = !!personFile   || httpUrl(personUrl);
-    const hasClothing = !!clothingFile || httpUrl(clothingUrl);
-    if (!hasPerson || !hasClothing) {
-      return res.status(400).json({
-        error: 'A person image (or profile picture) and a clothing image are required.'
-      });
-    }
-
-    let personInput   = personFile   ? { buffer: personFile.buffer, mimetype: personFile.mimetype }   : { url: personUrl };
-    const clothingInput = clothingFile ? { buffer: clothingFile.buffer, mimetype: clothingFile.mimetype } : { url: clothingUrl };
-    const description = req.body.description;
-
-    const photoCheck = await validatePersonPhoto(personInput);
-    if (!photoCheck.ok) {
-      return res.status(422).json({ error: photoCheck.message, reason: 'bad_person_photo' });
-    }
-    if (photoCheck.needsExtension) {
-      try {
-        const extendedUrl = await extendPersonPhoto(personInput);
-        personInput = { url: extendedUrl };
-      } catch (e) {
-        // Extension is best-effort (shared free quota) — if it fails, reject
-        // with the same clear message rather than running a doomed try-on.
-        console.warn('[TryOn] Photo extension failed:', e.message);
-        return res.status(422).json({
-          error: 'This photo is almost full-length, but we couldn\'t extend it right now (our free extension tool is busy). Please try again shortly, or upload a full-length photo.',
-          reason: 'bad_person_photo'
-        });
-      }
-    }
+    const { personInput, clothingInput, description } = inputs;
 
     // Free Hugging Face Space is primary — no billing required. Replicate is only
     // an opportunistic fallback (useful if paid credit is ever added later), since
@@ -298,6 +326,132 @@ export async function virtualTryon(req, res) {
     }
   } catch (err) {
     console.error('[TryOn] Unexpected error:', err);
+    res.status(500).json({ error: 'Virtual try-on failed. Please try again.' });
+  }
+}
+
+/**
+ * 2-Pass sequential try-on for multi-piece outfits (e.g. shirt + trouser).
+ *
+ * Pass 1: person photo  + top garment  → intermediate result image
+ * Pass 2: intermediate  + bottom garment → final full-outfit result
+ *
+ * Accepts:
+ *   Body (JSON):  { personUrl, clothingTopUrl, clothingBottomUrl, descriptionTop?, descriptionBottom? }
+ *   Multipart:    person file + clothingTop file + optional clothingBottom file
+ *
+ * If clothingBottomUrl / clothingBottom file is absent the request falls through
+ * to a normal single-pass try-on.
+ */
+export async function virtualTryonMulti(req, res) {
+  try {
+    const personFile      = req.files?.['person']?.[0];
+    const clothingTopFile = req.files?.['clothingTop']?.[0];
+    const clothingBotFile = req.files?.['clothingBottom']?.[0];
+
+    const httpUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+
+    const personUrl      = personFile      ? null : (req.body.personUrl        || null);
+    const clothingTopUrl = clothingTopFile ? null : (req.body.clothingTopUrl   || null);
+    const clothingBotUrl = clothingBotFile ? null : (req.body.clothingBottomUrl || null);
+
+    const hasPerson   = !!personFile      || httpUrl(personUrl);
+    const hasTop      = !!clothingTopFile || httpUrl(clothingTopUrl);
+    const hasBottom   = !!clothingBotFile || httpUrl(clothingBotUrl);
+
+    if (!hasPerson || !hasTop) {
+      return res.status(400).json({ error: 'A person image and at least a top garment image are required.' });
+    }
+
+    let personInput       = personFile      ? { buffer: personFile.buffer,      mimetype: personFile.mimetype      } : { url: personUrl };
+    const clothingTopInput = clothingTopFile ? { buffer: clothingTopFile.buffer, mimetype: clothingTopFile.mimetype } : { url: clothingTopUrl };
+    const clothingBotInput = hasBottom
+      ? (clothingBotFile ? { buffer: clothingBotFile.buffer, mimetype: clothingBotFile.mimetype } : { url: clothingBotUrl })
+      : null;
+
+    const descTop = req.body.descriptionTop    || req.body.description || 'a fashionable top garment';
+    const descBot = req.body.descriptionBottom || req.body.description || 'a fashionable bottom garment';
+
+    // Validate person photo once upfront
+    const photoCheck = await validatePersonPhoto(personInput);
+    if (!photoCheck.ok) {
+      return res.status(422).json({ error: photoCheck.message, reason: 'bad_person_photo' });
+    }
+    if (photoCheck.needsExtension) {
+      try {
+        const extendedUrl = await extendPersonPhoto(personInput);
+        personInput = { url: extendedUrl };
+      } catch (e) {
+        console.warn('[TryOn/Multi] Photo extension failed:', e.message);
+        return res.status(422).json({
+          error: 'This photo is almost full-length, but we couldn\'t extend it right now. Please try again shortly, or upload a full-length photo.',
+          reason: 'bad_person_photo'
+        });
+      }
+    }
+
+    // ── Pass 1: apply top garment ────────────────────────────────────────────
+    console.log('[TryOn/Multi] Pass 1 — applying top garment...');
+    let pass1Url, pass1Provider;
+    try {
+      ({ resultUrl: pass1Url, provider: pass1Provider } = await runSingleTryon({
+        personInput,
+        clothingInput: clothingTopInput,
+        description: descTop
+      }));
+    } catch (err) {
+      console.error('[TryOn/Multi] Pass 1 failed:', err.message);
+      return res.status(503).json({
+        error: 'Virtual try-on is temporarily unavailable (pass 1 failed). Please try again shortly.',
+        hint: err.message
+      });
+    }
+
+    // If no bottom garment, return pass 1 result directly
+    if (!clothingBotInput) {
+      return res.json({
+        success: true,
+        resultUrl: pass1Url,
+        provider: pass1Provider,
+        passes: 1,
+        message: 'Virtual try-on generated successfully!'
+      });
+    }
+
+    // ── Pass 2: use pass-1 result as the new person, apply bottom garment ────
+    console.log('[TryOn/Multi] Pass 2 — applying bottom garment to pass-1 result...');
+    const intermediatePersonInput = { url: pass1Url };
+    let pass2Url, pass2Provider;
+    try {
+      ({ resultUrl: pass2Url, provider: pass2Provider } = await runSingleTryon({
+        personInput: intermediatePersonInput,
+        clothingInput: clothingBotInput,
+        description: descBot
+      }));
+    } catch (err) {
+      // Pass 2 failed — still return the pass-1 result so the user sees *something*
+      console.warn('[TryOn/Multi] Pass 2 failed, returning pass-1 result:', err.message);
+      return res.json({
+        success: true,
+        resultUrl: pass1Url,
+        provider: pass1Provider,
+        passes: 1,
+        partialFailure: true,
+        message: 'Top garment applied. Bottom garment try-on failed — showing top only.',
+        hint: err.message
+      });
+    }
+
+    return res.json({
+      success: true,
+      resultUrl: pass2Url,
+      provider: pass2Provider,
+      passes: 2,
+      message: 'Full outfit try-on generated successfully!'
+    });
+
+  } catch (err) {
+    console.error('[TryOn/Multi] Unexpected error:', err);
     res.status(500).json({ error: 'Virtual try-on failed. Please try again.' });
   }
 }

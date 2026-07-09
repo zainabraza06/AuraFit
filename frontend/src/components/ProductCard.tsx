@@ -18,6 +18,10 @@ interface Product {
   images?: string[];
   imageUrl?: string;
   compareAtPrice?: number;
+  pieces?: number;
+  dressStyle?: string;
+  print?: string;
+  fabric?: string;
 }
 
 function normalizeProductId(product: Product): string | null {
@@ -174,7 +178,13 @@ export default function ProductCard({ product, showBadge, width, favoritedOverri
           person photo; it has no meaning for shoes/jewelry/watches. */}
       {(!product.category || product.category === 'clothing') && (
         <div style={{ position: 'absolute', left: '0.6rem', top: '0.6rem', zIndex: 5 }}>
-          <TryOnButton productImage={imageUrl} productName={product.name} productDescription={buildGarmentDescription(product)} />
+          <TryOnButton
+            productImage={imageUrl}
+            productImages={product.images}
+            productName={product.name}
+            productDescription={buildGarmentDescription(product)}
+            pieces={product.pieces}
+          />
         </div>
       )}
     </div>

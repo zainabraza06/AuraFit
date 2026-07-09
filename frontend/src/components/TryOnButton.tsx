@@ -22,9 +22,13 @@ export function buildGarmentDescription(p: any): string {
 
 interface Props {
   productImage?: string;
+  /** Additional product images — used for 2-piece outfits: [0] = top/kameez, [1] = trouser/shalwar */
+  productImages?: string[];
   productName?: string;
   /** Richer garment description (color/style/pieces) — improves AI fit quality over the raw product title. Falls back to productName. */
   productDescription?: string;
+  /** Number of pieces in the outfit (2 = shirt+trouser, 3 = shirt+trouser+dupatta) */
+  pieces?: number;
   /** compact = small pill for card overlays; full = normal button */
   variant?: 'compact' | 'full';
 }
@@ -34,7 +38,7 @@ interface Props {
  * picture as the person image and the given product image as the garment.
  * Prompts to log in / set a profile picture when those are missing.
  */
-export default function TryOnButton({ productImage, productName, productDescription, variant = 'compact' }: Props) {
+export default function TryOnButton({ productImage, productImages, productName, productDescription, pieces, variant = 'compact' }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('idle');
@@ -42,6 +46,7 @@ export default function TryOnButton({ productImage, productName, productDescript
   const [personUrl, setPersonUrl] = useState('');
   const [err, setErr] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [passLabel, setPassLabel] = useState('');
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -68,7 +73,7 @@ export default function TryOnButton({ productImage, productName, productDescript
   const start = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!productImage) return;
+    if (!productImage && !productImages?.length) return;
     const token = typeof window !== 'undefined' ? localStorage.getItem('fashion_token') : null;
     if (!token) { setOpen(true); setStep('no-auth'); return; }
 
@@ -80,10 +85,29 @@ export default function TryOnButton({ productImage, productName, productDescript
     setStep('processing');
     setErr('');
     setResultUrl('');
+
+    // Resolve the top and optional bottom garment URLs
+    // productImages[0] = top (shirt/kameez), productImages[1] = bottom (trouser/shalwar)
+    const allImages = productImages?.length ? productImages : (productImage ? [productImage] : []);
+    const topImageUrl    = allImages[0] || productImage || '';
+    const bottomImageUrl = (pieces && pieces >= 2 && allImages[1]) ? allImages[1] : null;
+
     try {
-      const res = await tryonApi.generateFromUrls(pic, productImage, productDescription || productName);
-      setResultUrl(res.data.resultUrl);
-      setStep('done');
+      if (bottomImageUrl) {
+        // 2-pass try-on for multi-piece outfits
+        setPassLabel('Step 1/2 — Fitting top garment…');
+        const descTop = productDescription ? `${productDescription} top/kameez` : productName || '';
+        const descBot = productDescription ? `${productDescription} trouser/shalwar` : productName || '';
+        const res = await tryonApi.generateMultiFromUrls(pic, topImageUrl, bottomImageUrl, descTop, descBot);
+        setPassLabel(res.data.passes === 2 ? 'Both pieces fitted!' : 'Top piece fitted');
+        setResultUrl(res.data.resultUrl);
+        setStep('done');
+      } else {
+        // Single-pass try-on
+        const res = await tryonApi.generateFromUrls(pic, topImageUrl, productDescription || productName);
+        setResultUrl(res.data.resultUrl);
+        setStep('done');
+      }
     } catch (e: any) {
       if (e?.response?.data?.reason === 'bad_person_photo') {
         setErr(e.response.data.error);
@@ -97,7 +121,7 @@ export default function TryOnButton({ productImage, productName, productDescript
     }
   };
 
-  const close = (e?: React.MouseEvent) => { e?.stopPropagation(); setOpen(false); setStep('idle'); };
+  const close = (e?: React.MouseEvent) => { e?.stopPropagation(); setOpen(false); setStep('idle'); setPassLabel(''); };
 
   return (
     <>
@@ -179,8 +203,15 @@ export default function TryOnButton({ productImage, productName, productDescript
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>👗</div>
                 </div>
                 <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', marginBottom: '0.5rem' }}>Generating your look…</h4>
-                <p style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>IDM-VTON is fitting the garment to your photo</p>
-                <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>Typically 30–90 seconds</p>
+                <p style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
+                  {passLabel || 'IDM-VTON is fitting the garment to your photo'}
+                </p>
+                {pieces && pieces >= 2 && (
+                  <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
+                    Full outfit = 2 AI passes — shirt first, then trouser
+                  </p>
+                )}
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>Typically {pieces && pieces >= 2 ? '2–4' : '1–2'} minutes</p>
               </div>
             )}
 

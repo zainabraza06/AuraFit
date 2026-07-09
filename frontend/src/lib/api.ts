@@ -124,9 +124,29 @@ export const tryonApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000 // VTON can take up to 2 minutes
   }),
-  /** Try-on from image URLs — profile picture (person) + product image (clothing) */
+  /** 2-pass file-upload try-on — formData must contain person + clothingTop + clothingBottom */
+  generateMulti: (formData: FormData) => api.post('/tryon/multi', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 240000 // 2 passes × 2 min each
+  }),
+  /** Single-pass try-on from image URLs — profile picture (person) + one clothing item */
   generateFromUrls: (personUrl: string, clothingUrl: string, description?: string) =>
-    api.post('/tryon', { personUrl, clothingUrl, description }, { timeout: 120000 })
+    api.post('/tryon', { personUrl, clothingUrl, description }, { timeout: 120000 }),
+  /**
+   * 2-pass sequential try-on for multi-piece outfits (e.g. shalwar kameez — shirt + trouser).
+   * Pass 1 applies the top garment; Pass 2 layers the bottom garment on the Pass-1 result.
+   * clothingBottomUrl is optional — if omitted, falls back to a single-pass try-on.
+   */
+  generateMultiFromUrls: (
+    personUrl: string,
+    clothingTopUrl: string,
+    clothingBottomUrl?: string,
+    descriptionTop?: string,
+    descriptionBottom?: string
+  ) => api.post('/tryon/multi', {
+    personUrl, clothingTopUrl, clothingBottomUrl,
+    descriptionTop, descriptionBottom
+  }, { timeout: 240000 }) // 2 passes × 2 min each
 };
 
 // ─── Vector / Semantic Search ──────────────────────────────────────────────────

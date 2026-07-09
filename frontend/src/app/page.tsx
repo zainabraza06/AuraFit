@@ -258,8 +258,10 @@ export default function HomePage() {
                       <a href={chatResult.results[0].product.productUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Shop This Look →</a>
                       <TryOnButton
                         productImage={chatResult.results[0].product.imageUrl || chatResult.results[0].product.images?.[0]}
+                        productImages={chatResult.results[0].product.images}
                         productName={chatResult.results[0].product.name}
                         productDescription={buildGarmentDescription(chatResult.results[0].product)}
+                        pieces={chatResult.results[0].product.pieces}
                         variant="full"
                       />
                     </div>
@@ -370,7 +372,13 @@ export default function HomePage() {
                             )}
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: 'auto' }}>
                               <a href={r.product.productUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textAlign: 'center', flex: 1 }}>Shop →</a>
-                              <TryOnButton productImage={r.product.imageUrl || r.product.images?.[0]} productName={r.product.name} productDescription={buildGarmentDescription(r.product)} />
+                              <TryOnButton
+                                productImage={r.product.imageUrl || r.product.images?.[0]}
+                                productImages={r.product.images}
+                                productName={r.product.name}
+                                productDescription={buildGarmentDescription(r.product)}
+                                pieces={r.product.pieces}
+                              />
                             </div>
                           </div>
                         </div>

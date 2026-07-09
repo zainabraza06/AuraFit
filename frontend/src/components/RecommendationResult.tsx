@@ -165,7 +165,14 @@ export default function RecommendationResult({ data, compact = false }: { data: 
         )}
 
         {heroDress && (
-          <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} productDescription={buildGarmentDescription(heroDress)} variant="full" />
+          <TryOnButton
+            productImage={heroDress.imageUrl || heroDress.images?.[0]}
+            productImages={heroDress.images}
+            productName={heroDress.name}
+            productDescription={buildGarmentDescription(heroDress)}
+            pieces={heroDress.pieces}
+            variant="full"
+          />
         )}
 
         {relaxationMessage && (
@@ -350,7 +357,14 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                       Shop on {heroDress.brand} →
                     </a>
                   )}
-                  <TryOnButton productImage={heroDress.imageUrl || heroDress.images?.[0]} productName={heroDress.name} productDescription={buildGarmentDescription(heroDress)} variant="full" />
+                  <TryOnButton
+                    productImage={heroDress.imageUrl || heroDress.images?.[0]}
+                    productImages={heroDress.images}
+                    productName={heroDress.name}
+                    productDescription={buildGarmentDescription(heroDress)}
+                    pieces={heroDress.pieces}
+                    variant="full"
+                  />
                 </div>
               </div>
             </div>
@@ -437,7 +451,13 @@ export default function RecommendationResult({ data, compact = false }: { data: 
                               Shop →
                             </a>
                           )}
-                          <TryOnButton productImage={p.imageUrl || p.images?.[0]} productName={p.name} productDescription={buildGarmentDescription(p)} />
+                          <TryOnButton
+                            productImage={p.imageUrl || p.images?.[0]}
+                            productImages={p.images}
+                            productName={p.name}
+                            productDescription={buildGarmentDescription(p)}
+                            pieces={p.pieces}
+                          />
                         </div>
                       </div>
                     </div>
