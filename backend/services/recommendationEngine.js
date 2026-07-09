@@ -297,15 +297,20 @@ function buildDBQuery(intent, dropped, colorMode) {
     // NOT return bridal shalwar-kameez suits just because they share the occasion.
     const DISTINCTIVE = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
     const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
-    if (DISTINCTIVE.includes(intent.dressStyle)) {
-      query.dressStyle = intent.dressStyle;
-    } else if (intent.dressStyle === 'shalwar-kameez') {
+    // "kurta" is the QUERY_GARMENT_MAP canonical but the DB stores these items as
+    // dressStyle = "shalwar-kameez". Treat as alias so the $or branch below fires
+    // (matching both the dressStyle field AND suit/kameez subCategories) rather than
+    // falling through to `query.dressStyle = "kurta"` which matches nothing.
+    const effectiveStyle = intent.dressStyle === 'kurta' ? 'shalwar-kameez' : intent.dressStyle;
+    if (DISTINCTIVE.includes(effectiveStyle)) {
+      query.dressStyle = effectiveStyle;
+    } else if (effectiveStyle === 'shalwar-kameez') {
       // The generic suit is often stored via subCategory rather than dressStyle.
       query.$or = isBridalSearch
         ? [{ dressStyle: 'shalwar-kameez' }, { subCategory: { $in: ['bridal', 'festive'] } }]
         : [{ dressStyle: 'shalwar-kameez' }, { subCategory: { $regex: /suit|kameez|unstitched/i } }];
     } else {
-      query.dressStyle = intent.dressStyle;
+      query.dressStyle = effectiveStyle;
     }
   }
   if (!dropped.has('stitching') && intent.stitching) {

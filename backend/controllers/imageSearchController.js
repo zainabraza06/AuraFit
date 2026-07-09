@@ -192,7 +192,13 @@ function buildEmbeddingText(signals, analysis) {
 function buildIntentFromPhotoAnalysis(analysis, signals) {
   const colorsExact = extractColorsForSearch(analysis.color);
   const colorsFamily = extractColorFamilies(analysis.color);
-  const dressStyle = signals.garmentHints[0] || null;
+  // "kurta" is what QUERY_GARMENT_MAP resolves to for kurta/kameez/shalwar
+  // words, but the DB stores these garments as dressStyle = "shalwar-kameez".
+  // Without this alias, buildDBQuery runs `{ dressStyle: "kurta" }` which
+  // matches NOTHING → agenticRelax drops the dressStyle filter entirely →
+  // only 1–2 occasion-matched results come back instead of the full catalog.
+  const rawHint = signals.garmentHints[0] || null;
+  const dressStyle = rawHint === 'kurta' ? 'shalwar-kameez' : rawHint;
   return {
     dressStyle,
     occasion: signals.occasions,
