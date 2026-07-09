@@ -244,18 +244,19 @@ export async function planNextRelaxation(ctx) {
     .map(([k, v]) => `  - drop "${k}" → ${v} results`)
     .join('\n') || '  (no further constraints to relax)';
 
+  const targetCount = ctx.target ?? 8;
   const user = `Shopper asked: "${ctx.message}"
 Active filters (all applied now): ${ctx.active.join(', ') || 'none'}
 Already relaxed this session: ${ctx.dropped.join(', ') || 'none'}
 Budget ceiling: ${ctx.maxBudget ? 'PKR ' + ctx.maxBudget : 'none'}
 
-Right now, ${ctx.current} products match ALL active filters${ctx.maxBudget ? ' within budget' : ''}.
+Right now, ${ctx.current} products match ALL active filters${ctx.maxBudget ? ' within budget' : ''}. Target: at least ${targetCount} results.
 If I relax ONE more filter, the count becomes:
 ${relaxLines}
 ${ctx.maxBudget ? `Keeping all current filters but LIFTING the budget ceiling → ${ctx.budgetLift} results (cheapest PKR ${ctx.cheapest ?? 'n/a'}).` : ''}
 
 Decide the single best next action so the shopper gets the closest honest match:
-- "accept": current results are already enough (aim for ≈8+) or the best achievable — stop and show them.
+- "accept": current results are already enough (aim for ≥${targetCount}) or the best achievable — stop and show them.
 - "relax": drop ONE named filter (choose the LEAST important to this shopper; keep what they clearly care about). Return it in "constraint".
 - "raise_budget": good matches exist ONLY above the budget — never show over-budget silently; tell them to raise it.
 - "stop": nothing reasonable exists even relaxed — say so honestly.

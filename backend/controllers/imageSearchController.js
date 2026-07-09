@@ -169,11 +169,17 @@ function buildSignalText(analysis) {
  * Text used ONLY for the embedding vector — richer than the signal text since
  * keywords (silhouette, neckline, embroidery style) genuinely help semantic
  * similarity and don't need to be color-clean the way structured facet scoring does.
+ * Also folds in analysis.style ("printed with embroidered borders") and the color
+ * description so the cosine re-ranking step uses the full vision model narrative.
  */
 function buildEmbeddingText(signals, analysis) {
   const base = buildSemanticQueryText(signals);
+  const parts = [];
+  if (analysis.style) parts.push(`Style: ${analysis.style}`);
+  if (analysis.color) parts.push(`Color: ${analysis.color}`);
   const keywords = (analysis.keywords || []).join(', ');
-  return keywords ? `${base}\nDetails: ${keywords}` : base;
+  if (keywords) parts.push(`Details: ${keywords}`);
+  return parts.length ? `${base}\n${parts.join('\n')}` : base;
 }
 
 /**
@@ -190,7 +196,6 @@ function buildEmbeddingText(signals, analysis) {
  * LEAST important (occasion — the vision model's softest, most inferred guess).
  */
 function buildIntentFromPhotoAnalysis(analysis, signals) {
-  const colorsExact = extractColorsForSearch(analysis.color);
   const colorsFamily = extractColorFamilies(analysis.color);
   // "kurta" is what QUERY_GARMENT_MAP resolves to for kurta/kameez/shalwar
   // words, but the DB stores these garments as dressStyle = "shalwar-kameez".
@@ -202,7 +207,12 @@ function buildIntentFromPhotoAnalysis(analysis, signals) {
   return {
     dressStyle,
     occasion: signals.occasions,
-    colorExact: colorsExact[0] || null,
+    // Skip colorExact for photo searches — shade-level strings like "off-white"
+    // are too strict and burn a full relaxation round just to widen to the color
+    // family. Starting at colorFamily gives the engine the right level of
+    // precision immediately: it still prefers, e.g., white/ivory garments over
+    // completely unrelated colors, without zeroing out on "not exactly off-white".
+    colorExact: null,
     colorFamily: colorsFamily[0] || 'Any',
     gender: signals.genderHint || 'women',
     maxBudget: 0,
@@ -212,8 +222,11 @@ function buildIntentFromPhotoAnalysis(analysis, signals) {
     fabric: null,
     season: null,
     neckline: null,
-    constraintPriority: dressStyle ? ['dressStyle', 'color', 'occasion'] : ['color', 'occasion'],
-    originalMessage: `photo of a ${analysis.category || 'clothing item'}`
+    // dressStyle is most important (last to drop) — it's the whole point of a
+    // photo search. Occasion drops before color so we widen audience before
+    // widening palette.
+    constraintPriority: dressStyle ? ['dressStyle', 'occasion', 'color'] : ['occasion', 'color'],
+    originalMessage: `photo of a ${analysis.category || 'clothing item'}: ${analysis.style || ''}`
   };
 }
 
@@ -292,7 +305,11 @@ export async function searchByImage(req, res) {
       // after the user gives feedback, without re-uploading the photo.
       const intent = buildIntentFromPhotoAnalysis(analysis, signals);
       intentUsed = intent;
-      const { products, relaxationMessage: relaxMsg } = await agenticRelax(intent);
+      // minResults:10 — keep the relaxation loop running until at least 10
+      // products are found (or every filter has been relaxed). For text search,
+      // the default is 1 (honest: show the tightest match, however few) but for
+      // a photo search the UX expectation is a browsable grid, not a single card.
+      const { products, relaxationMessage: relaxMsg } = await agenticRelax(intent, { minResults: 10 });
       relaxationMessage = relaxMsg;
 
       let ranked = products;

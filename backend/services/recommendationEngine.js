@@ -719,7 +719,7 @@ function relaxLabel(intent, c) {
   return c;
 }
 
-export async function agenticRelax(intent) {
+export async function agenticRelax(intent, { minResults = 1 } = {}) {
   const specified = getSpecifiedConstraints(intent);
   const dropped = new Set();
   let colorMode = specified.has('colorExact') ? 'exact' : specified.has('colorFamily') ? 'family' : 'none';
@@ -729,10 +729,11 @@ export async function agenticRelax(intent) {
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const pool = await fetchHealedPool(intent, dropped, colorMode);
 
-    // Show WHAT IS FOUND — accept the tightest level that has ANY matches, however
-    // few. We never pad a 3-result query up to 10 by relaxing; we only step down
-    // when a level returns zero.
-    if (pool.length >= 1) {
+    // Accept the tightest level that already satisfies minResults. For text search
+    // minResults=1 (unchanged behaviour: show anything honest rather than padding).
+    // For image search minResults=10 so relaxation keeps broadening until the
+    // caller has enough candidates to rank and display.
+    if (pool.length >= minResults) {
       return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
     }
 
@@ -777,6 +778,7 @@ export async function agenticRelax(intent) {
       dropped: relaxedFields,
       maxBudget: intent.maxBudget || 0,
       current: pool.length,
+      target: minResults,
       relaxOptions,
       budgetLift,
       cheapest,
@@ -784,13 +786,35 @@ export async function agenticRelax(intent) {
     });
 
     // LLM unavailable → deterministic fallback for the rest.
-    if (!decision) return fetchCandidatesDeterministic(intent);
+    if (!decision) return fetchCandidatesDeterministic(intent, { minResults });
 
     trace.push(decision);
 
     if (decision.action === 'accept' || decision.action === 'stop') {
-      // pool is empty here (the >=1 check above already returned otherwise) — never
-      // echo an LLM message implying results were shown when there are none.
+      // If we have SOME results but still below minResults and there are still
+      // constraints to relax, override the LLM's premature accept and force-drop
+      // the cheapest remaining constraint so image searches keep broadening.
+      if (pool.length > 0 && pool.length < minResults) {
+        // Pick the constraint whose removal yields the MOST new results;
+        // never force-drop dressStyle first — style identity is the whole
+        // point of a photo search and must stay as long as possible.
+        const forceTarget = relaxOptionsList
+          .filter((o) => o.constraint !== 'dressStyle' && o.count > pool.length)
+          .sort((a, b) => b.count - a.count)[0];
+        if (forceTarget) {
+          dropped.add(forceTarget.constraint);
+          relaxedFields.push(forceTarget.constraint);
+          continue;
+        }
+        // No non-style constraint can help — try widening the color filter.
+        if (colorMode !== 'none' && colorCount !== null && colorCount > pool.length) {
+          colorMode = colorMode === 'exact' && specified.has('colorFamily') ? 'family' : 'none';
+          relaxedFields.push(colorMode === 'family' ? 'exact color → showing color family' : 'color');
+          continue;
+        }
+      }
+      // Either pool is empty, or we genuinely have nothing left to relax —
+      // never echo an LLM message implying results when there are none.
       const honestMessage = pool.length
         ? (decision.message || buildRelaxationMessage(intent, relaxedFields))
         : "We couldn't find anything matching your request, even after relaxing every filter we could.";
@@ -849,7 +873,7 @@ export async function agenticRelax(intent) {
   return { products: pool, relaxedFields, trace, relaxationMessage: buildRelaxationMessage(intent, relaxedFields), budgetBlock: null };
 }
 
-async function fetchCandidatesDeterministic(intent) {
+async function fetchCandidatesDeterministic(intent, { minResults = 8 } = {}) {
   const specified = getSpecifiedConstraints(intent);
   const relaxOrder = buildUnifiedRelaxOrder(intent.constraintPriority || []);
 
@@ -889,7 +913,7 @@ async function fetchCandidatesDeterministic(intent) {
   // largest pool. Because 'color' relaxes LAST, this keeps the user's colour (and
   // other constraints) as long as possible — no more returning teal for a black
   // query just to pad the count.
-  const MIN_RESULTS = 8;
+  const MIN_RESULTS = minResults;
   let bestProducts = [];
   let relaxationMessage = null;
   let relaxedFields = [];
