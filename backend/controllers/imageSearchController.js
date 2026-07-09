@@ -72,7 +72,9 @@ function normalizeAnalysis(raw) {
  * catches sarees that the first pass mislabelled as lehenga.
  */
 async function verifyLehengaVsKurta(imageBase64, mimeType, analysis) {
-  if (!/\b(lehenga|lehnga|saree|sari)\b/i.test(analysis.category)) return analysis;
+  // Run verification on all eastern wear categories prone to silhouette confusion.
+  // This allows correcting sarees/lehengas that are misclassified as kurtas.
+  if (!/\b(lehenga|lehnga|saree|sari|kurta|kameez|shalwar|suit)\b/i.test(analysis.category)) return analysis;
 
   const verifyPrompt = `
     You are checking whether this garment is a SAREE, a LEHENGA, or a KURTA/SHALWAR-KAMEEZ.
@@ -111,25 +113,34 @@ async function verifyLehengaVsKurta(imageBase64, mimeType, analysis) {
     const bottomType = String(data?.bottomType || '').toLowerCase();
     const topLength  = String(data?.topLength  || '').toLowerCase();
 
-    // ── Saree corrections ────────────────────────────────────────────────────
-    // Pallu is the definitive structural signal — a lehenga cannot have one.
-    if (hasPallu && !/\b(saree|sari)\b/i.test(analysis.category)) {
-      console.warn('[VisualSearch] Verification corrected → saree (pallu/diagonal drape confirmed)');
-      return { ...analysis, category: 'saree' };
-    }
-    // Draped continuous fabric bottom (not a separate skirt) also means saree,
-    // even if the pallu wasn't clearly visible, when the first pass said lehenga.
-    if (bottomType === 'draped-fabric' && /\b(lehenga|lehnga)\b/i.test(analysis.category)) {
-      console.warn('[VisualSearch] Verification corrected lehenga → saree (continuous draped fabric, no separate skirt)');
-      return { ...analysis, category: 'saree' };
+    // ── 1. Saree Check ───────────────────────────────────────────────────────
+    // Pallu/diagonal drape or continuous draped fabric bottom = saree.
+    if (hasPallu || bottomType === 'draped-fabric') {
+      if (!/\b(saree|sari)\b/i.test(analysis.category)) {
+        console.warn('[VisualSearch] Verification corrected → saree (diagonal pallu/drape confirmed)');
+        return { ...analysis, category: 'saree' };
+      }
+      return analysis;
     }
 
-    // ── Lehenga → kurta correction ───────────────────────────────────────────
-    // A long top (past the hip) means kurta/kameez over trousers —
-    // lehenga REQUIRES a short choli ending at/above the waist.
-    if (topLength === 'long-past-hip' && /\b(lehenga|lehnga)\b/i.test(analysis.category)) {
-      console.warn('[VisualSearch] Verification corrected lehenga → kurta (top confirmed long-past-hip)');
-      return { ...analysis, category: analysis.category.replace(/lehenga|lehnga/gi, 'kurta') };
+    // ── 2. Lehenga Check ──────────────────────────────────────────────────────
+    // Short top + separate skirt = lehenga.
+    if (topLength === 'short-cropped' && bottomType === 'separate-skirt') {
+      if (!/\b(lehenga|lehnga)\b/i.test(analysis.category)) {
+        console.warn('[VisualSearch] Verification corrected → lehenga (short top + separate skirt confirmed)');
+        return { ...analysis, category: 'lehenga' };
+      }
+      return analysis;
+    }
+
+    // ── 3. Kurta Check ───────────────────────────────────────────────────────
+    // Long top or trouser bottom = kurta/shalwar-kameez.
+    if (topLength === 'long-past-hip' || bottomType === 'trousers') {
+      if (/\b(lehenga|lehnga|saree|sari)\b/i.test(analysis.category)) {
+        console.warn('[VisualSearch] Verification corrected → kurta (long top / trousers confirmed)');
+        return { ...analysis, category: 'kurta' };
+      }
+      return analysis;
     }
 
     return analysis;
