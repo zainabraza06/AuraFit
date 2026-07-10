@@ -296,6 +296,13 @@ export async function searchByImage(req, res) {
         with a loose end over one shoulder, it is a SAREE, not a lehenga.
         When genuinely unsure, look at actual measurable proportions in the
         photo rather than assuming from the occasion or how ornate it looks.
+        If the outfit is a Western-cut shirt/top/blouse with Western-style
+        trousers or pants (fitted or straight-leg, NOT a shalwar's draped/
+        gathered cut) — i.e. a modern Western separates look rather than a
+        traditional Pakistani silhouette — say "western" explicitly in the
+        category (e.g. "western shirt and trousers", "western co-ord set"),
+        not just "shirt and pants" alone, since that phrase alone is
+        ambiguous with how a shalwar-kameez suit's own pieces are described.
       - Color — the garment's real fabric color(s), NOT decorative embroidery
         thread colors. Most garments are ONE color: say just that (e.g. "maroon",
         "royal blue", "mustard"). If the garment genuinely has two significant

@@ -298,14 +298,16 @@ function buildDBQuery(intent, dropped, colorMode) {
   if (!dropped.has('dressStyle') && intent.dressStyle) {
     // A DISTINCTIVE silhouette must match strictly — a "bridal lehenga" search must
     // NOT return bridal shalwar-kameez suits just because they share the occasion.
-    const DISTINCTIVE = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'sharara', 'gharara', 'palazzo'];
+    // Uses the module-level DISTINCTIVE_STYLES (was a separate, drifted local
+    // copy still listing dead 'sharara'/'gharara' values that no code path can
+    // produce, and missing 'western'/'co-ord' — now a single source of truth).
     const isBridalSearch = intent.occasion?.some((o) => ['bridal', 'wedding', 'mehndi'].includes(o));
     // "kurta" is the QUERY_GARMENT_MAP canonical but the DB stores these items as
     // dressStyle = "shalwar-kameez". Treat as alias so the $or branch below fires
     // (matching both the dressStyle field AND suit/kameez subCategories) rather than
     // falling through to `query.dressStyle = "kurta"` which matches nothing.
     const effectiveStyle = intent.dressStyle === 'kurta' ? 'shalwar-kameez' : intent.dressStyle;
-    if (DISTINCTIVE.includes(effectiveStyle)) {
+    if (DISTINCTIVE_STYLES.includes(effectiveStyle)) {
       query.dressStyle = effectiveStyle;
     } else if (effectiveStyle === 'shalwar-kameez') {
       // The generic suit is often stored via subCategory rather than dressStyle.
@@ -670,7 +672,7 @@ const RELAXABLE = ['neckline', 'occasion', 'print', 'dressStyle', 'stitching', '
 // with a kurta (structurally a kurta/shalwar-kameez silhouette, not a distinct
 // skirt-based style), and no code path ever sets intent.dressStyle to those
 // values (searchQueryIntel.js's QUERY_GARMENT_MAP maps them to 'kurta').
-const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'palazzo'];
+const DISTINCTIVE_STYLES = ['lehenga', 'saree', 'gown', 'frock', 'maxi', 'abaya', 'palazzo', 'western', 'co-ord'];
 const TARGET_RESULTS = 8;
 // One round can only drop ONE constraint, so the budget must cover the worst
 // case: every RELAXABLE constraint specified at once, plus color's own two-step

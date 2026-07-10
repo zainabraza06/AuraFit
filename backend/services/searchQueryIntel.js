@@ -38,7 +38,13 @@ const QUERY_GARMENT_MAP = [
   { kw: ['sherwani'], val: 'sherwani' },
   { kw: ['polo'], val: 'polo' },
   { kw: ['t-shirt', 't shirt', 'tee'], val: 't-shirt' },
-  { kw: ['western wear', 'jeans', 'denim', 'hoodie'], val: 'western' }
+  // Bare "shirt"/"trouser"/"pants" aren't included here — this catalog also
+  // describes a shalwar-kameez suit's own pieces as "shirt"+"trouser" (see
+  // pieceDetails.includes), so those words alone are NOT a reliable Western
+  // signal. Only match genuinely Western-specific terms, or "western"
+  // explicitly qualifying the outfit.
+  { kw: ['western wear', 'western', 'jeans', 'denim', 'hoodie', 'pantsuit', 'blazer', 'jumpsuit', 'playsuit'], val: 'western' },
+  { kw: ['co-ord', 'coord', 'co ord'], val: 'co-ord' }
 ];
 
 function inferGenderHint(lower) {
