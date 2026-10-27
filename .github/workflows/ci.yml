@@ -93,3 +93,44 @@ jobs:
         run: docker compose logs --tail=200 consumer worker kafka
       - run: docker compose down -v
         if: always()
+
+  deploy:
+    # Runs only on main, after tests, the image build and the crash test have passed.
+    # Skipped (not failed) until the DEPLOY_HOST repository variable is set.
+    needs: [build-images, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - id: img
+        run: echo "repo=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ vars.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Copy compose files and observability config
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}"
+          $SSH "mkdir -p ~/aurafit"
+          tar czf - docker-compose.yml docker-compose.prod.yml observability | $SSH "tar xzf - -C ~/aurafit"
+      - name: Pull the images built for this commit and restart
+        run: |
+          ssh -i ~/.ssh/id_deploy ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \
+            "cd ~/aurafit && docker login ghcr.io -u ${{ github.actor }} --password-stdin && \
+             IMAGE_PREFIX=ghcr.io/${{ steps.img.outputs.repo }} TAG=${{ github.sha }} \
+               docker compose -f docker-compose.yml -f docker-compose.prod.yml pull consumer worker api && \
+             IMAGE_PREFIX=ghcr.io/${{ steps.img.outputs.repo }} TAG=${{ github.sha }} \
+               docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --remove-orphans" \
+            <<< "${{ secrets.GITHUB_TOKEN }}"
+      - name: Smoke test the deployed API and metrics
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS "http://${{ vars.DEPLOY_HOST }}:5000/api/health" && curl -fsS "http://${{ vars.DEPLOY_HOST }}:9090/-/ready" && exit 0
+            sleep 5
+          done
+          echo "deployed stack did not become healthy" && exit 1
