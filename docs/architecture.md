@@ -52,7 +52,9 @@ flowchart LR
   Consumer & Worker -- /metrics --> P
 ```
 
-## Delivery guarantees
+## Delivery guarantees (design)
+
+These are what the design provides. The handler and worker logic is covered by unit tests; the end-to-end behaviour under a real crash is what `npm run failuretest` is for, and it has not been run yet.
 
 | Hop | Guarantee | How |
 |---|---|---|
