@@ -43,6 +43,8 @@ async function main() {
   await consumer.connect();
   await consumer.subscribe({ topics: [TOPICS.discovered, TOPICS.priceChanged], fromBeginning: true });
   await consumer.run({
+    // Partitions are independent, so process them in parallel; order within a partition is kept.
+    partitionsConsumedConcurrently: Number(process.env.CONSUMER_CONCURRENCY || 3),
     // Offsets are committed only after this resolves: a crash mid-message
     // means redelivery (at-least-once), which dedupe turns into exactly-once effects.
     eachMessage: async ({ message }) => handle(message.value?.toString() ?? ''),
