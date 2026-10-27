@@ -157,7 +157,8 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 | Full stack via `docker compose up` | **Run end to end** (Kafka, RabbitMQ, Redis, Mongo, 2 consumers, worker, Prometheus, Grafana) |
 | Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
 | Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
-| CI/CD | **Implemented**: tests on every push/PR, images built and published to GHCR, end-to-end crash test, then an SSH deploy with a health smoke test ([docs/deploy.md](docs/deploy.md)). **The deploy job has not run yet**: it needs a server and the `DEPLOY_HOST`/`DEPLOY_SSH_KEY` settings. The CI end-to-end job has not run on GitHub either, because the branch isn't pushed |
+| CI | **Passing on GitHub** ([PR #1](https://github.com/zainabraza06/AuraFit/pull/1)): tests on every push/PR, both Docker images build, and the end-to-end job brings up the whole stack on a GitHub runner and passes the load test (5,500 events) and the consumer-SIGKILL test (11,000 events) with 0 lost and 0 duplicated |
+| CD (deploy) | **Implemented, not yet run.** On `main` the pipeline publishes images to GHCR and deploys over SSH with a health smoke test ([docs/deploy.md](docs/deploy.md)). It needs a server and the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` settings, and is skipped until then. Nothing is deployed yet |
 
 ### Run it (one command)
 
