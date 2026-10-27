@@ -1,6 +1,7 @@
 import amqp from 'amqplib';
 import { config } from './config.js';
 import { QUEUES } from './topics.js';
+import { retry } from './retry.js';
 
 /**
  * RabbitMQ topology: durable work queues + one dead-letter queue.
@@ -8,7 +9,7 @@ import { QUEUES } from './topics.js';
  * poison job ends up in jobs.dlq instead of looping forever.
  */
 export async function connectRabbit(url = config.rabbitUrl) {
-  const conn = await amqp.connect(url);
+  const conn = await retry(() => amqp.connect(url), { attempts: 15, delayMs: 1000 });
   const ch = await conn.createChannel();
   for (const q of Object.values(QUEUES)) await ch.assertQueue(q, { durable: true });
 
