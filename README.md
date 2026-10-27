@@ -148,16 +148,16 @@ Scraper ──► Kafka ──► Consumer ──► MongoDB
 Full diagram, delivery guarantees and failure modes: [docs/architecture.md](docs/architecture.md).
 Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 
-### Status: what is verified and what is not
+### Status
 
 | Claim | Status |
 |---|---|
-| Event validation, dedupe, locks, handler retry/DLQ, worker idempotency | **Verified** by unit tests (in-memory fakes), run in CI |
+| Event validation, dedupe, locks, retry/DLQ, worker idempotency, crash-resume, ordering | **Unit-tested** (34 tests, including a real in-memory MongoDB for the store), run in CI |
 | Scraper and consumer agree on the event format | **Verified** by a contract test |
-| CI/CD | **Implemented**: tests on every push/PR, Docker images built and published to GHCR, end-to-end crash test, then an SSH deploy to a Docker host with a health smoke test (see [docs/deploy.md](docs/deploy.md)). The deploy job activates once `DEPLOY_HOST` and the SSH secret are configured; record the live URL here after the first run |
-| Full stack via `docker compose up` | **Written, not yet run end to end** |
-| Monitoring | **Implemented**: Prometheus scrapes every consumer/worker replica (lag, queue depth, error rate, latency) and Grafana ships a provisioned 12-panel dashboard. Add the screenshot after the first run |
-| Load test and consumer-crash test | **Scripts written, not yet run**; no throughput or zero-loss figures exist yet |
+| Full stack via `docker compose up` | **Run end to end** (Kafka, RabbitMQ, Redis, Mongo, 2 consumers, worker, Prometheus, Grafana) |
+| Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
+| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
+| CI/CD | **Implemented**: tests on every push/PR, images built and published to GHCR, end-to-end crash test, then an SSH deploy with a health smoke test ([docs/deploy.md](docs/deploy.md)). **The deploy job has not run yet**: it needs a server and the `DEPLOY_HOST`/`DEPLOY_SSH_KEY` settings. The CI end-to-end job has not run on GitHub either, because the branch isn't pushed |
 
 ### Run it (one command)
 
@@ -190,13 +190,20 @@ events, duplicate events, and lost or duplicate price-drop notifications.
 
 ### Results
 
-> Not yet recorded. Run the commands above, then paste the numbers from the generated report here
-> (events/sec, lost, duplicates). Do not quote figures that are not in a committed report.
+Single laptop, Docker Desktop, one Kafka broker, **2 consumer replicas + 1 worker** (everything shares the machine).
+22,000 unique events per run (20,000 discovered + 2,000 price drops). Full reports and method: [docs/results/](docs/results/README.md).
 
-| Scenario | Events | Throughput | Lost | Duplicates |
-|---|---|---|---|---|
-| Load test | – | – | – | – |
-| Consumer crash (1 of 2 killed) | – | – | – | – |
+| Scenario | Stored | Lost | Duplicate rows | Notifications | Throughput |
+|---|---|---|---|---|---|
+| Load test (+1,000 redelivered duplicates, +50 malformed) | 22,000 | **0** | **0** | 2,000 / 2,000 | 328-383 events/s |
+| `SIGKILL` 1 of 2 consumers mid-run (~16-18k messages unprocessed) | 22,000 | **0** | **0** | 2,000 / 2,000 | 269-325 events/s incl. recovery |
+| `SIGKILL` both consumers mid-run, restart after 8 s | 22,000 | **0** | **0** | 2,000 / 2,000 | 265 events/s incl. recovery |
+
+All 50 malformed messages were dead-lettered and none stored. The first crash run actually *failed* (24 of 2,000 jobs lost);
+the tests found three real bugs, all fixed, described in [docs/results/](docs/results/README.md#what-the-tests-found-and-fixed).
+Scope: consumer crashes on a single broker. Broker, Mongo and Redis failures were not tested.
+
+![Grafana dashboard during a load test and a crash test](docs/images/grafana-dashboard.png)
 
 ### Pipeline tests (no Docker needed)
 
