@@ -26,27 +26,31 @@ export function createStore({ ProductState, ProcessedEvent }) {
       }
 
       const incoming = event.type === EVENT_TYPES.PRICE_CHANGED ? payload.newPrice : payload.price;
-      const previous = await ProductState.findOne({ productUrl: payload.productUrl }, 'price').lean();
+      const previous = await ProductState.findOne({ productUrl: payload.productUrl }, 'price lastEventAt').lean();
       const now = new Date(event.occurredAt);
+
+      // discovered and price_changed travel on different topics, so Kafka gives no ordering
+      // between them. Only let an event overwrite state if it is not older than what is stored.
+      const isStale = previous?.lastEventAt && previous.lastEventAt > now;
+      const fresh = { brand: payload.brand, name: payload.name, price: incoming, currency: payload.currency, lastEventAt: now };
+      if (payload.imageUrl) fresh.imageUrl = payload.imageUrl;
 
       await ProductState.updateOne(
         { productUrl: payload.productUrl },
-        {
+        [{
           $set: {
-            brand: payload.brand,
-            name: payload.name,
-            price: incoming,
-            currency: payload.currency,
-            ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
-            lastEventAt: now,
+            firstSeenAt: { $ifNull: ['$firstSeenAt', now] },
+            ...Object.fromEntries(Object.entries(fresh).map(([k, v]) => [
+              k,
+              { $cond: [{ $gte: [now, { $ifNull: ['$lastEventAt', new Date(0)] }] }, { $literal: v }, `$${k}`] },
+            ])),
           },
-          $setOnInsert: { firstSeenAt: now },
-        },
-        { upsert: true },
+        }],
+        { upsert: true, updatePipeline: true },
       );
 
       const oldPrice = previous?.price ?? (event.type === EVENT_TYPES.PRICE_CHANGED ? payload.oldPrice : undefined);
-      const priceDrop = oldPrice !== undefined && incoming < oldPrice
+      const priceDrop = !isStale && oldPrice !== undefined && incoming < oldPrice
         ? { productUrl: payload.productUrl, name: payload.name, brand: payload.brand, oldPrice, newPrice: incoming, currency: payload.currency }
         : undefined;
 
