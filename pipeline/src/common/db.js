@@ -8,6 +8,7 @@ const ProductState = mongoose.model('PipelineProduct', new mongoose.Schema({
   price: Number,
   currency: String,
   imageUrl: String,
+  hostedImageUrl: String,
   firstSeenAt: Date,
   lastEventAt: Date,
 }, { collection: 'pipeline_products' }));
@@ -21,10 +22,17 @@ const ProcessedEvent = mongoose.model('PipelineEvent', new mongoose.Schema({
   payload: mongoose.Schema.Types.Mixed,
 }, { collection: 'pipeline_events', timestamps: { createdAt: 'storedAt', updatedAt: false } }));
 
-export const models = { ProductState, ProcessedEvent };
+const Notification = mongoose.model('PipelineNotification', new mongoose.Schema({
+  eventId: { type: String, unique: true },
+  productUrl: String,
+  message: String,
+  pct: Number,
+}, { collection: 'pipeline_notifications', timestamps: true }));
+
+export const models = { ProductState, ProcessedEvent, Notification };
 
 export async function connectMongo(uri = config.mongoUri) {
   await mongoose.connect(uri);
-  await Promise.all([ProductState.init(), ProcessedEvent.init()]);
+  await Promise.all([ProductState.init(), ProcessedEvent.init(), Notification.init()]);
   return mongoose.connection;
 }
