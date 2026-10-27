@@ -15,13 +15,17 @@ const isDuplicateKey = (err) => err?.code === 11000;
  * @returns {Promise<{outcome: 'stored'|'duplicate', priceDrop?: object}>}
  */
 export function createStore({ ProductState, ProcessedEvent }) {
+  // Raw driver collections on purpose: this is the hot path, and Mongoose's per-document
+  // hydration/casting made the consumer CPU-bound. Schemas/indexes are still defined in db.js.
+  const products = ProductState.collection;
+  const events = ProcessedEvent.collection;
   return {
     async save(event) {
       const { payload } = event;
       const incoming = event.type === EVENT_TYPES.PRICE_CHANGED ? payload.newPrice : payload.price;
       const now = new Date(event.occurredAt);
 
-      const previous = await ProductState.findOne({ productUrl: payload.productUrl }, 'price lastEventAt').lean();
+      const previous = await products.findOne({ productUrl: payload.productUrl }, { projection: { price: 1, lastEventAt: 1 } });
       // discovered and price_changed travel on different topics, so Kafka gives no ordering
       // between them. An older event must never overwrite, or flag a drop against, newer state.
       const isStale = Boolean(previous?.lastEventAt && previous.lastEventAt > now);
@@ -31,7 +35,7 @@ export function createStore({ ProductState, ProcessedEvent }) {
         : undefined;
 
       try {
-        await ProcessedEvent.create({
+        await events.insertOne({
           eventId: event.eventId,
           type: event.type,
           productUrl: payload.productUrl,
@@ -39,10 +43,11 @@ export function createStore({ ProductState, ProcessedEvent }) {
           payload,
           status: 'pending',
           priceDrop,
+          storedAt: new Date(),
         });
       } catch (err) {
         if (!isDuplicateKey(err)) throw err;
-        const existing = await ProcessedEvent.findOne({ eventId: event.eventId }, 'status priceDrop').lean();
+        const existing = await events.findOne({ eventId: event.eventId }, { projection: { status: 1, priceDrop: 1 } });
         if (existing?.status !== 'pending') return { outcome: 'duplicate' };
         // Resume an interrupted attempt: reuse the drop decided the first time.
         priceDrop = existing.priceDrop ?? undefined;
@@ -51,7 +56,7 @@ export function createStore({ ProductState, ProcessedEvent }) {
       const fresh = { brand: payload.brand, name: payload.name, price: incoming, currency: payload.currency, lastEventAt: now };
       if (payload.imageUrl) fresh.imageUrl = payload.imageUrl;
 
-      await ProductState.updateOne(
+      await products.updateOne(
         { productUrl: payload.productUrl },
         [{
           $set: {
@@ -62,14 +67,14 @@ export function createStore({ ProductState, ProcessedEvent }) {
             ])),
           },
         }],
-        { upsert: true, updatePipeline: true },
+        { upsert: true },
       );
 
       return { outcome: 'stored', priceDrop };
     },
 
     async complete(eventId) {
-      await ProcessedEvent.updateOne({ eventId }, { $set: { status: 'done' } });
+      await events.updateOne({ eventId }, { $set: { status: 'done' } });
     },
   };
 }
