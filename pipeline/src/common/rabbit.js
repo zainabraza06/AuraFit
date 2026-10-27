@@ -10,15 +10,22 @@ import { retry } from './retry.js';
  */
 export async function connectRabbit(url = config.rabbitUrl) {
   const conn = await retry(() => amqp.connect(url), { attempts: 15, delayMs: 1000 });
-  const ch = await conn.createChannel();
+  // Confirm channel: a publish resolves only once the broker has accepted (and, for persistent
+  // messages on durable queues, stored) it. Without this a crash right after publish() loses the job.
+  const ch = await conn.createConfirmChannel();
+
+  const send = (queue, buffer, options) => new Promise((resolve, reject) => {
+    ch.sendToQueue(queue, buffer, options, (err) => (err ? reject(err) : resolve()));
+  });
   for (const q of Object.values(QUEUES)) await ch.assertQueue(q, { durable: true });
 
   return {
     ch,
     close: async () => { await ch.close(); await conn.close(); },
 
+    /** Resolves when the broker confirms the message. */
     publish(queue, job, headers = {}) {
-      return ch.sendToQueue(queue, Buffer.from(JSON.stringify(job)), {
+      return send(queue, Buffer.from(JSON.stringify(job)), {
         persistent: true,
         contentType: 'application/json',
         headers: { attempts: 0, ...headers },
@@ -41,13 +48,13 @@ export async function connectRabbit(url = config.rabbitUrl) {
           ch.ack(msg);
         } catch (err) {
           if (attempts + 1 >= maxAttempts) {
-            ch.sendToQueue(QUEUES.deadLetter, msg.content, {
+            await send(QUEUES.deadLetter, msg.content, {
               persistent: true,
               headers: { origin: queue, error: String(err.message).slice(0, 300) },
             });
             onOutcome('dead');
           } else {
-            ch.sendToQueue(queue, msg.content, { persistent: true, headers: { attempts: attempts + 1 } });
+            await send(queue, msg.content, { persistent: true, headers: { attempts: attempts + 1 } });
             onOutcome('retried');
           }
           ch.ack(msg);
