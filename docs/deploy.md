@@ -15,7 +15,7 @@ On any Linux server with Docker + the compose plugin (a small VPS is enough for 
    - Variables: `DEPLOY_HOST` (server IP/hostname), `DEPLOY_USER`
    - Secret: `DEPLOY_SSH_KEY` (the private key)
 4. Create a GitHub **Environment** named `production` (optionally with required reviewers).
-5. Put app secrets (`JWT_SECRET`, API keys) in `~/aurafit/backend.env` on the server and keep it out of git.
+5. Put app secrets (`JWT_SECRET`, API keys) in `~/aurafit/backend/.env` on the server and keep it out of git.
 
 The deploy job is skipped, not failed, while `DEPLOY_HOST` is unset.
 
