@@ -12,7 +12,9 @@ export function getRedis() {
   const url = process.env.REDIS_URL;
   if (!url || process.env.NODE_ENV === 'test') return (client = null);
 
-  client = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  // Offline queue stays on because rate-limit-redis issues a setup command before the socket is
+  // ready; commandTimeout keeps a Redis outage fast to fail (callers are fail-open).
+  client = new Redis(url, { maxRetriesPerRequest: 1, commandTimeout: 1000 });
   client.on('error', (err) => console.warn('[redis]', err.message));
   return client;
 }
