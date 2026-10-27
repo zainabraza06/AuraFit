@@ -67,8 +67,11 @@ These are what the design provides. The handler and worker logic is covered by u
 
 ## Ordering
 
-Events are keyed by `productUrl`, so all events for one product share a partition and are processed in order.
-A `price_changed` therefore never overtakes the `discovered` that precedes it.
+Events are keyed by `productUrl`, so events of the **same type** for one product share a partition and stay in order.
+
+`discovered` and `price_changed` are different topics, and Kafka does not order across topics, so a price change can be
+processed before the discovery it follows. The store therefore guards every state update with the event's `occurredAt`:
+an older event can never overwrite a newer price (covered by `pipeline/test/store.test.js`, and checked again by the load test).
 
 ## Failure behaviour
 
