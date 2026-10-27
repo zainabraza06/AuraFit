@@ -59,3 +59,34 @@ jobs:
           tags: ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest,ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  e2e:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: pipeline/package-lock.json }
+      - run: npm ci
+        working-directory: pipeline
+      - run: npm ci --prefix backend
+      - name: Start the stack
+        run: docker compose up -d --build --scale consumer=2 kafka rabbitmq redis mongo consumer worker
+      - name: Wait for consumers to join the group
+        run: sleep 30
+      - name: Load test
+        run: npm run loadtest -- --products=5000
+        working-directory: pipeline
+      - name: Failure test (SIGKILL one consumer mid-run)
+        run: npm run failuretest -- --products=10000 --mode=one
+        working-directory: pipeline
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: pipeline-results, path: docs/results }
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 consumer worker kafka
+      - run: docker compose down -v
+        if: always()
