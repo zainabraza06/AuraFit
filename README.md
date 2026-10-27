@@ -9,6 +9,7 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Event-Driven Ingestion Pipeline](#event-driven-ingestion-pipeline)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
 - [Database Models](#database-models)
@@ -131,6 +132,67 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 | Testing | Node's built-in `node --test` + Supertest |
 
 ---
+
+## Event-Driven Ingestion Pipeline
+
+The scraper no longer just writes to MongoDB: it publishes events, and independent services react to them.
+
+```
+Scraper ──► Kafka ──► Consumer ──► MongoDB
+                        │  └─ invalid / failed ──► dead-letter topic
+                        └──► RabbitMQ ──► Worker (images → Cloudinary, price-drop notifications)
+                 Redis: API cache · rate limiting · dedupe · locks
+                 Prometheus + Grafana: lag · queue depth · error rate · latency
+```
+
+Full diagram, delivery guarantees and failure modes: [docs/architecture.md](docs/architecture.md).
+Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
+
+### Run it (one command)
+
+```bash
+docker compose up --build
+```
+
+| Service | URL |
+|---|---|
+| API | http://localhost:5000/api/health |
+| Grafana (dashboard) | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+| RabbitMQ UI | http://localhost:15672 (guest / guest) |
+
+Run a scrape that feeds the pipeline: `PIPELINE_ENABLED=true KAFKA_BROKERS=localhost:9092 npm run scrape` (in `backend/`).
+Scale consumers with `docker compose up -d --scale consumer=2`.
+
+### Prove it works
+
+```bash
+cd pipeline
+npm run loadtest -- --products=20000 --dup=0.05 --invalid=50
+npm run failuretest -- --products=20000 --mode=one   # SIGKILL one of two consumers mid-run
+npm run failuretest -- --products=20000 --mode=all   # SIGKILL every consumer, restart later
+```
+
+Both print a PASS/FAIL verdict and write a JSON report to [docs/results/](docs/results/). The load test injects duplicates and malformed
+messages; the failure test uses `docker kill` (SIGKILL: no graceful shutdown, no offset commit) and then checks the database for lost
+events, duplicate events, and lost or duplicate price-drop notifications.
+
+### Results
+
+> Not yet recorded. Run the commands above, then paste the numbers from the generated report here
+> (events/sec, lost, duplicates). Do not quote figures that are not in a committed report.
+
+| Scenario | Events | Throughput | Lost | Duplicates |
+|---|---|---|---|---|
+| Load test | – | – | – | – |
+| Consumer crash (1 of 2 killed) | – | – | – | – |
+
+### Pipeline tests (no Docker needed)
+
+```bash
+cd pipeline && npm test      # validation, dedupe, locks, handler, workers, scraper<->consumer contract
+cd backend && npm test
+```
 
 ## System Architecture
 
