@@ -1,0 +1,13 @@
+{
+  "name": "aurafit-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Event-driven ingestion pipeline for AuraFit: Kafka, RabbitMQ, Redis",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "consumer": "node src/consumer/index.js",
+    "worker": "node src/worker/index.js",
+    "test": "node --test test/"
+  }
+}
