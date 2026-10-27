@@ -20,6 +20,9 @@ const ProcessedEvent = mongoose.model('PipelineEvent', new mongoose.Schema({
   productUrl: { type: String, index: true },
   occurredAt: Date,
   payload: mongoose.Schema.Types.Mixed,
+  // pending = state applied but jobs not yet confirmed enqueued; done = fully processed
+  status: { type: String, enum: ['pending', 'done'], default: 'done' },
+  priceDrop: mongoose.Schema.Types.Mixed,
 }, { collection: 'pipeline_events', timestamps: { createdAt: 'storedAt', updatedAt: false } }));
 
 const Notification = mongoose.model('PipelineNotification', new mongoose.Schema({
