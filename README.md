@@ -148,6 +148,17 @@ Scraper ──► Kafka ──► Consumer ──► MongoDB
 Full diagram, delivery guarantees and failure modes: [docs/architecture.md](docs/architecture.md).
 Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 
+### Status: what is verified and what is not
+
+| Claim | Status |
+|---|---|
+| Event validation, dedupe, locks, handler retry/DLQ, worker idempotency | **Verified** by unit tests (in-memory fakes), run in CI |
+| Scraper and consumer agree on the event format | **Verified** by a contract test |
+| CI | Runs tests on every push/PR and builds both Docker images. Images are published to GHCR on `main`. **There is no deployment step**: nothing is deployed anywhere by this pipeline |
+| Full stack via `docker compose up` | **Written, not yet run end to end** |
+| Prometheus metrics, Grafana dashboard | **Implemented and provisioned, not yet observed running** (no screenshot yet) |
+| Load test and consumer-crash test | **Scripts written, not yet run**; no throughput or zero-loss figures exist yet |
+
 ### Run it (one command)
 
 ```bash
