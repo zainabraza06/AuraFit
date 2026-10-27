@@ -29,7 +29,8 @@ export function generateWorkload(runId, products, dropRatio = 0.1) {
   for (let i = 0; i < products; i++) {
     const base = { productUrl: `${urlPrefix(runId)}p/${i}`, brand: 'LoadTest', name: `Item ${i}`, currency: 'PKR' };
     discovered.push(buildEvent(EVENT_TYPES.DISCOVERED, { ...base, price: 1000 }, 'loadtest'));
-    if (i < dropCount) drops.push(buildEvent(EVENT_TYPES.PRICE_CHANGED, { ...base, oldPrice: 1000, newPrice: 800 }, 'loadtest'));
+    // A price change happens after discovery; give it a strictly later timestamp (no same-millisecond ties).
+    if (i < dropCount) drops.push({ ...buildEvent(EVENT_TYPES.PRICE_CHANGED, { ...base, oldPrice: 1000, newPrice: 800 }, 'loadtest'), occurredAt: new Date(Date.now() + 5000).toISOString() });
   }
   return { discovered, drops, expectedStored: discovered.length + drops.length, expectedNotifications: drops.length };
 }
@@ -65,12 +66,13 @@ export async function dlqSize() {
 /** Counts what actually landed in Mongo for one run. */
 export async function countRun(runId) {
   const re = new RegExp(`^${urlPrefix(runId).replace(/[.*+?^${}()|[\]\/]/g, '\$&')}`);
-  const [stored, distinct, notifications] = await Promise.all([
+  const [stored, distinct, notifications, droppedState] = await Promise.all([
     models.ProcessedEvent.countDocuments({ productUrl: re }),
     models.ProcessedEvent.distinct('eventId', { productUrl: re }).then((a) => a.length),
     models.Notification.countDocuments({ productUrl: re }),
+    models.ProductState.countDocuments({ productUrl: re, price: 800 }),
   ]);
-  return { stored, distinct, notifications };
+  return { stored, distinct, notifications, droppedState };
 }
 
 export async function waitFor(check, { timeoutMs, intervalMs = 250 }) {

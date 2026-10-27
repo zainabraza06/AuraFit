@@ -47,7 +47,7 @@ async function main() {
 
   const result = await waitFor(async () => {
     const c = await countRun(runId);
-    return { ...c, done: c.stored >= w.expectedStored && c.notifications >= w.expectedNotifications };
+    return { ...c, done: c.stored >= w.expectedStored && c.notifications >= w.expectedNotifications && c.droppedState >= w.expectedNotifications };
   }, { timeoutMs });
   const totalMs = Date.now() - t0;
 
@@ -60,6 +60,7 @@ async function main() {
     input: { products, uniqueEvents: w.expectedStored, duplicatesSent: dups.length, malformedSent: invalid },
     result: {
       stored: final.stored, distinctEventIds: final.distinct, notifications: final.notifications,
+      productsWithCorrectFinalPrice: final.droppedState, expectedFinalPrices: w.expectedNotifications,
       lost: w.expectedStored - final.stored,
       duplicatesStored: final.stored - final.distinct,
       deadLettered: dlq,
@@ -77,7 +78,7 @@ async function main() {
 
   await publisher.disconnect();
   await rawProducer.disconnect();
-  const ok = !result.timedOut && report.result.lost === 0 && report.result.duplicatesStored === 0 && dlq === invalid && final.notifications === w.expectedNotifications;
+  const ok = !result.timedOut && report.result.lost === 0 && report.result.duplicatesStored === 0 && dlq === invalid && final.notifications === w.expectedNotifications && final.droppedState === w.expectedNotifications;
   console.log(ok ? '\nPASS: zero loss, zero duplicates, bad messages dead-lettered' : '\nFAIL: see report');
   process.exit(ok ? 0 : 1);
 }

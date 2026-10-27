@@ -74,7 +74,7 @@ async function main() {
 
   const wait = await waitFor(async () => {
     const c = await countRun(runId);
-    return { ...c, done: c.stored >= all.length && c.notifications >= w.expectedNotifications };
+    return { ...c, done: c.stored >= all.length && c.notifications >= w.expectedNotifications && c.droppedState >= w.expectedNotifications };
   }, { timeoutMs: 300000 });
   const totalMs = Date.now() - t0;
   const final = await countRun(runId);
@@ -87,6 +87,7 @@ async function main() {
       stored: final.stored, distinctEventIds: final.distinct, notifications: final.notifications,
       lost: all.length - final.stored,
       duplicatesStored: final.stored - final.distinct,
+      wrongFinalPrices: w.expectedNotifications - final.droppedState,
       lostNotifications: w.expectedNotifications - final.notifications,
       duplicateNotifications: Math.max(0, final.notifications - w.expectedNotifications),
       timedOut: wait.timedOut,
@@ -99,7 +100,7 @@ async function main() {
 
   await publisher.disconnect();
   const r = report.result;
-  const ok = !r.timedOut && r.lost === 0 && r.duplicatesStored === 0 && r.lostNotifications === 0 && r.duplicateNotifications === 0;
+  const ok = !r.timedOut && r.lost === 0 && r.duplicatesStored === 0 && r.lostNotifications === 0 && r.wrongFinalPrices === 0 && r.duplicateNotifications === 0;
   const inFlight = (killed.lagAtKill ?? 0) > 0;
   console.log(ok
     ? `\nPASS: consumer crash mid-run, ${r.stored}/${all.length} stored, 0 lost, 0 duplicated${inFlight ? '' : ' (WARNING: lag was 0 at kill time, so the crash may not have hit in-flight work; rerun with a higher --products)'}`
