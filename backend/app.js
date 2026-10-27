@@ -63,6 +63,7 @@ export function createApp() {
 
     const globalLimiter = rateLimit({
       ...store('rl:global:'),
+      passOnStoreError: true, // Redis trouble must not take the API down
       windowMs: 15 * 60 * 1000,
       max: 300,
       message: { error: 'Too many requests, please try again later.' }
@@ -70,6 +71,7 @@ export function createApp() {
 
     const authLimiter = rateLimit({
       ...store('rl:auth:'),
+      passOnStoreError: true,
       windowMs: 15 * 60 * 1000,
       max: 20,
       message: { error: 'Too many auth attempts, please wait.' }
