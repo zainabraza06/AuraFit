@@ -1,0 +1,11 @@
+# Production override: run the images CI published to GHCR instead of building locally.
+#   IMAGE_PREFIX=ghcr.io/<owner>/<repo> TAG=<git sha> \
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+services:
+  consumer:
+    image: ${IMAGE_PREFIX}/pipeline:${TAG:-latest}
+    deploy: { replicas: 2 }
+  worker:
+    image: ${IMAGE_PREFIX}/pipeline:${TAG:-latest}
+  api:
+    image: ${IMAGE_PREFIX}/api:${TAG:-latest}
