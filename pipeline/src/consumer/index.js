@@ -10,6 +10,7 @@ import { TOPICS, QUEUES } from '../common/topics.js';
 import { createStore } from './store.js';
 import { createHandler } from './handler.js';
 import { startLagMonitor } from './lag.js';
+import { mapLimit } from '../common/pool.js';
 
 const logger = createLogger('consumer');
 
@@ -39,15 +40,27 @@ async function main() {
     maxRetries: config.maxRetries,
   });
 
+  const batchConcurrency = Number(process.env.BATCH_CONCURRENCY || 32);
   const consumer = kafka.consumer({ groupId: config.kafka.groupId });
   await consumer.connect();
   await consumer.subscribe({ topics: [TOPICS.discovered, TOPICS.priceChanged], fromBeginning: true });
   await consumer.run({
-    // Partitions are independent, so process them in parallel; order within a partition is kept.
+    // Different partitions run in parallel, and within a fetched batch up to BATCH_CONCURRENCY
+    // messages are in flight so MongoDB can group its journal commits. Offsets are resolved only
+    // after the WHOLE batch succeeded: a crash mid-batch means redelivery (at-least-once), which
+    // dedupe + the unique eventId index turn into exactly-once effects.
     partitionsConsumedConcurrently: Number(process.env.CONSUMER_CONCURRENCY || 3),
-    // Offsets are committed only after this resolves: a crash mid-message
-    // means redelivery (at-least-once), which dedupe turns into exactly-once effects.
-    eachMessage: async ({ message }) => handle(message.value?.toString() ?? ''),
+    eachBatchAutoResolve: false,
+    eachBatch: async ({ batch, resolveOffset, heartbeat, isRunning, isStale }) => {
+      if (!batch.messages.length) return;
+      await mapLimit(batch.messages, batchConcurrency, async (message) => {
+        if (!isRunning() || isStale()) return;
+        await handle(message.value?.toString() ?? '');
+      });
+      if (!isRunning() || isStale()) return; // not fully processed: leave offsets uncommitted
+      resolveOffset(batch.messages[batch.messages.length - 1].offset);
+      await heartbeat();
+    },
   });
 
   const stopLag = await startLagMonitor(kafka, config.kafka.groupId, [TOPICS.discovered, TOPICS.priceChanged]);
