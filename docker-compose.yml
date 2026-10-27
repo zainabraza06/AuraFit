@@ -60,5 +60,43 @@ services:
       timeout: 10s
       retries: 10
 
+  # ── Application services ──────────────────────────────────────────────────
+  consumer:
+    build: ./pipeline
+    command: ["node", "src/consumer/index.js"]
+    environment: *pipeline-env
+    restart: unless-stopped
+    depends_on: &deps
+      kafka: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+
+  worker:
+    build: ./pipeline
+    command: ["node", "src/worker/index.js"]
+    environment: *pipeline-env
+    restart: unless-stopped
+    depends_on: *deps
+
+  api:
+    build: ./backend
+    ports: ["5000:5000"]
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/aurafit
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+      PIPELINE_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
 volumes:
   mongo-data:
