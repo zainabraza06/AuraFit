@@ -37,8 +37,10 @@ that unit tests with fakes could not:
 3. **Stale overwrites.** `discovered` and `price_changed` are different Kafka topics with no ordering between them, so an older event
    could overwrite a newer price. State updates are now guarded by the event's `occurredAt`, and the tests check final prices.
 
-Throughput was also profiled: consumers were CPU-bound (about one core each), mostly in Mongoose document handling, so the hot path now uses
-the raw driver and processes each fetched batch with bounded concurrency.
+Throughput was investigated too: each consumer process sat near one full core (`docker stats`) while MongoDB used about two, so the
+consumer is CPU-bound. Switching the hot path from Mongoose documents to the raw driver and processing each fetched batch with bounded
+concurrency gave a modest gain (about 220-240 to 265-380 events/s, noisy on a shared laptop). No CPU profile was taken, so where the
+remaining time goes is not established.
 
 ## Scope of the claim
 
