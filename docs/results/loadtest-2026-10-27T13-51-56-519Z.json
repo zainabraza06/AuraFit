@@ -1,0 +1,26 @@
+{
+  "runId": "rmvqqu4b2",
+  "at": "2026-10-27T13:51:56.518Z",
+  "input": {
+    "products": 20000,
+    "uniqueEvents": 22000,
+    "duplicatesSent": 1000,
+    "malformedSent": 50
+  },
+  "result": {
+    "stored": 22000,
+    "distinctEventIds": 22000,
+    "notifications": 2000,
+    "productsWithCorrectFinalPrice": 2000,
+    "expectedFinalPrices": 2000,
+    "lost": 0,
+    "duplicatesStored": 0,
+    "deadLettered": 50,
+    "timedOut": false
+  },
+  "performance": {
+    "publishSeconds": 1.25,
+    "endToEndSeconds": 57.45,
+    "eventsPerSecondEndToEnd": 383
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "runId": "rmvqqq6ul",
+  "at": "2026-10-27T13:49:17.930Z",
+  "mode": "one",
+  "input": {
+    "uniqueEvents": 22000,
+    "expectedNotifications": 2000
+  },
+  "fault": {
+    "signal": "SIGKILL",
+    "consumersKilled": 1,
+    "downSeconds": 8,
+    "at": 24740,
+    "storedAtKill": 8821,
+    "publishedAtKill": 22000,
+    "lagAtKill": 15711
+  },
+  "result": {
+    "stored": 22000,
+    "distinctEventIds": 22000,
+    "notifications": 2000,
+    "lost": 0,
+    "duplicatesStored": 0,
+    "wrongFinalPrices": 0,
+    "lostNotifications": 0,
+    "duplicateNotifications": 0,
+    "timedOut": false
+  },
+  "performance": {
+    "endToEndSeconds": 81.75,
+    "eventsPerSecondEndToEnd": 269
+  }
+}
