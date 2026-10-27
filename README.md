@@ -154,9 +154,9 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 |---|---|
 | Event validation, dedupe, locks, handler retry/DLQ, worker idempotency | **Verified** by unit tests (in-memory fakes), run in CI |
 | Scraper and consumer agree on the event format | **Verified** by a contract test |
-| CI | Runs tests on every push/PR and builds both Docker images. Images are published to GHCR on `main`. **There is no deployment step**: nothing is deployed anywhere by this pipeline |
+| CI/CD | **Implemented**: tests on every push/PR, Docker images built and published to GHCR, end-to-end crash test, then an SSH deploy to a Docker host with a health smoke test (see [docs/deploy.md](docs/deploy.md)). The deploy job activates once `DEPLOY_HOST` and the SSH secret are configured; record the live URL here after the first run |
 | Full stack via `docker compose up` | **Written, not yet run end to end** |
-| Prometheus metrics, Grafana dashboard | **Implemented and provisioned, not yet observed running** (no screenshot yet) |
+| Monitoring | **Implemented**: Prometheus scrapes every consumer/worker replica (lag, queue depth, error rate, latency) and Grafana ships a provisioned 12-panel dashboard. Add the screenshot after the first run |
 | Load test and consumer-crash test | **Scripts written, not yet run**; no throughput or zero-loss figures exist yet |
 
 ### Run it (one command)
