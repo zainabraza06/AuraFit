@@ -51,9 +51,12 @@ export function createHandler({ store, dedupe, jobs, sendToDlq, metrics, logger,
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           const res = await store.save(event);
-          // A retry may follow a failure after the DB write, so jobs are re-offered;
-          // workers are idempotent (job-done marker + lock) which makes that safe.
-          if (res.outcome === 'stored' || attempt > 1) await enqueueJobs(event, res.priceDrop);
+          if (res.outcome === 'stored') {
+            // Jobs are re-offered if a previous attempt died before reaching complete(); workers
+            // are idempotent (job-done marker + lock), so this is safe.
+            await enqueueJobs(event, res.priceDrop);
+            await store.complete(event.eventId);
+          }
           await dedupe.mark(event.eventId);
           metrics.events.inc({ type: event.type, outcome: res.outcome });
           return;
