@@ -1,8 +1,8 @@
 /**
  * Failure test: SIGKILL consumer(s) mid-run and prove nothing is lost or duplicated.
  *
- *   node scripts/failure-test.js --products=20000 --mode=one     # kill 1 of 2 consumers
- *   node scripts/failure-test.js --products=20000 --mode=all     # kill every consumer, restart later
+ *   node scripts/failure.js --products=20000 --mode=one     # kill 1 of 2 consumers
+ *   node scripts/failure.js --products=20000 --mode=all     # kill every consumer, restart later
  *
  * `docker kill` sends SIGKILL, so there is no graceful shutdown or offset commit:
  * the in-flight messages are redelivered and must be absorbed by dedupe + the

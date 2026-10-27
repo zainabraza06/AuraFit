@@ -10,9 +10,9 @@
   "scripts": {
     "consumer": "node src/consumer/index.js",
     "worker": "node src/worker/index.js",
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
     "loadtest": "node scripts/loadtest.js",
-    "failuretest": "node scripts/failure-test.js"
+    "failuretest": "node scripts/failure.js"
   },
   "dependencies": {
     "amqplib": "^2.2.0",
