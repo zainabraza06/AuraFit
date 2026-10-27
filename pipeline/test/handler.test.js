@@ -15,6 +15,8 @@ function setup({ saveImpl } = {}) {
   const seen = new Set();
   const store = {
     saves: 0,
+    completed: [],
+    complete: async function (id) { this.completed.push(id); },
     save: saveImpl || (async function (e) {
       this.saves++;
       if (seen.has(e.eventId)) return { outcome: 'duplicate' };
@@ -86,4 +88,26 @@ test('image and price-drop jobs are enqueued for stored events', async () => {
   const t = setup({ saveImpl: async () => ({ outcome: 'stored', priceDrop: drop }) });
   await t.handle(JSON.stringify(ev({ imageUrl: 'https://cdn.b.pk/a.jpg' })));
   assert.deepEqual(t.published.map(([q]) => q), [QUEUES.image, QUEUES.notify]);
+});
+
+test('event is only completed after its jobs were enqueued; a failed enqueue is retried, not lost', async () => {
+  let publishes = 0;
+  const store = {
+    completed: [],
+    async complete(id) { this.completed.push(id); },
+    async save() { return { outcome: 'stored', priceDrop: { productUrl: 'u', name: 'n', brand: 'b', oldPrice: 2, newPrice: 1, currency: 'PKR' } }; },
+  };
+  const handle = createHandler({
+    store,
+    dedupe: createDedupe(fakeRedis(), 60),
+    jobs: { publish: async () => { if (++publishes === 1) throw new Error('rabbit down'); } },
+    sendToDlq: async () => {},
+    metrics: { events: counter(), latency: { startTimer: () => () => {} } },
+    logger: { warn() {}, info() {}, error() {}, debug() {} },
+    backoffMs: 1,
+  });
+  const e = ev();
+  await handle(JSON.stringify(e));
+  assert.equal(publishes, 2); // first attempt failed, second succeeded
+  assert.deepEqual(store.completed, [e.eventId]); // completed exactly once, after the jobs went out
 });

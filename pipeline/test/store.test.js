@@ -44,6 +44,7 @@ test('out-of-order: a stale discovered event does not overwrite a newer price', 
 test('replaying the same event is a duplicate and changes nothing', async () => {
   const e = discovered(1000, 1);
   assert.equal((await store.save(e)).outcome, 'stored');
+  await store.complete(e.eventId);
   assert.equal((await store.save(e)).outcome, 'duplicate');
   assert.equal(await models.ProcessedEvent.countDocuments({}), 1);
 });
@@ -53,4 +54,22 @@ test('price increase is stored but is not a drop', async () => {
   const r = await store.save(changed(1000, 1200, 2));
   assert.equal(r.priceDrop, undefined);
   assert.equal((await state()).price, 1200);
+});
+
+test('crash after save but before complete: redelivery resumes and still reports the drop', async () => {
+  await store.save(discovered(1000, 1));
+  await store.complete(discovered(1000, 1).eventId);
+  const e = changed(1000, 800, 2);
+
+  const first = await store.save(e);   // consumer is killed here: complete() never runs
+  assert.equal(first.priceDrop.newPrice, 800);
+
+  const again = await store.save(e);   // redelivered after restart
+  assert.equal(again.outcome, 'stored', 'a pending event must be resumed, not skipped as a duplicate');
+  assert.equal(again.priceDrop.newPrice, 800, 'the drop decided the first time must survive the crash');
+  assert.equal((await state()).price, 800);
+
+  await store.complete(e.eventId);
+  assert.equal((await store.save(e)).outcome, 'duplicate');
+  assert.equal(await models.ProcessedEvent.countDocuments({ eventId: e.eventId }), 1);
 });
