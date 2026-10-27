@@ -29,6 +29,7 @@ import { CLOTHING_BRANDS } from './config/clothingBrands.js';
 import { checkConsistency } from './utils/catalogQA.js';
 import { tryRepairWithLLM } from './utils/productRepair.js';
 import { normalizeProduct } from './parsers/productParser.js';
+import { createEventEmitter } from '../../events/productEvents.js';
 
 // ─── Adapter registry ─────────────────────────────────────────────────────────
 import { BeechtreeAdapter }   from './adapters/BeechtreeAdapter.js';
@@ -95,7 +96,7 @@ async function upsertProduct(product) {
       inStock: true,
       stockLastChecked: now
     });
-    return 'inserted';
+    return { outcome: 'inserted' };
   }
 
   if (!hasChanged(existing, product)) {
@@ -104,7 +105,7 @@ async function upsertProduct(product) {
       { productUrl: product.productUrl },
       { $set: { inStock: true, stockLastChecked: now } }
     );
-    return 'unchanged';
+    return { outcome: 'unchanged' };
   }
 
   // Something changed — write the full update
@@ -113,7 +114,7 @@ async function upsertProduct(product) {
     { $set: { ...product, inStock: true, stockLastChecked: now } },
     { upsert: true }
   );
-  return 'updated';
+  return { outcome: 'updated', oldPrice: existing.price };
 }
 
 // ─── Mark absent products as out-of-stock ────────────────────────────────────
@@ -157,6 +158,9 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
       stats: { totalBrands: CLOTHING_BRANDS.length }
     });
   }
+
+  // Publishes product.discovered / product.price_changed when PIPELINE_ENABLED=true (no-op otherwise)
+  const events = createEventEmitter();
 
   let totalInserted = 0, totalUpdated = 0, totalUnchanged = 0, totalSkipped = 0, totalFailed = 0, totalStockOut = 0;
   const brandResults = [];
@@ -217,8 +221,10 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
           continue;
         }
         try {
-          const outcome = await upsertProduct(product);
+          const result = await upsertProduct(product);
+          const { outcome } = result;
           seenUrls.add(product.productUrl);
+          await events.record(result, product);
           if (outcome === 'inserted') ins++;
           else if (outcome === 'updated') upd++;
           else unchanged++;
@@ -261,6 +267,9 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
     const qaNote = qaHard > 0 ? ` | QA: ${qaHard} hard (${qaRepaired} repaired), ${qaSoft} soft` : '';
     logger.success(`✓ ${brandConfig.brand}: +${ins} new, ~${upd} updated, =${unchanged} unchanged, ↓${stockOut} out-of-stock, ✗${fail} failed${qaNote}`);
   }
+
+  const eventsPublished = await events.close();
+  if (eventsPublished) logger.info(`Pipeline: published ${eventsPublished} events to Kafka`);
 
   const durationMs = Date.now() - startTime;
 

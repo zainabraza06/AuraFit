@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # DNS A-record discovery returns every replica, so `--scale consumer=N` is picked up automatically.
+  - job_name: consumer
+    dns_sd_configs:
+      - names: [consumer]
+        type: A
+        refresh_interval: 10s
+        port: 9100
+  - job_name: worker
+    dns_sd_configs:
+      - names: [worker]
+        type: A
+        refresh_interval: 10s
+        port: 9100

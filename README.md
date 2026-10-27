@@ -9,6 +9,7 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Event-Driven Ingestion Pipeline](#event-driven-ingestion-pipeline)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
 - [Database Models](#database-models)
@@ -131,6 +132,86 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 | Testing | Node's built-in `node --test` + Supertest |
 
 ---
+
+## Event-Driven Ingestion Pipeline
+
+The scraper no longer just writes to MongoDB: it publishes events, and independent services react to them.
+
+```
+Scraper ──► Kafka ──► Consumer ──► MongoDB
+                        │  └─ invalid / failed ──► dead-letter topic
+                        └──► RabbitMQ ──► Worker (images → Cloudinary, price-drop notifications)
+                 Redis: API cache · rate limiting · dedupe · locks
+                 Prometheus + Grafana: lag · queue depth · error rate · latency
+```
+
+Full diagram, delivery guarantees and failure modes: [docs/architecture.md](docs/architecture.md).
+Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
+
+### Status
+
+| Claim | Status |
+|---|---|
+| Event validation, dedupe, locks, retry/DLQ, worker idempotency, crash-resume, ordering | **Unit-tested** (34 tests, including a real in-memory MongoDB for the store), run in CI |
+| Scraper and consumer agree on the event format | **Verified** by a contract test |
+| Full stack via `docker compose up` | **Run end to end** (Kafka, RabbitMQ, Redis, Mongo, 2 consumers, worker, Prometheus, Grafana) |
+| Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
+| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
+| CI | **Passing on GitHub** ([PR #1](https://github.com/zainabraza06/AuraFit/pull/1)): tests on every push/PR, both Docker images build, and the end-to-end job brings up the whole stack on a GitHub runner and passes the load test (5,500 events) and the consumer-SIGKILL test (11,000 events) with 0 lost and 0 duplicated |
+| CD (deploy) | **Implemented, not yet run.** On `main` the pipeline publishes images to GHCR and deploys over SSH with a health smoke test ([docs/deploy.md](docs/deploy.md)). It needs a server and the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` settings, and is skipped until then. Nothing is deployed yet |
+
+### Run it (one command)
+
+```bash
+docker compose up --build
+```
+
+| Service | URL |
+|---|---|
+| API | http://localhost:5000/api/health |
+| Grafana (dashboard) | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+| RabbitMQ UI | http://localhost:15672 (guest / guest) |
+
+Run a scrape that feeds the pipeline: `PIPELINE_ENABLED=true KAFKA_BROKERS=localhost:9092 npm run scrape` (in `backend/`).
+Scale consumers with `docker compose up -d --scale consumer=2`.
+
+### Prove it works
+
+```bash
+cd pipeline
+npm run loadtest -- --products=20000 --dup=0.05 --invalid=50
+npm run failuretest -- --products=20000 --mode=one   # SIGKILL one of two consumers mid-run
+npm run failuretest -- --products=20000 --mode=all   # SIGKILL every consumer, restart later
+```
+
+Both print a PASS/FAIL verdict and write a JSON report to [docs/results/](docs/results/). The load test injects duplicates and malformed
+messages; the failure test uses `docker kill` (SIGKILL: no graceful shutdown, no offset commit) and then checks the database for lost
+events, duplicate events, and lost or duplicate price-drop notifications.
+
+### Results
+
+Single laptop, Docker Desktop, one Kafka broker, **2 consumer replicas + 1 worker** (everything shares the machine).
+22,000 unique events per run (20,000 discovered + 2,000 price drops). Full reports and method: [docs/results/](docs/results/README.md).
+
+| Scenario | Stored | Lost | Duplicate rows | Notifications | Throughput |
+|---|---|---|---|---|---|
+| Load test (+1,000 redelivered duplicates, +50 malformed) | 22,000 | **0** | **0** | 2,000 / 2,000 | 328-383 events/s |
+| `SIGKILL` 1 of 2 consumers mid-run (~16-18k messages unprocessed) | 22,000 | **0** | **0** | 2,000 / 2,000 | 269-325 events/s incl. recovery |
+| `SIGKILL` both consumers mid-run, restart after 8 s | 22,000 | **0** | **0** | 2,000 / 2,000 | 265 events/s incl. recovery |
+
+All 50 malformed messages were dead-lettered and none stored. The first crash run actually *failed* (24 of 2,000 jobs lost);
+the tests found three real bugs, all fixed, described in [docs/results/](docs/results/README.md#what-the-tests-found-and-fixed).
+Scope: consumer crashes on a single broker. Broker, Mongo and Redis failures were not tested.
+
+![Grafana dashboard during a load test and a crash test](docs/images/grafana-dashboard.png)
+
+### Pipeline tests (no Docker needed)
+
+```bash
+cd pipeline && npm test      # validation, dedupe, locks, handler, workers, scraper<->consumer contract
+cd backend && npm test
+```
 
 ## System Architecture
 

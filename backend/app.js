@@ -24,6 +24,8 @@ import wardrobeRoutes       from './routes/wardrobe.js';
 import tryonRoutes          from './routes/tryon.js';
 import vectorSearchRoutes   from './routes/vectorSearch.js';
 import supportRoutes        from './routes/support.js';
+import { getRedis }         from './config/redis.js';
+import { RedisStore }       from 'rate-limit-redis';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,13 +55,23 @@ export function createApp() {
 
   // Disable rate limiting in tests to keep smoke runs deterministic.
   if (process.env.NODE_ENV !== 'test') {
+    // With REDIS_URL the counters are shared across API instances; otherwise per-process memory.
+    const redis = getRedis();
+    const store = (prefix) => redis
+      ? { store: new RedisStore({ prefix, sendCommand: (...args) => redis.call(...args) }) }
+      : {};
+
     const globalLimiter = rateLimit({
+      ...store('rl:global:'),
+      passOnStoreError: true, // Redis trouble must not take the API down
       windowMs: 15 * 60 * 1000,
       max: 300,
       message: { error: 'Too many requests, please try again later.' }
     });
 
     const authLimiter = rateLimit({
+      ...store('rl:auth:'),
+      passOnStoreError: true,
       windowMs: 15 * 60 * 1000,
       max: 20,
       message: { error: 'Too many auth attempts, please wait.' }
