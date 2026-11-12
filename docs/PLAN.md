@@ -27,11 +27,13 @@ Baseline numbers come from `npm run profile:catalog` (backend), measured 2026-11
 - [ ] 0.7 Re-embed repaired rows; re-run `profile:catalog`; **accept when each baseline problem above is 0 or explained**
 
 ## P1 - Observability and admin (Prometheus + Grafana)
-- [ ] 1.1 API `/metrics` (HTTP latency/errors per route, LLM calls/latency/cost/fallbacks, search latency, try-on outcomes, scraper runs)
-- [ ] 1.2 Prometheus scrapes the API; Grafana dashboards: API (RED), LLM, search, scraper/data quality
-- [ ] 1.3 Grafana secured: no anonymous admin, password from env
-- [ ] 1.4 Alert rules (error rate, p95 latency, LLM fallback rate, consumer lag, DLQ growth)
+- [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown, fallback counters, runtime. (Still to add: LLM latency/cost, search latency, try-on outcomes, scraper run metrics)
+- [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; all 33 panel queries validated against live Prometheus. (Search and data-quality dashboards come with P2/P0.7; dashboards were not visually inspected)
+- [x] 1.3 Grafana secured: anonymous disabled, password from env; deploy refuses to run without real secrets
+- [x] 1.4 Alert rules (8, validated with promtool). No Alertmanager yet, so they are visible but not routed anywhere
 - [ ] 1.5 Structured request logs with request ids
+
+**Found while doing P1:** the LLM circuit breaker never tripped (its failure counter reset on every call), so failing providers were retried on every request. Fixed + tested (commit 937629a).
 
 ## P2 - Search correctness and speed
 - [ ] 2.1 Golden query set + recall@k / MRR harness (measure before changing anything)
