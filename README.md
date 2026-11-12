@@ -169,7 +169,7 @@ docker compose up --build
 | Service | URL |
 |---|---|
 | API | http://localhost:5000/api/health |
-| Grafana (dashboard) | http://localhost:3000 |
+| Grafana (dashboards: pipeline + API/LLM) | http://localhost:3000 (login `admin` / `$GRAFANA_ADMIN_PASSWORD`, local default `change-me-local-only`) |
 | Prometheus | http://localhost:9090 |
 | RabbitMQ UI | http://localhost:15672 (guest / guest) |
 
