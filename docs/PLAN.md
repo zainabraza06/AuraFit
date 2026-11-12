@@ -16,6 +16,18 @@ Baseline numbers come from `npm run profile:catalog` (backend), measured 2026-11
 | LLM rate limit / circuit breaker | per process, not shared |
 | Try-on | synchronous inside the HTTP request |
 
+## Live run 2026-11-12 (Khaadi only, real writes to Atlas)
+
+Khaadi before: 452 rows, 452 "in stock", 0 with a description.
+Khaadi after: 938 rows, **509 in stock, all 509 with a real description**, 429 marked out of stock (old products no longer on the site; 486 genuinely new products inserted, 2 duplicate product codes). Whole clothing catalog: 1902 rows, 1473 in stock.
+
+Three things the run exposed (all open):
+1. **Embedding provider is down.** Hugging Face returns "Purchase pre-paid credits" - no new embeddings can be generated, and semantic search cannot embed user queries either. 486 new Khaadi rows have no embedding.
+2. **Every LLM provider fails**: Mistral 429, OpenRouter/Groq 404, all three Gemini model ids 404 (stale model names). AI enrichment and QA repair silently do nothing.
+3. **Sold-out items leaked into browse/search** (only the recommender filtered stock). Fixed and tested in this branch.
+
+Also fixed: `hasChanged` ignored descriptions, so description-only changes were never written.
+
 ## P0 - Data correctness (extraction)
 - [x] 0.1 Decode HTML entities and strip tags in names/descriptions at parse time (+ tests)
 - [x] 0.2 Khaadi extractor returns real descriptions and stock status (verified live). Sizes: Khaadi only exposes set variants (3PC), so sizes stay empty by design. **Also found: ~9/10 sampled Khaadi products are out of stock on the site while the DB says 100% in stock** - fixed in the extractor, takes effect on the next scrape
@@ -24,7 +36,8 @@ Baseline numbers come from `npm run profile:catalog` (backend), measured 2026-11
 - [ ] 0.8 Non-jewelry items inside the jewelry catalog (e.g. perfume) - reclassify or exclude
 - [ ] 0.5 Group colorways (`styleGroup`) so search shows one card per style
 - [~] 0.6 Repair script for existing rows: written and dry-run verified (325 rows). **Waiting for approval to `--apply` on the live database**
-- [ ] 0.7 Re-embed repaired rows; re-run `profile:catalog`; **accept when each baseline problem above is 0 or explained**
+- [ ] 0.7 Re-embed new/repaired rows (**blocked by the embedding provider, see above**); re-run `profile:catalog`; accept when each baseline problem is 0 or explained
+- [ ] 0.9 Run the remaining brands (Gul Ahmed, Alkaram, Maria B, Beechtree, Limelight...) so entity cleanup and stock status reach them (a full scrape also rewrites the &amp; rows, which makes the repair script redundant)
 
 ## P1 - Observability and admin (Prometheus + Grafana)
 - [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown, fallback counters, runtime. (Still to add: LLM latency/cost, search latency, try-on outcomes, scraper run metrics)
@@ -36,12 +49,14 @@ Baseline numbers come from `npm run profile:catalog` (backend), measured 2026-11
 **Found while doing P1:** the LLM circuit breaker never tripped (its failure counter reset on every call), so failing providers were retried on every request. Fixed + tested (commit 937629a).
 
 ## P2 - Search correctness and speed
+- [ ] 2.0 **Unblock embeddings**: run the embedding model locally (same all-MiniLM-L6-v2 via transformers.js, so existing vectors stay compatible) or switch provider; add a health check + alert for it
 - [ ] 2.1 Golden query set + recall@k / MRR harness (measure before changing anything)
 - [ ] 2.2 Real vector index (replace the 400-doc brute force); filtered hybrid search
 - [ ] 2.3 Multilingual / better embedding model, compared on the golden set
 - [ ] 2.4 Query-embedding cache
 
 ## P3 - LLM gateway
+- [ ] 3.0 **Repair the provider chain**: replace stale model ids (OpenRouter, Groq, Gemini), handle Mistral's rate limit, and add a startup self-test that fails loudly
 - [ ] 3.1 Redis-backed rate limit + circuit breaker shared across instances
 - [ ] 3.2 Ollama provider for local dev/tests (env switch); schema-validated JSON everywhere
 - [ ] 3.3 Per-feature timeouts, token/cost logging
