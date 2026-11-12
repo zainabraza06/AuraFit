@@ -20,6 +20,7 @@ import WatchProduct from '../../models/WatchProduct.js';
 import JewelryProduct from '../../models/JewelryProduct.js';
 import logger from './utils/logger.js';
 import { markUnseenOutOfStock } from './utils/stockSync.js';
+import { brandAllowed } from './utils/brandFilter.js';
 
 import { CLOTHING_BRANDS } from './config/clothingBrands.js';
 import { SHOE_BRANDS } from './config/shoeBrands.js';
@@ -115,6 +116,7 @@ async function runOneVertical(vertical, dryRun) {
   let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalFailed = 0, totalStockOut = 0;
 
   for (const brandConfig of cfg.brands) {
+    if (!brandAllowed(brandConfig.brand)) continue; // SCRAPER_ONLY_BRANDS
     const AdapterClass = cfg.adapters[brandConfig.adapter];
     if (!AdapterClass) {
       logger.warn(`No adapter ${brandConfig.adapter} for ${vertical}`);
