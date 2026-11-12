@@ -10,6 +10,7 @@ import request from 'supertest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import ClothingProduct from '../models/ClothingProduct.js';
 import { EMBEDDING_MODEL_ID } from '../services/embeddings.js';
+import { clearVectorCache } from '../services/vectorCache.js';
 
 let mongod;
 let app;
@@ -64,6 +65,7 @@ test('featured and stats only count products that are actually available', async
 });
 
 test('semantic search candidates exclude out-of-stock products', async () => {
+  clearVectorCache();
   const { searchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
   const { analyzeSearchQuery } = await import('../services/searchQueryIntel.js');
   const { results } = await searchAcrossCatalogs(analyzeSearchQuery('emerald lawn suit'), [1, 0, 0], { limit: 10, catalog: 'clothing' });
@@ -73,6 +75,7 @@ test('semantic search candidates exclude out-of-stock products', async () => {
 });
 
 test('vectors from a different embedding model are never used (dimensions are not comparable)', async () => {
+  clearVectorCache();
   await ClothingProduct.create({
     name: 'Emerald Lawn Suit Old Model', brand: 'TestBrand', gender: 'women', price: 3000,
     productUrl: 'https://t.pk/oldmodel', inStock: true,
@@ -82,4 +85,23 @@ test('vectors from a different embedding model are never used (dimensions are no
   const { analyzeSearchQuery } = await import('../services/searchQueryIntel.js');
   const { results } = await searchAcrossCatalogs(analyzeSearchQuery('emerald lawn suit'), [1, 0, 0], { limit: 10, catalog: 'clothing' });
   assert.ok(!results.map((r) => r.name).includes('Emerald Lawn Suit Old Model'));
+});
+
+test('semantic search sees the WHOLE catalog, not just the first 400 rows (regression: .limit(400))', async () => {
+  clearVectorCache();
+  const filler = Array.from({ length: 450 }, (_, i) => ({
+    name: `Filler Kurta ${i}`, brand: 'TestBrand', gender: 'women', price: 2000, productUrl: `https://t.pk/filler/${i}`,
+    inStock: true, embedding: [0, 1, 0], embeddingModel: EMBEDDING_MODEL_ID,
+  }));
+  await ClothingProduct.insertMany(filler);
+  // inserted AFTER 450 others => beyond the old 400-row window; it is the only one pointing at the query direction
+  await ClothingProduct.create({
+    name: 'Zinnia Gold Bridal Lehnga', brand: 'TestBrand', gender: 'women', price: 90000, productUrl: 'https://t.pk/zinnia',
+    inStock: true, embedding: [0, 0, 1], embeddingModel: EMBEDDING_MODEL_ID,
+  });
+  const { searchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
+  const { analyzeSearchQuery } = await import('../services/searchQueryIntel.js');
+  const { results, totalCandidates } = await searchAcrossCatalogs(analyzeSearchQuery('bridal lehnga'), [0, 0, 1], { limit: 5, catalog: 'clothing' });
+  assert.ok(totalCandidates > 450, `only ${totalCandidates} candidates were considered`);
+  assert.equal(results[0].name, 'Zinnia Gold Bridal Lehnga');
 });
