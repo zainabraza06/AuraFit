@@ -16,6 +16,7 @@
     "scrape:fresh": "node scripts/clearDB.js && node scripts/scrapers/index.js",
     "export:catalog": "node scripts/exportCatalog.js",
     "audit:catalog": "node scripts/auditCatalog.js",
+    "profile:catalog": "node scripts/profileCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "embed:clothing": "node scripts/embedAll.js",
     "embed:accessories": "node scripts/embedAccessories.js",
