@@ -22,6 +22,7 @@
     "clear:catalog": "node scripts/clearCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "embed:all": "node scripts/embedAll.js",
+    "refresh:catalog": "node scripts/refreshCatalog.js",
     "embed:clothing": "node scripts/embedAll.js",
     "embed:accessories": "node scripts/embedAccessories.js",
     "test": "node --test"
