@@ -92,6 +92,8 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:29092
       PIPELINE_ENABLED: "true"
+      # /metrics requires this bearer token; Prometheus reads the same value from observability/secrets/metrics_token
+      METRICS_TOKEN: ${METRICS_TOKEN:-dev-metrics-token}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
     depends_on:
       redis: { condition: service_healthy }
@@ -102,15 +104,21 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     ports: ["9090:9090"]
-    volumes: [./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./observability/secrets:/etc/prometheus/secrets:ro
     depends_on: [consumer, worker]
 
   grafana:
     image: grafana/grafana:11.2.0
-    ports: ["3000:3000"]          # dashboard: http://localhost:3000 (anonymous admin, no login)
+    ports: ["3000:3000"]          # dashboard: http://localhost:3000 (login: admin / $GRAFANA_ADMIN_PASSWORD)
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_USER: admin
+      # Local default only. Set GRAFANA_ADMIN_PASSWORD in the environment/.env for any shared or public host.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-local-only}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline.json
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
