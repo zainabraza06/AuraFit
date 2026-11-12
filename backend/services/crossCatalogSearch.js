@@ -9,6 +9,7 @@ import ShoeProduct from '../models/ShoeProduct.js';
 import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
 import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID } from './embeddings.js';
+import { loadCandidates } from './vectorCache.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
 import { attachGenderFilter } from '../utils/catalogQuery.js';
 
@@ -74,7 +75,8 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
       if (category && key === 'clothing') matchQuery.category = category;
       attachGenderFilter(matchQuery, gender ?? signals.genderHint);
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
-      const docs = await Model.find(matchQuery, selectObj).limit(400).lean();
+      // Whole candidate set (cached, Float32 vectors) - this used to be .limit(400), i.e. most of the catalog was never searched
+      const docs = await loadCandidates(Model, key, matchQuery, selectObj);
       return docs.map((d) => ({ ...d, _catalog: key }));
     })
   );
