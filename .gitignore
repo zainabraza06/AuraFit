@@ -58,3 +58,4 @@ pipeline/.env
 
 # Real metrics token for non-dev hosts (the committed dev token in observability/secrets/metrics_token is for local compose only)
 observability/secrets/*.prod
+.model-cache/
