@@ -25,6 +25,7 @@ import tryonRoutes          from './routes/tryon.js';
 import vectorSearchRoutes   from './routes/vectorSearch.js';
 import supportRoutes        from './routes/support.js';
 import { getRedis }         from './config/redis.js';
+import { httpMetrics, metricsHandler } from './observability/metrics.js';
 import { RedisStore }       from 'rate-limit-redis';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,6 +39,10 @@ export function createApp() {
 
   // Trust Render's reverse proxy so express-rate-limit can read X-Forwarded-For
   app.set('trust proxy', 1);
+
+  // Prometheus: latency/count per route pattern, scraped from GET /metrics (token-protected if METRICS_TOKEN is set)
+  app.use(httpMetrics);
+  app.get('/metrics', metricsHandler);
 
   // ─── Security Middleware ───────────────────────────────────────────────────
   app.use(
