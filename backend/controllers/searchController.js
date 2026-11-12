@@ -35,7 +35,7 @@ function buildFilters({ color, occasion, minPrice, maxPrice, gender }) {
  * regex over name/brand/tags/description if $text finds nothing (short/partial words).
  */
 async function searchOneCatalog({ key, Model, format }, q, filters, fetchLimit) {
-  const base = { ...filters };
+  const base = { ...filters, inStock: { $ne: false } };
   let docs = [];
   if (q) {
     const textQuery = { ...base, $text: { $search: q } };
