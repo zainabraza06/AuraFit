@@ -1,0 +1,110 @@
+/**
+ * embeddings.js — the single place the app turns text into vectors.
+ *
+ * Default backend: Qwen3-Embedding-0.6B (q8 ONNX) running IN-PROCESS via transformers.js.
+ *  - no API key, no per-call cost, no separate server (works on a laptop and on a CI runner)
+ *  - multilingual (Urdu / Roman Urdu / English), 1024 dimensions
+ *  - instruction-aware: QUERIES carry a task instruction, DOCUMENTS are embedded as plain text
+ *
+ * Every stored vector is tagged with EMBEDDING_MODEL_ID. Vectors from different models
+ * (or different dimensions) are not comparable, so search must only use rows whose
+ * `embeddingModel` equals the current id.
+ *
+ * Tests (and any alternative provider) can swap the backend with setEmbeddingBackend().
+ */
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export const EMBEDDING_MODEL_ID = process.env.EMBEDDING_MODEL_ID || 'Qwen/Qwen3-Embedding-0.6B:q8';
+export const EMBEDDING_DIM = 1024;
+
+const MODEL_REPO = process.env.EMBEDDING_MODEL_REPO || 'onnx-community/Qwen3-Embedding-0.6B-ONNX';
+const MODEL_DTYPE = process.env.EMBEDDING_MODEL_DTYPE || 'q8';
+const QUERY_TASK = 'Given a fashion shopping query, retrieve the clothing, shoe or jewelry products that match it';
+const MAX_CHARS = 2000; // keeps CPU time bounded; product text is far shorter than the model's context
+
+/** Qwen3-Embedding expects queries as "Instruct: <task>\nQuery: <text>". Documents are passed unchanged. */
+export function formatQuery(text, task = QUERY_TASK) {
+  return `Instruct: ${task}\nQuery: ${String(text).slice(0, MAX_CHARS)}`;
+}
+
+// ─── Default backend: transformers.js ────────────────────────────────────────
+let extractorPromise = null;
+
+async function loadExtractor() {
+  const { pipeline, env } = await import('@huggingface/transformers');
+  // Cache on the project drive (defaults to backend/.model-cache, gitignored). CI restores it between runs.
+  env.cacheDir = process.env.EMBEDDING_CACHE_DIR || path.resolve(__dirname, '../.model-cache');
+  return pipeline('feature-extraction', MODEL_REPO, { dtype: MODEL_DTYPE });
+}
+
+const localBackend = {
+  async embed(texts) {
+    extractorPromise ||= loadExtractor();
+    const extractor = await extractorPromise;
+    const out = await extractor(texts, { pooling: 'last_token', normalize: true });
+    return out.tolist();
+  },
+};
+
+let backend = localBackend;
+
+/** @param {{ embed(texts: string[]): Promise<number[][]> } | null} replacement  null restores the default. */
+export function setEmbeddingBackend(replacement) {
+  backend = replacement || localBackend;
+}
+
+// ONNX sessions are not safe to run concurrently; serialise calls through one queue.
+let chain = Promise.resolve();
+function serialised(fn) {
+  const run = chain.then(fn, fn);
+  chain = run.catch(() => {});
+  return run;
+}
+
+async function embedMany(texts) {
+  if (!texts.length) return [];
+  const vectors = await serialised(() => backend.embed(texts));
+  if (vectors.length !== texts.length) throw new Error(`embedding backend returned ${vectors.length} vectors for ${texts.length} texts`);
+  return vectors;
+}
+
+/** One search query -> vector (with the task instruction). */
+export async function embedQuery(text) {
+  const clean = String(text ?? '').trim();
+  if (!clean) throw new Error('embedQuery: empty text');
+  return (await embedMany([formatQuery(clean)]))[0];
+}
+
+/** Product / document texts -> vectors, in order. Processes in small batches to bound memory. */
+export async function embedDocuments(texts, { batchSize = 8 } = {}) {
+  const prepared = texts.map((t) => String(t ?? '').trim().slice(0, MAX_CHARS) || ' ');
+  const out = [];
+  for (let i = 0; i < prepared.length; i += batchSize) out.push(...(await embedMany(prepared.slice(i, i + batchSize))));
+  return out;
+}
+
+/** Cosine similarity for already-normalised vectors is just the dot product; this also works for unnormalised ones. */
+export function cosine(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+
+/**
+ * True when search can embed queries. The local model needs no credentials, but tests must never
+ * load a 600 MB model by accident, so under NODE_ENV=test it is only "configured" once a fake
+ * backend has been injected with setEmbeddingBackend().
+ */
+export function isEmbeddingConfigured() {
+  return backend !== localBackend || process.env.NODE_ENV !== 'test';
+}
