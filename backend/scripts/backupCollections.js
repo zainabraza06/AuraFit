@@ -43,7 +43,7 @@ export async function backupAll(outRoot = path.resolve(__dirname, '../exports'))
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   mongoose.connect(process.env.MONGO_URI)
-    .then(backupAll)
+    .then(() => backupAll())
     .then(({ dir, summary }) => { console.log(`Backup written to ${dir}`); console.table(summary); })
     .catch((e) => { console.error(e); process.exitCode = 1; })
     .finally(() => mongoose.disconnect());
