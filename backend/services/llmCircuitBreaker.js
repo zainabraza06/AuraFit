@@ -27,7 +27,14 @@ export function recordLlmProviderFailure(providerId) {
   const now = Date.now();
   llmCalls.inc({ provider: providerId, outcome: 'failure' });
   let h = state[providerId] || { consecutiveFailures: 0, cooldownUntil: 0 };
-  if (now >= h.cooldownUntil) h.consecutiveFailures = 0;
+  // Start a fresh count only once a cooldown has actually ended. (Before: `now >= cooldownUntil` was
+  // true for every fresh provider (cooldownUntil = 0), so the counter reset on each failure and the
+  // breaker never tripped.)
+  if (h.cooldownUntil && now >= h.cooldownUntil) {
+    h.consecutiveFailures = 0;
+    h.cooldownUntil = 0;
+    llmCooldown.set({ provider: providerId }, 0);
+  }
   h.consecutiveFailures += 1;
   if (h.consecutiveFailures >= FAILURES_BEFORE_COOLDOWN) {
     h.cooldownUntil = now + COOLDOWN_MS;
