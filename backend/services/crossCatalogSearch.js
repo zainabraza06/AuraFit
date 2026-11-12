@@ -71,7 +71,7 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
 
   const perCatalogResults = await Promise.all(
     wantCatalogs.map(async ({ key, Model, fields }) => {
-      const matchQuery = { embedding: { $exists: true, $ne: [] } };
+      const matchQuery = { embedding: { $exists: true, $ne: [] }, inStock: { $ne: false } };
       if (category && key === 'clothing') matchQuery.category = category;
       attachGenderFilter(matchQuery, gender ?? signals.genderHint);
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
@@ -143,7 +143,7 @@ export async function regexSearchAcrossCatalogs({ color, keywords = [], gender }
   }
   if (!orClauses.length) return { results: [], relaxedFloor: false, totalCandidates: 0 };
 
-  const query = { $or: orClauses };
+  const query = { $or: orClauses, inStock: { $ne: false } };
   attachGenderFilter(query, gender);
 
   const perCatalog = await Promise.all(
