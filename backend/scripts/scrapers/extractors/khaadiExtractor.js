@@ -6,7 +6,8 @@
  */
 
 import * as cheerio from 'cheerio';
-import { safeGet, withRetry } from '../utils/requestUtils.js';
+import { safeGet, withRetry, politeSleep } from '../utils/requestUtils.js';
+import { stripHtml } from '../utils/textClean.js';
 import logger from '../utils/logger.js';
 
 function originFromUrl(pageUrl) {
@@ -121,6 +122,76 @@ export function parseKhaadiCategoryHtml(html, pageUrl, maxItems = 50) {
   return products;
 }
 
+// ─── Product detail page ─────────────────────────────────────────────────────
+// The listing tiles carry no description, stock or sizes, so these come from the PDP.
+
+const REAL_SIZE = /^(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|d{2}|free size|one size)$/i;
+
+/**
+ * Parse a Khaadi product page.
+ * - available: JSON-LD offers.availability is authoritative; the page's own
+ *   "Item is currently Out of Stock" message is the fallback. undefined = unknown.
+ * - description: the "description-and-detail" block (fabric lines + marketing copy).
+ * - sizes: only real garment sizes. Khaadi's "size" widget mostly lists set
+ *   variants like "3PC", which must not leak into size filters.
+ * @returns {{ available: boolean|undefined, description: string, sizes: string[] }}
+ */
+export function parseKhaadiDetailHtml(html) {
+  const $ = cheerio.load(html);
+
+  let available;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const ld = JSON.parse($(el).contents().text());
+      const avail = String(ld?.offers?.availability || '');
+      if (/InStock/i.test(avail)) available = true;
+      else if (/OutOfStock|SoldOut/i.test(avail)) available = false;
+    } catch { /* ignore malformed JSON-LD */ }
+  });
+  if (available === undefined) {
+    const msg = $('.availability, .product-availability').first().text();
+    if (/out of stock/i.test(msg)) available = false;
+  }
+
+  const description = stripHtml($('.description-and-detail').first().html() || '', 2000);
+
+  const sizes = [];
+  $('.size-item input').each((_, el) => {
+    const label = ($(el).attr('id') || $(el).attr('data-attr-value') || '').trim();
+    if (REAL_SIZE.test(label) && !sizes.includes(label.toUpperCase())) sizes.push(label.toUpperCase());
+  });
+
+  return { available, description, sizes };
+}
+
+/**
+ * Fills description / sizes / availability on listing rows by reading each product page.
+ * Polite (sequential, delayed). A failed page leaves that row as-is rather than dropping it.
+ * Set KHAADI_DETAIL=false to skip (faster dry runs).
+ */
+export async function enrichKhaadiProducts(products, { delayMs = Number(process.env.SCRAPER_DELAY_MS ?? 1500) } = {}) {
+  if (String(process.env.KHAADI_DETAIL || '').toLowerCase() === 'false') return products;
+  let ok = 0;
+  let failed = 0;
+  for (const p of products) {
+    try {
+      const res = await withRetry(() => safeGet(p.productUrl, { responseType: 'text', timeout: 25000 }));
+      if (typeof res.data !== 'string') { failed++; continue; }
+      const d = parseKhaadiDetailHtml(res.data);
+      if (d.description) p.description = d.description;
+      if (d.sizes.length) p.sizes = d.sizes;
+      if (d.available !== undefined) p.isAvailable = d.available;
+      ok++;
+    } catch (err) {
+      failed++;
+      logger.warn(`Khaadi detail failed: ${p.productUrl}`, err.message);
+    }
+    await politeSleep(delayMs);
+  }
+  logger.info(`Khaadi detail: ${ok} enriched, ${failed} failed of ${products.length}`);
+  return products;
+}
+
 /**
  * Fetch a Khaadi category URL and extract product rows from SSR HTML.
  */
@@ -143,6 +214,8 @@ export async function extractFromKhaadiCategory(pageUrl, maxItems = 50) {
     logger.warn(`Khaadi extractor: 0 products for ${pageUrl}`);
     return { products: [], strategy: 'failed' };
   }
+
+  await enrichKhaadiProducts(products);
 
   logger.info(`Khaadi extractor: ${products.length} products from ${pageUrl}`);
   return { products, strategy: 'khaadi-sfcc' };
