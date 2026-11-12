@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import ClothingProduct from '../models/ClothingProduct.js';
+import { EMBEDDING_MODEL_ID } from '../services/embeddings.js';
 
 let mongod;
 let app;
@@ -23,7 +24,7 @@ before(async () => {
   app = mod.createApp();
   await mongoose.connect(process.env.MONGO_URI);
   await ClothingProduct.init();
-  const base = { brand: 'TestBrand', gender: 'women', price: 3000, embedding: [1, 0, 0] };
+  const base = { brand: 'TestBrand', gender: 'women', price: 3000, embedding: [1, 0, 0], embeddingModel: EMBEDDING_MODEL_ID };
   await ClothingProduct.create([
     { ...base, name: 'Emerald Lawn Suit', productUrl: 'https://t.pk/in', inStock: true },
     { ...base, name: 'Emerald Lawn Suit Sold Out', productUrl: 'https://t.pk/out', inStock: false },
@@ -69,4 +70,16 @@ test('semantic search candidates exclude out-of-stock products', async () => {
   const n = results.map((r) => r.name);
   assert.ok(n.includes('Emerald Lawn Suit'));
   assert.ok(!n.includes('Emerald Lawn Suit Sold Out'), `sold-out item leaked: ${n}`);
+});
+
+test('vectors from a different embedding model are never used (dimensions are not comparable)', async () => {
+  await ClothingProduct.create({
+    name: 'Emerald Lawn Suit Old Model', brand: 'TestBrand', gender: 'women', price: 3000,
+    productUrl: 'https://t.pk/oldmodel', inStock: true,
+    embedding: new Array(384).fill(0.05), embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
+  });
+  const { searchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
+  const { analyzeSearchQuery } = await import('../services/searchQueryIntel.js');
+  const { results } = await searchAcrossCatalogs(analyzeSearchQuery('emerald lawn suit'), [1, 0, 0], { limit: 10, catalog: 'clothing' });
+  assert.ok(!results.map((r) => r.name).includes('Emerald Lawn Suit Old Model'));
 });
