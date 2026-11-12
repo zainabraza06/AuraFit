@@ -76,6 +76,7 @@ const JewelryProductSchema = new mongoose.Schema(
 
     embedding: [{ type: Number }],
     embeddingModel: { type: String },
+    embeddingTextHash: { type: String }, // hash of the text the vector was made from; a change means the vector is stale
     aiEnriched: { type: Boolean, default: false },
     metadataScore: { type: Number, default: 0 },
 

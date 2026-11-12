@@ -163,6 +163,7 @@ const ClothingProductSchema = new mongoose.Schema(
     // ─── AI Layer ────────────────────────────────────────────────────────
     embedding:      [{ type: Number }],
     embeddingModel: { type: String },
+    embeddingTextHash: { type: String }, // hash of the text the vector was made from; a change means the vector is stale
     aiEnriched:     { type: Boolean, default: false },   // true when Gemini filled missing fields
     metadataScore:  { type: Number, default: 0 },        // completeness 0-1
 
