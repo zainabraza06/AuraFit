@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import ClothingProduct from '../models/ClothingProduct.js';
-import { embedPending, needsEmbeddingFilter } from './embeddingJobs.js';
+import { embedPending, textHash } from './embeddingJobs.js';
 import { setEmbeddingBackend, EMBEDDING_MODEL_ID } from './embeddings.js';
 
 let mongod;
@@ -30,7 +30,7 @@ test('embeds rows with no vector, an empty vector, or a vector from another mode
     p(1),                                                                   // never embedded
     p(2, { embedding: [], embeddingModel: undefined }),                     // empty
     p(3, { embedding: new Array(384).fill(0.1), embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2' }), // stale model
-    p(4, { embedding: [9, 9, 9], embeddingModel: EMBEDDING_MODEL_ID }),     // already current
+    p(4, { embedding: [9, 9, 9], embeddingModel: EMBEDDING_MODEL_ID, embeddingTextHash: textHash('Suit 4') }), // already current
   ]);
   const r = await embedPending(ClothingProduct, build);
   assert.deepEqual(r, { embedded: 3, failed: 0, remaining: 0 });
@@ -53,7 +53,8 @@ test('handles more rows than one chunk', async () => {
   await ClothingProduct.create(Array.from({ length: 25 }, (_, i) => p(i)));
   const r = await embedPending(ClothingProduct, build, { chunk: 10 });
   assert.equal(r.embedded, 25);
-  assert.equal(await ClothingProduct.countDocuments(needsEmbeddingFilter()), 0);
+  assert.equal(await ClothingProduct.countDocuments({ embedding: { $size: 0 } }), 0);
+  assert.equal(await ClothingProduct.countDocuments({ embeddingModel: EMBEDDING_MODEL_ID }), 25);
 });
 
 test('one bad row does not sink its chunk or loop forever', async () => {
@@ -68,4 +69,29 @@ test('respects limit', async () => {
   const r = await embedPending(ClothingProduct, build, { limit: 4, chunk: 2 });
   assert.equal(r.embedded, 4);
   assert.equal(r.remaining, 2);
+});
+
+test('text that changed since the vector was made triggers a re-embed; unchanged text does not', async () => {
+  await ClothingProduct.create([p(1), p(2)]);
+  await embedPending(ClothingProduct, build);                         // both embedded from "Suit N"
+  assert.deepEqual(await embedPending(ClothingProduct, build), { embedded: 0, failed: 0, remaining: 0 });
+
+  // a scrape rewrites product 1's name (and so its embedding text); product 2 is untouched
+  await ClothingProduct.updateOne({ productUrl: 'https://t.pk/1' }, { $set: { name: 'Suit 1 - now with embroidery' } });
+  const r = await embedPending(ClothingProduct, build);
+  assert.equal(r.embedded, 1);
+
+  const [one, two] = await Promise.all([
+    ClothingProduct.findOne({ productUrl: 'https://t.pk/1' }).lean(),
+    ClothingProduct.findOne({ productUrl: 'https://t.pk/2' }).lean(),
+  ]);
+  assert.equal(one.embeddingTextHash, textHash('Suit 1 - now with embroidery'));
+  assert.equal(one.embedding[0], 'Suit 1 - now with embroidery'.length, 'vector must be recomputed from the new text');
+  assert.equal(two.embeddingTextHash, textHash('Suit 2'));
+});
+
+test('legacy rows that have the current model but no text hash are re-embedded once', async () => {
+  await ClothingProduct.create([p(1, { embedding: [1, 1, 1], embeddingModel: EMBEDDING_MODEL_ID })]);
+  assert.equal((await embedPending(ClothingProduct, build)).embedded, 1);
+  assert.equal((await embedPending(ClothingProduct, build)).embedded, 0);
 });
