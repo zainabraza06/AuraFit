@@ -29,6 +29,7 @@ import { CLOTHING_BRANDS } from './config/clothingBrands.js';
 import { checkConsistency } from './utils/catalogQA.js';
 import { tryRepairWithLLM } from './utils/productRepair.js';
 import { normalizeProduct } from './parsers/productParser.js';
+import { markUnseenOutOfStock } from './utils/stockSync.js';
 import { createEventEmitter } from '../../events/productEvents.js';
 
 // ─── Adapter registry ─────────────────────────────────────────────────────────
@@ -118,24 +119,6 @@ async function upsertProduct(product) {
     { upsert: true }
   );
   return { outcome: 'updated', oldPrice: existing.price };
-}
-
-// ─── Mark absent products as out-of-stock ────────────────────────────────────
-/**
- * After scraping a brand, any DB product whose URL wasn't seen in this run
- * is considered out-of-stock (removed from the live site).
- */
-async function markOutOfStock(brand, seenUrls) {
-  if (!seenUrls.size) return 0;
-  const result = await ClothingProduct.updateMany(
-    {
-      brand,
-      productUrl: { $nin: [...seenUrls] },
-      inStock:    { $ne: false }           // only update those currently marked in-stock
-    },
-    { $set: { inStock: false, stockLastChecked: new Date() } }
-  );
-  return result.modifiedCount;
 }
 
 // ─── Main runner ──────────────────────────────────────────────────────────────
@@ -245,11 +228,14 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
 
     // Mark products absent from this run as out-of-stock
     let stockOut = 0;
-    if (!dryRun && seenUrls.size > 0) {
-      stockOut = await markOutOfStock(brandConfig.brand, seenUrls);
-      if (stockOut > 0) {
-        logger.warn(`  ↓ ${stockOut} products from ${brandConfig.brand} marked out-of-stock (not seen in this run)`);
-      }
+    if (!dryRun) {
+      const sweep = await markUnseenOutOfStock(ClothingProduct, brandConfig.brand, seenUrls, {
+        failedCollections: fail,
+        totalCollections: collectionResults.length,
+      });
+      stockOut = sweep.marked;
+      if (sweep.skipped) logger.warn(`  ⚠ stock sweep SKIPPED for ${brandConfig.brand}: ${sweep.reason}`);
+      else if (stockOut > 0) logger.warn(`  ↓ ${stockOut} products from ${brandConfig.brand} marked out-of-stock (not seen in this run)`);
     }
 
     totalInserted  += ins;
