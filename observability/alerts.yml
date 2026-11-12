@@ -1,0 +1,71 @@
+# Alert rules. Evaluated by Prometheus; firing alerts show on http://localhost:9090/alerts and in Grafana.
+# (No Alertmanager is wired up yet - add one to route these to Slack/email/PagerDuty.)
+groups:
+  - name: api
+    rules:
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status="5xx"}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "More than 5% of API requests are failing (5xx)"
+
+      - alert: ApiSlowP95
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route!~"/api/tryon.*|/api/search/visual.*"}[5m]))) > 2
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "API p95 latency above 2s (try-on and visual search excluded: they are inherently slow)"
+
+  - name: llm
+    rules:
+      - alert: LlmProviderInCooldown
+        expr: llm_provider_in_cooldown == 1
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "LLM provider {{ $labels.provider }} has been skipped by the circuit breaker for 5+ minutes"
+
+      - alert: LlmHighFailureRatio
+        expr: |
+          sum by (provider) (rate(llm_calls_total{outcome="failure"}[10m]))
+            / clamp_min(sum by (provider) (rate(llm_calls_total[10m])), 0.001) > 0.5
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "More than half of calls to {{ $labels.provider }} are failing"
+
+  - name: pipeline
+    rules:
+      - alert: ConsumerLagHigh
+        expr: sum(pipeline_consumer_lag) > 10000
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Kafka consumer lag above 10k messages for 5 minutes (consumers down or too slow)"
+
+      - alert: DeadLetterGrowing
+        expr: sum(increase(pipeline_events_total{outcome=~"invalid|dlq"}[15m])) > 0
+        for: 0m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Events are being dead-lettered - inspect the product.events.dlq topic"
+
+      - alert: NoActiveConsumers
+        expr: count(up{job="consumer"} == 1) == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "No pipeline consumer is up"
+
+  - name: scrape-health
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }})"
