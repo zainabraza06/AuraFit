@@ -109,6 +109,10 @@ export class BaseAdapter {
     for (const raw of rawProducts) {
       const mapped = raw.handle !== undefined ? mapShopifyProduct(raw, baseOrigin) : raw;
       if (!mapped) continue;
+      // Sold out on the retailer's site: do not store it as available, and do not spend an LLM
+      // "repair" call on it (only the clothing parser used to drop these; shoes/jewelry/watches kept them).
+      // It is not marked seen, so the stock sweep flags any existing row for it as out of stock.
+      if (mapped.isAvailable === false) continue;
 
       let product = this._normalize(mapped, brandConfig);
       if (!product && useLlmRepair) {
