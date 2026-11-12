@@ -62,10 +62,13 @@ const ADAPTER_MAP = {
  * Embeddings and AI fields are excluded — those are expensive to regenerate
  * and only change when the scraper explicitly re-enriches.
  */
-function hasChanged(existing, incoming) {
+export function hasChanged(existing, incoming) {
   if (existing.price !== incoming.price) return true;
   if (existing.compareAtPrice !== incoming.compareAtPrice) return true;
   if (existing.name !== incoming.name) return true;
+  // Descriptions feed embeddings and the UI; a description-only change (e.g. Khaadi detail pages,
+  // entity cleanup) used to be classed 'unchanged' and never written.
+  if ((existing.description || '') !== (incoming.description || '')) return true;
   const existingImg = existing.imageUrl || existing.images?.[0] || '';
   const incomingImg = incoming.imageUrl || incoming.images?.[0] || '';
   if (existingImg !== incomingImg) return true;
@@ -87,7 +90,7 @@ async function upsertProduct(product) {
   const now = new Date();
   const existing = await ClothingProduct.findOne(
     { productUrl: product.productUrl },
-    'price compareAtPrice name imageUrl images sizes'
+    'price compareAtPrice name description imageUrl images sizes'
   ).lean();
 
   if (!existing) {
@@ -165,7 +168,12 @@ export async function runScraper({ triggeredBy = 'manual' } = {}) {
   let totalInserted = 0, totalUpdated = 0, totalUnchanged = 0, totalSkipped = 0, totalFailed = 0, totalStockOut = 0;
   const brandResults = [];
 
+  // SCRAPER_ONLY_BRANDS="Khaadi,Maria B" limits a run to those brands (case-insensitive)
+  const only = (process.env.SCRAPER_ONLY_BRANDS || '').split(',').map((b) => b.trim().toLowerCase()).filter(Boolean);
+
   for (const brandConfig of CLOTHING_BRANDS) {
+    if (only.length && !only.includes(brandConfig.brand.toLowerCase())) continue;
+
     const AdapterClass = ADAPTER_MAP[brandConfig.adapter];
     if (!AdapterClass) {
       logger.warn(`No adapter for: ${brandConfig.adapter} — skipping`);
