@@ -1,6 +1,8 @@
 /**
  * Skip an LLM provider for a cooldown after repeated failures (controlled degradation).
  */
+import { llmCalls, llmCooldown } from '../observability/metrics.js';
+
 const COOLDOWN_MS = Number(process.env.LLM_PROVIDER_COOLDOWN_MS || 60_000);
 const FAILURES_BEFORE_COOLDOWN = Number(process.env.LLM_PROVIDER_FAIL_THRESHOLD || 3);
 
@@ -15,17 +17,21 @@ export function canUseLlmProvider(providerId) {
 
 /** @param {string} providerId */
 export function recordLlmProviderSuccess(providerId) {
+  llmCalls.inc({ provider: providerId, outcome: 'success' });
+  llmCooldown.set({ provider: providerId }, 0);
   state[providerId] = { consecutiveFailures: 0, cooldownUntil: 0 };
 }
 
 /** @param {string} providerId */
 export function recordLlmProviderFailure(providerId) {
   const now = Date.now();
+  llmCalls.inc({ provider: providerId, outcome: 'failure' });
   let h = state[providerId] || { consecutiveFailures: 0, cooldownUntil: 0 };
   if (now >= h.cooldownUntil) h.consecutiveFailures = 0;
   h.consecutiveFailures += 1;
   if (h.consecutiveFailures >= FAILURES_BEFORE_COOLDOWN) {
     h.cooldownUntil = now + COOLDOWN_MS;
+    llmCooldown.set({ provider: providerId }, 1);
     h.consecutiveFailures = 0;
   }
   state[providerId] = h;
