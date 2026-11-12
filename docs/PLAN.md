@@ -17,12 +17,13 @@ Baseline numbers come from `npm run profile:catalog` (backend), measured 2026-11
 | Try-on | synchronous inside the HTTP request |
 
 ## P0 - Data correctness (extraction)
-- [ ] 0.1 Decode HTML entities and strip tags in names/descriptions at parse time (+ tests)
-- [ ] 0.2 Khaadi extractor returns real descriptions and sizes (verified against the live site)
+- [x] 0.1 Decode HTML entities and strip tags in names/descriptions at parse time (+ tests)
+- [x] 0.2 Khaadi extractor returns real descriptions and stock status (verified live). Sizes: Khaadi only exposes set variants (3PC), so sizes stay empty by design. **Also found: ~9/10 sampled Khaadi products are out of stock on the site while the DB says 100% in stock** - fixed in the extractor, takes effect on the next scrape
 - [ ] 0.3 Missing sizes for Gul Ahmed and Limelight
 - [ ] 0.4 Normalise ALL-CAPS names for display
+- [ ] 0.8 Non-jewelry items inside the jewelry catalog (e.g. perfume) - reclassify or exclude
 - [ ] 0.5 Group colorways (`styleGroup`) so search shows one card per style
-- [ ] 0.6 Repair script for existing rows (dry-run by default, `--apply` only after review)
+- [~] 0.6 Repair script for existing rows: written and dry-run verified (325 rows). **Waiting for approval to `--apply` on the live database**
 - [ ] 0.7 Re-embed repaired rows; re-run `profile:catalog`; **accept when each baseline problem above is 0 or explained**
 
 ## P1 - Observability and admin (Prometheus + Grafana)
