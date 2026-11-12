@@ -18,8 +18,11 @@ export async function bootstrap() {
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
   });
 
-  // Start weekly scraper cron job (never during tests)
-  if (process.env.NODE_ENV !== 'test') {
+  // The in-process scraper cron is OFF by default: every API instance would run its own copy, and a
+  // restart or deploy at the wrong moment would skip the run. The weekly refresh is scheduled by
+  // .github/workflows/weekly-refresh.yml instead. Opt back in for a single-instance setup with
+  // SCRAPER_CRON_ENABLED=true (never during tests).
+  if (process.env.NODE_ENV !== 'test' && String(process.env.SCRAPER_CRON_ENABLED || '').toLowerCase() === 'true') {
     startScraperJob();
   }
 
