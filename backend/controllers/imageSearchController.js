@@ -1,6 +1,7 @@
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
 import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs, cosineSimilarity } from '../services/crossCatalogSearch.js';
+import { isEmbeddingConfigured, EMBEDDING_MODEL_ID } from '../services/embeddings.js';
 import { agenticRelax } from '../services/recommendationEngine.js';
 import { parseRefinementFeedback } from '../services/intentAdapter.js';
 import { inferColors } from '../scripts/scrapers/utils/colorInference.js';
@@ -370,7 +371,7 @@ export async function searchByImage(req, res) {
       relaxationMessage = relaxMsg;
 
       let ranked = products;
-      if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
+      if (isEmbeddingConfigured() && (signalText || analysis.keywords?.length)) {
         const queryForEmbedding = buildEmbeddingText(signals, analysis);
         const queryEmbedding = await getEmbedding(queryForEmbedding);
         ranked = products
@@ -382,10 +383,10 @@ export async function searchByImage(req, res) {
         catalog: 'clothing',
         relevanceScore: _cosine != null ? parseFloat(_cosine.toFixed(4)) : undefined
       }));
-      engine = process.env.HUGGING_FACE_API_KEY
-        ? `HuggingFace all-MiniLM-L6-v2 + agentic relaxation (photo analyzed by ${visionProvider})`
+      engine = isEmbeddingConfigured()
+        ? `${EMBEDDING_MODEL_ID} + agentic relaxation (photo analyzed by ${visionProvider})`
         : `agentic relaxation (photo analyzed by ${visionProvider})`;
-    } else if (process.env.HUGGING_FACE_API_KEY && (signalText || analysis.keywords?.length)) {
+    } else if (isEmbeddingConfigured() && (signalText || analysis.keywords?.length)) {
       // Shoes/jewelry/watches — same hybrid cosine + facet ranking used by text
       // search, scoped to the single catalog the photo actually belongs to.
       const queryForEmbedding = buildEmbeddingText(signals, analysis);
@@ -396,7 +397,7 @@ export async function searchByImage(req, res) {
       const colorFamilies = extractColorFamilies(analysis.color);
       matches = filterByColorFamily(searchRes.results, colorFamilies).slice(0, limit);
       relaxedFloor = searchRes.relaxedFloor;
-      engine = `HuggingFace all-MiniLM-L6-v2 (photo analyzed by ${visionProvider})`;
+      engine = `${EMBEDDING_MODEL_ID} (photo analyzed by ${visionProvider})`;
     } else {
       // No embeddings configured — regex fallback that correctly checks BOTH the
       // canonical color family AND the exact scraped shade (a specific color word
@@ -406,7 +407,7 @@ export async function searchByImage(req, res) {
         { limit, catalog: detectedCatalog }
       );
       matches = searchRes.results;
-      engine = 'keyword fallback (add HUGGING_FACE_API_KEY for semantic visual search)';
+      engine = 'keyword fallback (embeddings unavailable)';
     }
 
     res.json({

@@ -8,6 +8,8 @@ import {
 } from '../services/embeddingText.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
 import { getEmbedding, searchAcrossCatalogs } from '../services/crossCatalogSearch.js';
+import { isEmbeddingConfigured, EMBEDDING_MODEL_ID } from '../services/embeddings.js';
+import { embedPending } from '../services/embeddingJobs.js';
 
 /**
  * Semantic search across ALL catalogs (clothing, shoes, jewelry, watches) merged
@@ -20,10 +22,10 @@ export async function semanticSearch(req, res) {
     const { q = '', limit = 20, category, gender, catalog } = req.query;
     if (!q.trim()) return res.status(400).json({ error: 'Query is required' });
 
-    if (!process.env.HUGGING_FACE_API_KEY) {
+    if (!isEmbeddingConfigured()) {
       return res.status(503).json({
         error: 'Vector search not configured',
-        hint: 'Add HUGGING_FACE_API_KEY to your .env file (free at huggingface.co/settings/tokens)',
+        hint: 'The local embedding model is disabled in this environment',
         fallback: 'Use /api/search instead'
       });
     }
@@ -42,7 +44,7 @@ export async function semanticSearch(req, res) {
 
     res.json({
       query: q,
-      engine: 'HuggingFace all-MiniLM-L6-v2',
+      engine: EMBEDDING_MODEL_ID,
       hybridRanking: true,
       crossCatalog: !catalog,
       relaxedFloor,
@@ -63,42 +65,16 @@ const EMBED_BUILDERS = {
 
 export async function embedAll(req, res) {
   try {
-    if (!process.env.HUGGING_FACE_API_KEY) {
-      return res.status(503).json({ error: 'HUGGING_FACE_API_KEY not set' });
+    if (!isEmbeddingConfigured()) {
+      return res.status(503).json({ error: 'Embeddings are disabled in this environment' });
     }
 
     const { limit = 50, catalog = 'clothing' } = req.body;
-    const entry = EMBED_BUILDERS[catalog] || EMBED_BUILDERS.clothing;
-    const { Model, build } = entry;
+    const { Model, build } = EMBED_BUILDERS[catalog] || EMBED_BUILDERS.clothing;
 
-    const products = await Model.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] })
-      .limit(Number(limit))
-      .lean();
-
-    if (products.length === 0) {
-      return res.json({ message: `All ${catalog} products already have embeddings!`, updated: 0 });
-    }
-
-    let updated = 0, failed = 0;
-    for (const product of products) {
-      try {
-        const text = build(product);
-        const embedding = await getEmbedding(text);
-        if (embedding?.length) {
-          await Model.findByIdAndUpdate(product._id, { embedding });
-          updated++;
-        }
-        await new Promise(r => setTimeout(r, 300));
-      } catch (e) {
-        failed++;
-        console.error(`[Embed] Failed for ${product._id}:`, e.message);
-      }
-    }
-
-    const remaining = await Model.countDocuments({
-      $or: [{ embedding: { $exists: false } }, { embedding: [] }]
-    });
-    res.json({ message: 'Embedding complete', catalog, updated, failed, remaining });
+    // Embeds rows with no vector OR a vector from a different/older model
+    const { embedded, failed, remaining } = await embedPending(Model, build, { limit: Number(limit) });
+    res.json({ message: 'Embedding complete', catalog, model: EMBEDDING_MODEL_ID, updated: embedded, failed, remaining });
   } catch (err) {
     res.status(500).json({ error: 'Embedding failed', details: err.message });
   }

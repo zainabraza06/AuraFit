@@ -8,7 +8,7 @@ import ClothingProduct from '../models/ClothingProduct.js';
 import ShoeProduct from '../models/ShoeProduct.js';
 import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
-import { getTextEmbedding } from './huggingface.js';
+import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID } from './embeddings.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
 import { attachGenderFilter } from '../utils/catalogQuery.js';
 
@@ -35,12 +35,10 @@ export const CATALOGS = [
   }
 ];
 
+/** Query -> vector with the current model, or null when embeddings are unavailable. */
 export async function getEmbedding(text) {
-  const token = process.env.HUGGING_FACE_API_KEY;
-  if (!token) return null;
-  const embedding = await getTextEmbedding(text);
-  if (!embedding) throw new Error('HuggingFace SDK failed to return embedding');
-  return Array.isArray(embedding[0]) ? embedding[0] : embedding;
+  if (!isEmbeddingConfigured()) return null;
+  return embedQuery(text);
 }
 
 export function cosineSimilarity(a, b) {
@@ -71,7 +69,8 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
 
   const perCatalogResults = await Promise.all(
     wantCatalogs.map(async ({ key, Model, fields }) => {
-      const matchQuery = { embedding: { $exists: true, $ne: [] }, inStock: { $ne: false } };
+      // Only vectors from the CURRENT model are comparable with the query vector
+      const matchQuery = { embedding: { $exists: true, $ne: [] }, embeddingModel: EMBEDDING_MODEL_ID, inStock: { $ne: false } };
       if (category && key === 'clothing') matchQuery.category = category;
       attachGenderFilter(matchQuery, gender ?? signals.genderHint);
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
@@ -112,7 +111,7 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
 }
 
 /**
- * Regex-based cross-catalog fallback for when HUGGING_FACE_API_KEY isn't set —
+ * Regex-based cross-catalog fallback for when embeddings aren't available —
  * checks BOTH the canonical color family AND the exact scraped shade (a photo
  * analysis often returns a specific shade like "maroon", which only lives in
  * primaryExactColor/exactColors, never in the canonical primaryColor field).
