@@ -10,6 +10,7 @@
 
 import { safeGet, politeSleep, withRetry } from '../utils/requestUtils.js';
 import logger from '../utils/logger.js';
+import { stripHtml, cleanName } from '../utils/textClean.js';
 
 const DEFAULT_LIMIT = 250; // Shopify max per page
 
@@ -137,7 +138,7 @@ function matchesKeywords(product, keywords) {
  * Returns null if required fields are missing.
  */
 export function mapShopifyProduct(rawProduct, baseOrigin) {
-  const title = (rawProduct?.title || '').trim();
+  const title = cleanName(rawProduct?.title || '');
   const handle = rawProduct?.handle;
   if (!title || !handle) return null;
 
@@ -193,7 +194,7 @@ export function mapShopifyProduct(rawProduct, baseOrigin) {
     sizes,
     tags,
     variantOptions,
-    description: stripHtml(rawProduct?.body_html || ''),
+    description: stripHtml(rawProduct?.body_html || '', 1000),
     vendor: rawProduct?.vendor,
     productType: rawProduct?.product_type,
     rawTags: tags,
@@ -216,8 +217,4 @@ function parsePrice(value) {
   const num = parseFloat(String(value).replace(/[^0-9.]/g, ''));
   if (!isFinite(num) || num <= 0) return null;
   return Math.round(num);
-}
-
-function stripHtml(html) {
-  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
 }
