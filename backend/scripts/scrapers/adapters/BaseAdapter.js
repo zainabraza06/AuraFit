@@ -146,7 +146,13 @@ export class BaseAdapter {
       }
 
       if (!skipAi && (product.metadataScore < AI_ENRICH_THRESHOLD || this._needsAi(product))) {
-        product = await this._enrich(product);
+        // AI enrichment is best-effort. If every LLM provider is down the product is still valid
+        // without it - never let an outage abort the whole scrape (it used to crash shoes/jewelry runs).
+        try {
+          product = await this._enrich(product);
+        } catch (err) {
+          logger.warn(`[${this.brand}] AI enrichment skipped for "${product.name}": ${err.message}`);
+        }
         await politeSleep(300);
       }
 
