@@ -17,22 +17,22 @@ export const CATALOGS = [
   {
     key: 'clothing',
     Model: ClothingProduct,
-    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl inStock'
   },
   {
     key: 'shoes',
     Model: ShoeProduct,
-    fields: 'embedding name brand category subCategory shoeType description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category subCategory shoeType description tags colors price gender images primaryColor occasion style productUrl inStock'
   },
   {
     key: 'jewelry',
     Model: JewelryProduct,
-    fields: 'embedding name brand category jewelryType jewelryCategory description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category jewelryType jewelryCategory description tags colors price gender images primaryColor occasion style productUrl inStock'
   },
   {
     key: 'watches',
     Model: WatchProduct,
-    fields: 'embedding name brand category watchType description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category watchType description tags colors price gender images primaryColor occasion style productUrl inStock'
   }
 ];
 
