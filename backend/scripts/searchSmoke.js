@@ -63,7 +63,7 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   mongoose
     .connect(process.env.MONGO_URI)
-    .then(runSmoke)
+    .then(() => runSmoke())
     .then((problems) => {
       console.log(problems.length ? `\nPROBLEMS:\n- ${problems.join('\n- ')}` : '\nAll smoke queries returned relevant, in-stock results.');
       process.exitCode = problems.length ? 2 : 0;
