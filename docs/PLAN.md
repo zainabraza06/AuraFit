@@ -28,12 +28,27 @@ Three things the run exposed (all open):
 
 Also fixed: `hasChanged` ignored descriptions, so description-only changes were never written.
 
+## Clean reload 2026-11-16 (catalog wiped and re-scraped, users kept)
+
+| Catalog | Rows | In stock | Embedded (Qwen3, current) |
+|---|---|---|---|
+| clothing | 2,102 | 2,051 (51 sold out) | 2,051 / 2,051 |
+| shoes | 583 | 583 | 583 / 583 |
+| jewelry | 643 | 643 | 643 / 643 |
+| watches | 72 | 72 | 72 / 72 |
+
+Brands: Khaadi 513, Alkaram Studio 397, Zellbury 314, Limelight 295, Gul Ahmed 228, Beechtree 186, Maria B 94, Sana Safinaz 75. **Elan: 0** - its own SSL certificate has expired (not our bug; recovers by itself).
+Cleanup found by checking the data: 44 clothing rows inside jewelry and 42 non-watches (shoes, scarves, suits, handbags) inside watches; parsers now reject them and `npm run purge:misclassified` removed the existing ones.
+Verified with real queries through the full retrieval path (`npm run search:smoke`): relevant, in-stock results across the whole catalog (3,434 candidates searched).
+
+**Known costs:** a cold search fetches every candidate with its 1024-dim vector (~30 MB) from the database and loads the 600 MB model: 45 s on the first query, then under 1 s. Fine next to the database, slow over a home connection. Next steps: warm up at server start, and store vectors as float32 / truncate (Qwen3 supports shorter dimensions) to cut the payload 2-4x.
+
 ## P0 - Data correctness (extraction)
 - [x] 0.1 Decode HTML entities and strip tags in names/descriptions at parse time (+ tests)
 - [x] 0.2 Khaadi extractor returns real descriptions and stock status (verified live). Sizes: Khaadi only exposes set variants (3PC), so sizes stay empty by design. **Also found: ~9/10 sampled Khaadi products are out of stock on the site while the DB says 100% in stock** - fixed in the extractor, takes effect on the next scrape
 - [ ] 0.3 Missing sizes for Gul Ahmed and Limelight
 - [ ] 0.4 Normalise ALL-CAPS names for display
-- [ ] 0.8 Non-jewelry items inside the jewelry catalog (e.g. perfume) - reclassify or exclude
+- [x] 0.8 Non-jewelry items inside jewelry, and non-watches inside watches: parsers fixed, existing rows purged (tests use real names from production)
 - [ ] 0.5 Group colorways (`styleGroup`) so search shows one card per style
 - [~] 0.6 Repair script for existing rows: written and dry-run verified (325 rows). **Waiting for approval to `--apply` on the live database**
 - [ ] 0.7 Re-embed new/repaired rows (**blocked by the embedding provider, see above**); re-run `profile:catalog`; accept when each baseline problem is 0 or explained
