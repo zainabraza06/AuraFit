@@ -19,6 +19,7 @@
     "profile:catalog": "node scripts/profileCatalog.js",
     "repair:catalog": "node scripts/repairCatalog.js",
     "backup:db": "node scripts/backupCollections.js",
+    "purge:misclassified": "node scripts/purgeMisclassified.js",
     "clear:catalog": "node scripts/clearCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "embed:all": "node scripts/embedAll.js",
