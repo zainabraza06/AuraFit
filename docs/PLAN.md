@@ -75,7 +75,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 - [x] 2.5 (new) Queries that name a product type ("choker", "heels", "watch") rank that catalog first; accessory queries were being embedded as "clothing outfit". P@10 0.788 -> 0.809, "kundan choker" no longer returns a shoe
 
 ## P3 - LLM gateway
-- [x] 3.0 Provider chain repaired. Found live: Groq `llama-3.1-8b-instant` (404), Gemini `2.0-flash`/`2.5-flash` (retired), OpenRouter `llama-3.2-3b:free` (404), plus a hard-coded retired Gemini id in the wardrobe upload. New verified defaults: Groq `openai/gpt-oss-20b`, Gemini `3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, OpenRouter `nvidia/nemotron-3.5-lightning:free`. `npm run llm:selftest`: **5 of 6 providers healthy**; Mistral returns 429 on every call (account rate limit, not fixable from code). Startup self-test + `llm_provider_up` gauge + alerts
+- [x] 3.0 Provider chain repaired. Found live: Groq `llama-3.1-8b-instant` (404), Gemini `2.0-flash`/`2.5-flash` (retired), OpenRouter `llama-3.2-3b:free` (404), plus a hard-coded retired Gemini id in the wardrobe upload. New verified defaults: Groq `openai/gpt-oss-20b`, Gemini `3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, OpenRouter `nvidia/nemotron-3.5-lightning:free`. `npm run llm:selftest`: 5 of 6 providers were healthy; Mistral returned 429 on every call (account rate limit), so **Mistral was removed entirely on 2026-11-17** and the chain is Groq, Gemini, OpenRouter (+ optional Ollama). Startup self-test + `llm_provider_up` gauge + alerts
 - [x] 3.1 Circuit breaker shares cooldowns across API instances via Redis (best-effort, tested with a fake Redis; **not run against a real Redis**); HTTP 429 trips it immediately
 - [x] 3.2 Ollama provider (set `OLLAMA_URL`); schema-validated JSON (`validate` option: invalid output moves to the next provider without tripping the breaker); test seam for fake providers
 - [x] 3.3 Per-feature timeouts, latency histogram, token counters, one structured log line per call
@@ -104,7 +104,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 - [ ] 8.2 Deploy: **blocked** - needs a server and the `DEPLOY_*` / `METRICS_TOKEN` / `GRAFANA_ADMIN_PASSWORD` secrets. The deploy job has never run
 
 ## Still open (honest list)
-- Elan (their certificate), Mistral account rate limit, a real server for 8.2
+- Elan (their certificate), a real server for 8.2
 - Alertmanager routing; dashboards for the new LLM/agent/feedback metrics
 - No golden set for photo search or outfits, so CLIP fusion and the agent are verified functionally, not by measured quality
 - The Redis-shared LLM circuit breaker has been tested with a fake Redis only (not a real one)

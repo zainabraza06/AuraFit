@@ -76,7 +76,7 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 - Both auto-relax their similarity floor and report it honestly when nothing scores above threshold, rather than silently returning irrelevant items.
 
 ### 📸 Visual Search
-- Upload a photo (of an outfit, shoes, or jewellery) — a vision-capable LLM (Mistral Pixtral, with Gemini as fallback) analyzes category / color / style / occasion / keywords.
+- Upload a photo (of an outfit, shoes, or jewellery) — a vision-capable LLM (Gemini) analyzes category / color / style / occasion / keywords.
 - **Single-catalog scoping**: the photo shows exactly one item, so matches are restricted to that item's own catalog (`classifyCatalog()`) — a saree photo can no longer surface jewellery or shoes just because they scored competitively on color/occasion embedding.
 - **Deliberately de-biased prompt**: explicit structural criteria distinguish visually-similar categories the vision model commonly confuses (e.g. saree's diagonal pallu drape vs. lehenga's separate stitched skirt + choli), and color-analysis guidance prevents pale/pastel shades (mint, sage, baby pink) from defaulting to "off-white" just because the example text anchored toward that phrase.
 - **Same agentic honesty for clothing photos**: instead of a plain similarity threshold, a clothing photo's derived intent (dress style/color/occasion) runs through the identical progressive-relaxation engine used by text search, so a photo of a rare style (e.g. saree — only a couple in stock) gets an honest "no exact match, here's what we relaxed" instead of silently substituting or returning nothing.
@@ -103,7 +103,7 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 
 ### 🛍️ Discovery, Favorites & Admin
 - Filterable product browser, autocomplete suggestions, pagination.
-- JWT auth (30-day tokens), personal favorites, saved outfit boards, digital wardrobe (Gemini/Mistral vision auto-tagging).
+- JWT auth (30-day tokens), personal favorites, saved outfit boards, digital wardrobe (Gemini vision auto-tagging).
 - Admin dashboard: live scraper status via Server-Sent Events, manual scrape trigger, per-brand scrape history, product stats, brand deletion, catalog lexical audit, system logs.
 
 ---
@@ -118,8 +118,8 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 | Backend | Node.js, Express 4 (ES Modules) |
 | Database | MongoDB via Mongoose 8 |
 | Authentication | JWT (jsonwebtoken), bcryptjs |
-| AI — Text | Provider chain, order configurable (`LLM_PROVIDER_ORDER`): Groq (`gpt-oss`) → Gemini 3.x → OpenRouter → Mistral; optional local Ollama. Circuit breaker, per-feature timeouts, startup self-test (`npm run llm:selftest`) |
-| AI — Vision | Gemini 3.x → Mistral |
+| AI — Text | Provider chain, order configurable (`LLM_PROVIDER_ORDER`): Groq (`gpt-oss`) → Gemini 3.x → OpenRouter; optional local Ollama. Circuit breaker, per-feature timeouts, startup self-test (`npm run llm:selftest`) |
+| AI — Vision | Gemini 3.x |
 | Text embeddings | Qwen3-Embedding-0.6B, local (no API key), searched at 256 dims (measured vs 1024: [docs/rag-architecture.md](docs/rag-architecture.md)) |
 | Image embeddings | CLIP ViT-B/32, local; photo search fuses visual similarity with the description-based ranking |
 | Agent / MCP | LangGraph stylist agent (`POST /api/stylist/ask`) and an MCP server (stdio + HTTP) over the same read-only tools: [docs/agent-and-mcp.md](docs/agent-and-mcp.md) |
@@ -240,7 +240,7 @@ cd backend && npm test
 │Recommendation│ │Cross-Catalog │ │  Vision /     │ │   Scraper Pipeline  │
 │   Engine     │ │   Search     │ │  Try-On       │ │  14 Brand Adapters  │
 │ ──────────── │ │ ──────────── │ │ ────────────  │ │  4 Verticals        │
-│ Agentic      │ │ Keyword      │ │ Mistral       │ │  (clothing/shoes/   │
+│ Agentic      │ │ Keyword      │ │ Groq/Gemini   │ │  (clothing/shoes/   │
 │ relaxation   │ │ (Mongo text) │ │ Pixtral →     │ │   jewelry/watches)  │
 │ loop         │ │ Semantic     │ │ Gemini vision │ │  3-strategy waterfall│
 │ Self-healing │ │ (embeddings) │ │ free HF Space │ │  node-cron scheduler │
@@ -256,9 +256,9 @@ cd backend && npm test
                                  │
 ┌────────────────────────────────▼────────────────────────────────────────┐
 │                  Multi-Provider AI Fallback (per capability)             │
-│  Text:   Mistral → OpenRouter → Groq → Gemini                            │
-│  Vision: Mistral Pixtral → Gemini                                        │
-│  Embed:  HuggingFace all-MiniLM-L6-v2                                    │
+│  Text:   Groq → Gemini → OpenRouter                                      │
+│  Vision: Gemini                                                          │
+│  Embed:  Qwen3 (local) + CLIP images                                     │
 │  Try-On: Replicate (paid) → Hugging Face Space (free)                    │
 │  Images: Cloudinary                                                      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -270,7 +270,7 @@ cd backend && npm test
 User: "bottle green 2pc embroidered dress under 5000"
    │
    ▼
-Intent parsing (Mistral → fallback chain)
+Intent parsing (provider chain)
    │  color=bottle green, pieces=2, print=embroidered, budget=5000
    ▼
 ┌─────────────── Agentic Relaxation Loop (max 10 rounds) ──────────────┐
@@ -462,7 +462,7 @@ Restrict either endpoint to one catalog with `?catalog=shoes` (or `clothing`/`je
 Upload photo
    │
    ▼
-Vision analysis (Mistral Pixtral → Gemini fallback)
+Vision analysis (Gemini)
    │  { category, color, style, occasion, keywords[] }
    │  (defensively coerced to plain strings — vision models sometimes
    │   return nested objects instead of the requested plain text;
@@ -535,7 +535,7 @@ Not logged in? → prompt to log in
 No profile picture? → prompt to set one (Cloudinary)
    │
    ▼
-Vision-based photo validation (Mistral Pixtral → Gemini fallback)
+Vision-based photo validation (Gemini)
    │  reject: no person visible / face covered or turned away /
    │          more than a minor crop missing (e.g. waist-up only)
    │  nearly full-length, only feet/ankles cut off →
@@ -617,13 +617,12 @@ Every AI capability tries providers in order, records success/failure per provid
 
 | Capability | Order |
 |---|---|
-| Text (intent parsing, ranking, relaxation planning) | Mistral → OpenRouter → Groq → Gemini (multi-model chain) |
-| Vision (photo analysis, wardrobe tagging) | Mistral Pixtral → Gemini |
+| Text (intent parsing, ranking, relaxation planning) | Groq → Gemini → OpenRouter (multi-model chain) |
+| Vision (photo analysis, wardrobe tagging) | Gemini |
 | Embeddings (semantic/visual search) | HuggingFace `all-MiniLM-L6-v2` (no fallback — endpoints degrade to keyword search if unset) |
 | Virtual try-on | Hugging Face Space (free) → Replicate (paid, opportunistic) |
 | Image hosting | Cloudinary |
 
-Mistral is throttled to ≥1.1s between calls to respect its free-tier rate limit.
 
 ---
 
@@ -719,8 +718,9 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 | `JWT_SECRET` | Yes | JWT signing secret |
 | `PORT` | No | Express port (default `5000`) |
 | `FRONTEND_URL` | Yes | CORS allowed origin |
-| `MISTRAL_API_KEY` | Recommended | Primary text + vision LLM (free tier, ~1 req/sec) |
-| `MISTRAL_MODEL` | No | Default `mistral-small-latest` |
+| `GROQ_API_KEY` | One of the three | Text LLM (default model `openai/gpt-oss-20b`, override `GROQ_MODEL`) |
+| `GEMINI_API_KEY` | One of the three | Text + vision LLM (models `gemini-3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, override `GEMINI_FALLBACK_MODELS`) |
+| `OPENROUTER_API_KEY` | One of the three | Text LLM fallback (`OPENROUTER_MODEL`) |
 | `GEMINI_API_KEY` | No | Fallback text + vision LLM |
 | `GROQ_API_KEY` | No | Fallback text LLM |
 | `OPENROUTER_API_KEY` | No | Fallback text LLM |
@@ -747,7 +747,7 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 ### Prerequisites
 - Node.js v18+
 - MongoDB (local or Atlas)
-- Free API keys: [Mistral](https://console.mistral.ai) (text+vision), [HuggingFace](https://huggingface.co/settings/tokens) (embeddings), [Cloudinary](https://cloudinary.com) (images) — all have generous free tiers
+- Free API keys: [Groq](https://console.groq.com) / [Gemini](https://aistudio.google.com) (LLM), [HuggingFace](https://huggingface.co/settings/tokens) (embeddings), [Cloudinary](https://cloudinary.com) (images) — all have generous free tiers
 
 ### 1. Install
 ```bash
