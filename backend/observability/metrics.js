@@ -49,6 +49,13 @@ export const llmTokens = new client.Counter({
   registers: [registry],
 });
 
+export const llmUp = new client.Gauge({
+  name: 'llm_provider_up',
+  help: '1 if the provider passed its last self-test, 0 if it failed',
+  labelNames: ['provider'],
+  registers: [registry],
+});
+
 export const llmCooldown = new client.Gauge({
   name: 'llm_provider_in_cooldown',
   help: '1 while the circuit breaker is skipping this provider',

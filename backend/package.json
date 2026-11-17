@@ -27,7 +27,8 @@
     "search:smoke": "node scripts/searchSmoke.js",
     "embed:clothing": "node scripts/embedAll.js",
     "embed:accessories": "node scripts/embedAccessories.js",
-    "test": "node --test"
+    "test": "node --test",
+    "llm:selftest": "node scripts/llmSelfTest.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

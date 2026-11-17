@@ -7,6 +7,10 @@ import { pathToFileURL } from 'url';
 import connectDB from './config/db.js';
 import { startScraperJob } from './jobs/scraperJob.js';
 import { createApp } from './app.js';
+import { getRedis } from './config/redis.js';
+import { enableSharedCircuit } from './services/llmCircuitBreaker.js';
+import { buildProviders } from './services/llmProviders.js';
+import { selfTestProviders } from './services/llmHealth.js';
 
 export const app = createApp();
 const PORT = process.env.PORT || 5000;
@@ -17,6 +21,15 @@ export async function bootstrap() {
     console.log(`\n🚀 Fashion Stylist API running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
   });
+
+  // Share LLM circuit-breaker cooldowns across API instances when Redis is available.
+  const redis = getRedis();
+  if (redis) enableSharedCircuit(redis, { providerIds: buildProviders().map((p) => p.id) });
+
+  // Fail loudly (in the log and the llm_provider_up gauge) if a provider chain is broken. Non-blocking.
+  if (process.env.NODE_ENV !== 'test' && process.env.LLM_SELFTEST !== 'false') {
+    selfTestProviders().catch((e) => console.error('llm self-test crashed:', e.message));
+  }
 
   // The in-process scraper cron is OFF by default: every API instance would run its own copy, and a
   // restart or deploy at the wrong moment would skip the run. The weekly refresh is scheduled by
