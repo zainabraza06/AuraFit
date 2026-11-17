@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { safeGetBuffer } from '../common/safeFetch.js';
 import sharp from 'sharp';
 import { v2 as cloudinary } from 'cloudinary';
 

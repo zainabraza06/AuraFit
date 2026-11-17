@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { analyzeSearchQuery, buildSemanticQueryText, inferCatalogHints } from '../services/searchQueryIntel.js';
+
+test('product-type nouns map to their catalog; clothing queries have no hint', () => {
+  assert.deepEqual(inferCatalogHints('kundan choker'), ['jewelry']);
+  assert.deepEqual(inferCatalogHints('black heels for a party'), ['shoes']);
+  assert.deepEqual(inferCatalogHints('golden watch'), ['watches']);
+  assert.deepEqual(inferCatalogHints('white kurta for eid'), []);
+  assert.deepEqual(inferCatalogHints('bracelet watch'), ['jewelry', 'watches']);
+});
+
+test('word boundaries: "ring" does not fire inside other words, but "earrings" does fire as jewelry', () => {
+  assert.deepEqual(inferCatalogHints('spring string lawn'), []);
+  assert.deepEqual(inferCatalogHints('gold ring'), ['jewelry']);
+  assert.deepEqual(inferCatalogHints('pearl earrings'), ['jewelry']);
+  assert.deepEqual(inferCatalogHints('shoe rack'), ['shoes']);
+});
+
+test('the embedded query no longer says "clothing outfit" for accessory queries', () => {
+  assert.match(buildSemanticQueryText(analyzeSearchQuery('kundan choker')), /Fashion jewelry product search\./);
+  assert.doesNotMatch(buildSemanticQueryText(analyzeSearchQuery('kundan choker')), /clothing outfit/);
+  assert.match(buildSemanticQueryText(analyzeSearchQuery('red lehnga')), /Fashion clothing outfit search\./);
+});
+
+import { collapseByStyleGroup } from '../services/crossCatalogSearch.js';
+
+test('colourways of one design collapse into the best-scoring one; unkeyed products are never merged', () => {
+  const ranked = [
+    { name: 'A beige', styleGroup: 'b:ec327' },
+    { name: 'X', styleGroup: undefined },
+    { name: 'A blue', styleGroup: 'b:ec327' },
+    { name: 'Y', styleGroup: undefined },
+    { name: 'B', styleGroup: 'b:ec345' },
+    { name: 'A red', styleGroup: 'b:ec327' },
+  ];
+  const out = collapseByStyleGroup(ranked);
+  assert.deepEqual(out.map((p) => p.name), ['A beige', 'X', 'Y', 'B']);
+  assert.equal(out[0]._variants, 3);
+  assert.equal(out[3]._variants, undefined);
+});

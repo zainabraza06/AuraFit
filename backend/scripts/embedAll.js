@@ -1,57 +1,37 @@
 /**
- * embedAll.js
- * Batch generates Hugging Face embeddings for products that do not have them.
+ * embedAll.js — (re)generate embeddings for every catalog with the current model.
+ *
+ *   npm run embed:all
+ *
+ * Embeds rows that have no vector, an empty vector, or a vector from a different model
+ * (e.g. the old 384-dim MiniLM ones). Rows that are already current are skipped, so it is
+ * safe to run after every scrape. Runs fully locally (Qwen3-Embedding via transformers.js).
  */
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import ClothingProduct from '../models/ClothingProduct.js';
-import { getTextEmbedding } from '../services/huggingface.js';
-import { buildClothingEmbeddingText } from '../services/embeddingText.js';
+import { embedAllCatalogs } from '../services/embeddingJobs.js';
+import { EMBEDDING_MODEL_ID } from '../services/embeddings.js';
 
 dotenv.config();
 
+/** Used by the scraper cron after each run. Returns the total number of rows embedded. */
 export async function embedAllProducts() {
-  try {
-    const products = await ClothingProduct.find({
-      $or: [{ embedding: { $exists: false } }, { embedding: [] }]
-    }).lean();
-    console.log(`\n🔍 Found ${products.length} clothing products needing embeddings.`);
-
-    let updated = 0;
-    for (const product of products) {
-      try {
-        const text = buildClothingEmbeddingText(product);
-
-        const embedding = await getTextEmbedding(text);
-
-        if (embedding?.length) {
-          const flatEmbedding = Array.isArray(embedding[0]) ? embedding[0] : embedding;
-          await ClothingProduct.findByIdAndUpdate(product._id, { embedding: flatEmbedding });
-          updated++;
-          process.stdout.write(`\r🚀 Embedded ${updated}/${products.length} products`);
-        }
-
-        await new Promise((r) => setTimeout(r, 300));
-      } catch (e) {
-        console.error(`\n❌ Failed for ${product._id}:`, e.message);
-      }
-    }
-
-    console.log(`\n✨ Finished! Successfully embedded ${updated} products.`);
-    return updated;
-  } catch (err) {
-    console.error('Fatal Error during embedding:', err);
-    throw err;
-  }
+  console.log(`\nEmbedding with ${EMBEDDING_MODEL_ID}`);
+  const results = await embedAllCatalogs();
+  const total = Object.values(results).reduce((n, r) => n + r.embedded, 0);
+  const failed = Object.values(results).reduce((n, r) => n + r.failed, 0);
+  console.log(`\nDone: ${total} embedded, ${failed} failed.`, JSON.stringify(results));
+  return total;
 }
 
-// Allow running as a standalone script
 const isMain = process.argv[1] && process.argv[1].endsWith('embedAll.js');
 if (isMain) {
-  mongoose.connect(process.env.MONGO_URI).then(async () => {
-    console.log('✅ Connected to MongoDB for standalone embedding');
-    await embedAllProducts();
-    mongoose.disconnect();
-    process.exit(0);
-  });
+  mongoose
+    .connect(process.env.MONGO_URI)
+    .then(embedAllProducts)
+    .catch((e) => {
+      console.error(e);
+      process.exitCode = 1;
+    })
+    .finally(() => mongoose.disconnect());
 }

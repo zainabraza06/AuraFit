@@ -16,15 +16,35 @@
     "scrape:fresh": "node scripts/clearDB.js && node scripts/scrapers/index.js",
     "export:catalog": "node scripts/exportCatalog.js",
     "audit:catalog": "node scripts/auditCatalog.js",
+    "profile:catalog": "node scripts/profileCatalog.js",
+    "repair:catalog": "node scripts/repairCatalog.js",
+    "backup:db": "node scripts/backupCollections.js",
+    "purge:misclassified": "node scripts/purgeMisclassified.js",
+    "clear:catalog": "node scripts/clearCatalog.js",
     "seed:admin": "node scripts/seedAdmin.js",
+    "embed:all": "node scripts/embedAll.js",
+    "refresh:catalog": "node scripts/refreshCatalog.js",
+    "search:smoke": "node scripts/searchSmoke.js",
     "embed:clothing": "node scripts/embedAll.js",
     "embed:accessories": "node scripts/embedAccessories.js",
-    "test": "node --test"
+    "test": "node --test",
+    "llm:selftest": "node scripts/llmSelfTest.js",
+    "eval:search": "node scripts/evalSearch.js",
+    "mcp:stdio": "node scripts/mcpStdio.js",
+    "agent:demo": "node scripts/agentDemo.js",
+    "backfill:stylekeys": "node scripts/backfillStyleKeys.js",
+    "bench:vectors": "node scripts/benchVectors.js",
+    "embed:images": "node scripts/embedImages.js",
+    "load:api": "node scripts/loadTestApi.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@gradio/client": "^2.3.1",
     "@huggingface/inference": "^4.13.15",
+    "@huggingface/transformers": "^4.3.2",
+    "@langchain/core": "^1.4.1",
+    "@langchain/langgraph": "^1.7.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.0.0",
@@ -40,14 +60,20 @@
     "mongoose": "^8.12.0",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
+    "prom-client": "^15.1.3",
     "rate-limit-redis": "^6.0.1",
     "replicate": "^1.4.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "autocannon": "^9.0.0",
     "cross-env": "^10.1.0",
     "mongodb-memory-server": "^10.2.0",
     "nodemon": "^3.1.9",
     "supertest": "^7.1.4"
+  },
+  "overrides": {
+    "qs": "^6.16.2"
   }
 }

@@ -159,10 +159,20 @@ const ClothingProductSchema = new mongoose.Schema(
     productUrl: { type: String, required: true, unique: true },
     source:     { type: String },
     handle:     { type: String },
+    // Design identity from the URL slug (see scrapers/utils/styleKey.js): many rows share one generic title.
+    styleCode:  { type: String, index: true },
+    styleGroup: { type: String, index: true }, // same design in other colours shares this key
 
     // ─── AI Layer ────────────────────────────────────────────────────────
     embedding:      [{ type: Number }],
     embeddingModel: { type: String },
+    embeddingTextHash: { type: String }, // hash of the text the vector was made from; a change means the vector is stale
+    // CLIP image vector (see services/imageEmbeddings.js): lets photo search compare pixels, not just a description
+    // select:false => never returned (or sent over the wire) unless a query asks for it by name.
+    // Without this every `{ embedding: 0 }` projection in the API leaked 512 floats per product.
+    imageEmbedding:      { type: [Number], select: false },
+    imageEmbeddingModel: { type: String },
+    imageEmbeddingUrl:   { type: String }, // the image URL the vector was computed from; a different imageUrl means stale
     aiEnriched:     { type: Boolean, default: false },   // true when Gemini filled missing fields
     metadataScore:  { type: Number, default: 0 },        // completeness 0-1
 

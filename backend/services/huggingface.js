@@ -1,5 +1,5 @@
 import { HfInference } from '@huggingface/inference';
-import axios from 'axios';
+import { safeGetBuffer } from '../utils/safeFetch.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,7 +12,7 @@ const hf = new HfInference(process.env.HUGGING_FACE_API_KEY);
  */
 export const classifyFashionImage = async (imageUrl) => {
   try {
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    const response = { data: (await safeGetBuffer(imageUrl)).data };
     // Use Uint8Array which is widely supported in both Node and Browser for HF SDK
     const imageData = new Uint8Array(response.data);
 
@@ -33,7 +33,7 @@ export const classifyFashionImage = async (imageUrl) => {
  */
 export const getImageEmbedding = async (imageUrl) => {
   try {
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    const response = { data: (await safeGetBuffer(imageUrl)).data };
     const imageData = new Uint8Array(response.data);
 
     const result = await hf.featureExtraction({

@@ -109,6 +109,10 @@ export class BaseAdapter {
     for (const raw of rawProducts) {
       const mapped = raw.handle !== undefined ? mapShopifyProduct(raw, baseOrigin) : raw;
       if (!mapped) continue;
+      // Sold out on the retailer's site: do not store it as available, and do not spend an LLM
+      // "repair" call on it (only the clothing parser used to drop these; shoes/jewelry/watches kept them).
+      // It is not marked seen, so the stock sweep flags any existing row for it as out of stock.
+      if (mapped.isAvailable === false) continue;
 
       let product = this._normalize(mapped, brandConfig);
       if (!product && useLlmRepair) {
@@ -142,7 +146,13 @@ export class BaseAdapter {
       }
 
       if (!skipAi && (product.metadataScore < AI_ENRICH_THRESHOLD || this._needsAi(product))) {
-        product = await this._enrich(product);
+        // AI enrichment is best-effort. If every LLM provider is down the product is still valid
+        // without it - never let an outage abort the whole scrape (it used to crash shoes/jewelry runs).
+        try {
+          product = await this._enrich(product);
+        } catch (err) {
+          logger.warn(`[${this.brand}] AI enrichment skipped for "${product.name}": ${err.message}`);
+        }
         await politeSleep(300);
       }
 

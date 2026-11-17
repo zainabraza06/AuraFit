@@ -26,14 +26,32 @@ const priceChangedPayload = z.object({
   imageUrl: z.string().url().nullish(),
 });
 
+/**
+ * Shopper feedback. Privacy: no raw user id, email or IP ever enters the pipeline - `actor` is a salted
+ * hash computed by the API. `clientEventId` makes a retried POST idempotent.
+ */
+export const FEEDBACK_ACTIONS = ['result_click', 'save', 'unsave', 'thumb_up', 'thumb_down', 'tryon_start', 'outfit_accept', 'outfit_reject'];
+
+const feedbackPayload = z.object({
+  action: z.enum(FEEDBACK_ACTIONS),
+  clientEventId: z.string().min(8).max(64),
+  actor: z.string().min(8).max(64),
+  surface: z.enum(['search', 'product', 'outfit', 'agent', 'tryon']).default('search'),
+  productUrl: z.string().url().nullish(),
+  catalog: z.enum(['clothing', 'shoes', 'jewelry', 'watches']).nullish(),
+  query: z.string().max(200).nullish(),
+  position: z.number().int().min(0).max(200).nullish(),
+});
+
 export const PAYLOAD_SCHEMAS = {
+  [EVENT_TYPES.FEEDBACK]: feedbackPayload,
   [EVENT_TYPES.DISCOVERED]: discoveredPayload,
   [EVENT_TYPES.PRICE_CHANGED]: priceChangedPayload,
 };
 
 const envelope = z.object({
   eventId: z.string().min(8),
-  type: z.enum([EVENT_TYPES.DISCOVERED, EVENT_TYPES.PRICE_CHANGED]),
+  type: z.enum([EVENT_TYPES.DISCOVERED, EVENT_TYPES.PRICE_CHANGED, EVENT_TYPES.FEEDBACK]),
   version: z.literal(1),
   occurredAt: z.string().datetime(),
   source: z.string().min(1),
@@ -45,6 +63,7 @@ const envelope = z.object({
  * so a producer retry or a Kafka redelivery can be recognised as a duplicate.
  */
 export function eventIdFor(type, payload) {
+  if (type === EVENT_TYPES.FEEDBACK) return createHash('sha256').update([type, payload.actor, payload.clientEventId].join('|')).digest('hex').slice(0, 32);
   const basis = type === EVENT_TYPES.PRICE_CHANGED
     ? [type, payload.productUrl, payload.oldPrice, payload.newPrice]
     : [type, payload.productUrl, payload.price];
@@ -63,7 +82,7 @@ export function buildEvent(type, payload, source = 'scraper') {
 }
 
 /** Kafka key: every event for a product lands on one partition, preserving per-product order. */
-export const partitionKey = (event) => event.payload.productUrl;
+export const partitionKey = (event) => event.payload.productUrl || event.payload.actor;
 
 /**
  * Validates an unknown value as an event.

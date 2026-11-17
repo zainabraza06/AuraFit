@@ -47,6 +47,24 @@ const QUERY_GARMENT_MAP = [
   { kw: ['co-ord', 'coord', 'co ord'], val: 'co-ord' }
 ];
 
+/**
+ * Which NON-clothing catalog(s) a query is about, from product-type nouns. Word-boundary matching so
+ * "ring" does not fire inside "earring" or "string". Clothing is the default and has no hint.
+ */
+const CATALOG_NOUNS = {
+  jewelry: ['earring', 'earrings', 'jhumka', 'jhumki', 'jhumkay', 'chandbali', 'necklace', 'choker', 'pendant', 'bangle', 'bangles', 'bracelet', 'kada', 'ring', 'rings', 'tikka', 'maang', 'jhoomar', 'nath', 'anklet', 'payal', 'brooch', 'mala', 'jewelry', 'jewellery', 'studs'],
+  shoes: ['shoe', 'shoes', 'heel', 'heels', 'sandal', 'sandals', 'khussa', 'khussay', 'kolhapuri', 'sneaker', 'sneakers', 'boot', 'boots', 'loafer', 'loafers', 'flats', 'slipper', 'slippers', 'wedge', 'wedges', 'pump', 'pumps', 'footwear', 'chappal', 'mules'],
+  watches: ['watch', 'watches', 'smartwatch', 'wristwatch', 'chronograph']
+};
+
+export function inferCatalogHints(lower) {
+  const hints = [];
+  for (const [catalog, nouns] of Object.entries(CATALOG_NOUNS)) {
+    if (nouns.some((n) => new RegExp(`(^|[^a-z])${n}($|[^a-z])`).test(lower))) hints.push(catalog);
+  }
+  return hints;
+}
+
 function inferGenderHint(lower) {
   if (/\b(kids|children|child|junior|toddler|baby)\b/.test(lower)) return 'kids';
   if (/\bunisex\b/.test(lower)) return 'unisex';
@@ -84,6 +102,7 @@ export function analyzeSearchQuery(raw) {
   const occasions = inferFromMap(lower, QUERY_OCCASION_MAP);
   const garmentHints = inferFromMap(lower, QUERY_GARMENT_MAP);
   const genderHint = inferGenderHint(lower);
+  const catalogHints = inferCatalogHints(lower);
   const hasStrongConstraints = hasExplicitColor && occasions.length > 0;
   return {
     raw: q,
@@ -93,6 +112,7 @@ export function analyzeSearchQuery(raw) {
     occasions,
     garmentHints,
     genderHint,
+    catalogHints,
     hasStrongConstraints
   };
 }
@@ -117,7 +137,9 @@ export function buildSemanticQueryText(signals) {
   if (signals.genderHint) {
     lines.push(`Gender: ${signals.genderHint}`);
   }
-  lines.push('Fashion clothing outfit search.');
+  // The old text always said "clothing outfit", which pulled jewelry/shoe/watch queries toward clothing.
+  const hints = signals.catalogHints || [];
+  lines.push(hints.length ? `Fashion ${hints.join(' / ')} product search.` : 'Fashion clothing outfit search.');
   return lines.filter((x) => x && String(x).trim()).join('\n');
 }
 
@@ -127,11 +149,11 @@ function canonFamily(c) {
 }
 
 /**
- * Facet alignment score in [0, 1] for hybrid ranking (short queries lean on this).
- * @param {ReturnType<typeof analyzeSearchQuery>} signals
- * @param {object} product — lean ClothingProduct fields
+ * Everything about a product that facetAlignmentScore needs and that does NOT depend on the query:
+ * the lower-cased text blob and canonicalised colours. Computing it once per cached product (instead of once per
+ * product per query) removed most of the CPU in warm semantic search (see docs/PLAN.md load test).
  */
-export function facetAlignmentScore(signals, product) {
+export function precomputeFacetData(product) {
   const hay = [
     product.name,
     product.description,
@@ -147,30 +169,55 @@ export function facetAlignmentScore(signals, product) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  return {
+    hay,
+    prim: canonFamily(product.primaryColor),
+    plist: (product.colors || []).map((c) => canonFamily(c)).filter(Boolean),
+    po: (product.occasion || []).map((o) => String(o).toLowerCase()),
+    ds: String(product.dressStyle || '').toLowerCase(),
+    sub: String(product.subCategory || '').toLowerCase(),
+    nm: String(product.name || '').toLowerCase()
+  };
+}
+
+/** Query-side values, computed once per query and kept on the signals object. */
+function querySide(signals) {
+  if (!signals._qs) {
+    signals._qs = {
+      want: new Set(signals.colorIntel.colors.map((c) => canonFamily(c)).filter(Boolean)),
+      qWords: signals.raw.toLowerCase().split(/[\s,.-]+/).filter((w) => w.length > 2),
+      occ: signals.occasions.map((o) => String(o).toLowerCase())
+    };
+  }
+  return signals._qs;
+}
+
+/**
+ * Facet alignment score in [0, 1] for hybrid ranking (short queries lean on this).
+ * @param {ReturnType<typeof analyzeSearchQuery>} signals
+ * @param {object} product — lean ClothingProduct fields
+ * @param {ReturnType<typeof precomputeFacetData>} [fx] — pass a cached value when scoring many queries against the same product
+ */
+export function facetAlignmentScore(signals, product, fx = precomputeFacetData(product)) {
+  const { want, qWords, occ } = querySide(signals);
 
   let occScore = 0.55;
-  if (signals.occasions.length && (product.occasion || []).length) {
-    const po = (product.occasion || []).map((o) => String(o).toLowerCase());
-    const hits = signals.occasions.filter((o) => po.includes(String(o).toLowerCase())).length;
-    occScore = hits ? 0.55 + 0.45 * Math.min(1, hits / Math.max(signals.occasions.length, 1)) : 0.12;
-  } else if (signals.occasions.length && !(product.occasion || []).length) {
+  if (occ.length && fx.po.length) {
+    const hits = occ.filter((o) => fx.po.includes(o)).length;
+    occScore = hits ? 0.55 + 0.45 * Math.min(1, hits / Math.max(occ.length, 1)) : 0.12;
+  } else if (occ.length && !fx.po.length) {
     occScore = 0.35;
   }
 
   let colScore = 0.55;
   if (signals.hasExplicitColor) {
-    const want = new Set(
-      signals.colorIntel.colors.map((c) => canonFamily(c)).filter(Boolean)
-    );
-    const prim = canonFamily(product.primaryColor);
-    const plist = (product.colors || []).map((c) => canonFamily(c)).filter(Boolean);
     if (want.has('Multicolor')) {
       colScore = 0.55;
-    } else if (prim && want.has(prim)) {
+    } else if (fx.prim && want.has(fx.prim)) {
       colScore = 1;
-    } else if (plist.some((c) => want.has(c))) {
+    } else if (fx.plist.some((c) => want.has(c))) {
       colScore = 0.88;
-    } else if (prim && [...want].some((w) => w && prim && w !== prim)) {
+    } else if (fx.prim && [...want].some((w) => w && w !== fx.prim)) {
       colScore = 0.1;
     } else {
       colScore = 0.22;
@@ -179,22 +226,15 @@ export function facetAlignmentScore(signals, product) {
 
   let garScore = 0.55;
   if (signals.garmentHints.length) {
-    const ds = String(product.dressStyle || '').toLowerCase();
-    const sub = String(product.subCategory || '').toLowerCase();
-    const nm = String(product.name || '').toLowerCase();
-    const ghit = signals.garmentHints.filter((g) => ds.includes(g) || sub.includes(g) || nm.includes(g)).length;
+    const ghit = signals.garmentHints.filter((g) => fx.ds.includes(g) || fx.sub.includes(g) || fx.nm.includes(g)).length;
     garScore = ghit ? 0.5 + 0.5 * (ghit / signals.garmentHints.length) : 0.25;
   }
 
-  const qWords = signals.raw
-    .toLowerCase()
-    .split(/[\s,.-]+/)
-    .filter((w) => w.length > 2);
   let kwScore = 0.45;
   if (qWords.length) {
     let hit = 0;
     for (const w of qWords) {
-      if (hay.includes(w)) hit++;
+      if (fx.hay.includes(w)) hit++;
     }
     kwScore = 0.35 + 0.65 * (hit / qWords.length);
   }

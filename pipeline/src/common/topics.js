@@ -3,11 +3,13 @@ export const TOPICS = {
   discovered: 'product.discovered',
   priceChanged: 'product.price_changed',
   deadLetter: 'product.events.dlq',
+  feedback: 'user.feedback',
 };
 
 export const EVENT_TYPES = {
   DISCOVERED: 'product.discovered',
   PRICE_CHANGED: 'product.price_changed',
+  FEEDBACK: 'user.feedback',
 };
 
 export const QUEUES = {

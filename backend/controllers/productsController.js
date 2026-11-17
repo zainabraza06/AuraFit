@@ -29,7 +29,8 @@ export async function getProducts(req, res) {
       gender
     } = req.query;
 
-    const query = {};
+    // Sold-out items are hidden (rows where stock was never recorded stay visible)
+    const query = { inStock: { $ne: false } };
     if (brand) query.brand = { $regex: brand, $options: 'i' };
     if (subCategory) query.subCategory = subCategory;
     attachGenderFilter(query, gender);
@@ -80,7 +81,7 @@ export async function getProducts(req, res) {
 
 export async function getFeaturedProducts(req, res) {
   try {
-    const match = { images: { $exists: true, $ne: [] } };
+    const match = { images: { $exists: true, $ne: [] }, inStock: { $ne: false } };
     attachGenderFilter(match, req.query.gender);
 
     const clothingRaw = await ClothingProduct.aggregate([
@@ -97,14 +98,17 @@ export async function getFeaturedProducts(req, res) {
 
 export async function getProductStats(req, res) {
   try {
+    const live = { $match: { inStock: { $ne: false } } };
     const [total, cByBrand, cPrice] = await Promise.all([
-      ClothingProduct.countDocuments(),
+      ClothingProduct.countDocuments({ inStock: { $ne: false } }),
       ClothingProduct.aggregate([
+        live,
         { $group: { _id: '$brand', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 12 }
       ]),
       ClothingProduct.aggregate([
+        live,
         { $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' }, avg: { $avg: '$price' } } }
       ])
     ]);

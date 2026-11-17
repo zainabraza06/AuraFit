@@ -82,6 +82,9 @@ jobs:
       - name: Load test
         run: npm run loadtest -- --products=5000
         working-directory: pipeline
+      - name: Feedback events end to end (API publisher -> Kafka -> consumer -> Mongo)
+        run: npm run feedbacktest -- --events=200
+        working-directory: pipeline
       - name: Failure test (SIGKILL one consumer mid-run)
         run: npm run failuretest -- --products=10000 --mode=one
         working-directory: pipeline
@@ -120,6 +123,20 @@ jobs:
           SSH="ssh -i ~/.ssh/id_deploy ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}"
           $SSH "mkdir -p ~/aurafit"
           tar czf - docker-compose.yml docker-compose.prod.yml observability | $SSH "tar xzf - -C ~/aurafit"
+      - name: Install production secrets (never the dev defaults)
+        env:
+          METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          if [ -z "$METRICS_TOKEN" ] || [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
+            echo "Set the METRICS_TOKEN and GRAFANA_ADMIN_PASSWORD repository secrets before deploying" >&2; exit 1
+          fi
+          # secrets travel over stdin, not the command line
+          printf '%s\n%s\n' "$METRICS_TOKEN" "$GRAFANA_ADMIN_PASSWORD" | ssh -i ~/.ssh/id_deploy ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} '
+            read -r MT; read -r GP; cd ~/aurafit &&
+            umask 077 &&
+            printf "%s" "$MT" > observability/secrets/metrics_token &&
+            printf "METRICS_TOKEN=%s\nGRAFANA_ADMIN_PASSWORD=%s\n" "$MT" "$GP" > .env'
       - name: Pull the images built for this commit and restart
         run: |
           ssh -i ~/.ssh/id_deploy ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \

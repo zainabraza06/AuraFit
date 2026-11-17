@@ -8,39 +8,68 @@ import ClothingProduct from '../models/ClothingProduct.js';
 import ShoeProduct from '../models/ShoeProduct.js';
 import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
-import { getTextEmbedding } from './huggingface.js';
-import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
-import { attachGenderFilter } from '../utils/catalogQuery.js';
+import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID, EMBEDDING_DIM, searchDims, truncateAndNormalize } from './embeddings.js';
+import { loadCandidates } from './vectorCache.js';
+import { facetAlignmentScore, hybridSearchScore, similarityFloor, precomputeFacetData } from './searchQueryIntel.js';
+
+// Query-independent facet data per cached product (the cached candidate objects keep their identity between queries).
+const FACET_MEMO = new WeakMap();
+const facetDataOf = (d) => {
+  let fx = FACET_MEMO.get(d);
+  if (!fx) FACET_MEMO.set(d, (fx = precomputeFacetData(d)));
+  return fx;
+};
+import { parseGenderFilter } from '../utils/catalogQuery.js';
+
+/** Score adjustment for products in (+) / outside (-) the catalog a query names. */
+export const CATALOG_HINT_BOOST = Number(process.env.CATALOG_HINT_BOOST || 0.08);
 
 export const CATALOGS = [
   {
     key: 'clothing',
     Model: ClothingProduct,
-    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl inStock styleCode styleGroup'
   },
   {
     key: 'shoes',
     Model: ShoeProduct,
-    fields: 'embedding name brand category subCategory shoeType description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category subCategory shoeType description tags colors price gender images primaryColor occasion style productUrl inStock'
   },
   {
     key: 'jewelry',
     Model: JewelryProduct,
-    fields: 'embedding name brand category jewelryType jewelryCategory description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category jewelryType jewelryCategory description tags colors price gender images primaryColor occasion style productUrl inStock'
   },
   {
     key: 'watches',
     Model: WatchProduct,
-    fields: 'embedding name brand category watchType description tags colors price gender images primaryColor occasion style productUrl'
+    fields: 'embedding name brand category watchType description tags colors price gender images primaryColor occasion style productUrl inStock'
   }
 ];
 
+/**
+ * Keeps the best-scoring product of each styleGroup (input must already be sorted best-first) and records
+ * how many colourways were folded into it. Products without a styleGroup are never merged.
+ */
+export function collapseByStyleGroup(ranked) {
+  const seen = new Map();
+  const out = [];
+  for (const p of ranked) {
+    if (!p.styleGroup) { out.push(p); continue; }
+    const first = seen.get(p.styleGroup);
+    if (first) { first._variants = (first._variants || 1) + 1; continue; }
+    seen.set(p.styleGroup, p);
+    out.push(p);
+  }
+  return out;
+}
+
+/** Query -> vector with the current model, or null when embeddings are unavailable. */
 export async function getEmbedding(text) {
-  const token = process.env.HUGGING_FACE_API_KEY;
-  if (!token) return null;
-  const embedding = await getTextEmbedding(text);
-  if (!embedding) throw new Error('HuggingFace SDK failed to return embedding');
-  return Array.isArray(embedding[0]) ? embedding[0] : embedding;
+  if (!isEmbeddingConfigured()) return null;
+  const v = await embedQuery(text);
+  const dims = searchDims();
+  return dims < EMBEDDING_DIM && v.length > dims ? truncateAndNormalize(v, dims) : v;
 }
 
 export function cosineSimilarity(a, b) {
@@ -71,12 +100,20 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
 
   const perCatalogResults = await Promise.all(
     wantCatalogs.map(async ({ key, Model, fields }) => {
-      const matchQuery = { embedding: { $exists: true, $ne: [] } };
-      if (category && key === 'clothing') matchQuery.category = category;
-      attachGenderFilter(matchQuery, gender ?? signals.genderHint);
+      // Only vectors from the CURRENT model are comparable with the query vector
+      // The cache key is the catalog only: gender/category are applied in memory below, so one warm cache
+      // serves every filter combination (it used to be one ~30 MB database fetch per distinct filter).
+      const matchQuery = { embedding: { $exists: true, $ne: [] }, embeddingModel: EMBEDDING_MODEL_ID, inStock: { $ne: false } };
+      const dims = searchDims();
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
-      const docs = await Model.find(matchQuery, selectObj).limit(400).lean();
-      return docs.map((d) => ({ ...d, _catalog: key }));
+      // $slice makes MongoDB send only the first `dims` numbers of each vector (4x less data at 256 dims)
+      if (dims < EMBEDDING_DIM) selectObj.embedding = { $slice: dims };
+      // Whole candidate set (cached, Float32 vectors) - this used to be .limit(400), i.e. most of the catalog was never searched
+      const docs = await loadCandidates(Model, key, matchQuery, selectObj, { truncate: dims < EMBEDDING_DIM ? dims : 0 });
+      const genders = parseGenderFilter(gender ?? signals.genderHint);
+      const wantCategory = category && key === 'clothing' ? category : null;
+      const kept = (genders || wantCategory) ? docs.filter((d) => (!genders || genders.includes(d.gender)) && (!wantCategory || d.category === wantCategory)) : docs;
+      return kept.map((d) => ({ d, catalog: key })); // references only: copying 3,000+ product objects per query was a top CPU cost
     })
   );
 
@@ -84,11 +121,14 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
   if (products.length === 0) return { results: [], relaxedFloor: false, totalCandidates: 0 };
 
   const qlen = signals.raw.length;
-  const scoredAll = products.map((p) => {
-    const cos = cosineSimilarity(queryEmbedding, p.embedding);
-    const facet = facetAlignmentScore(signals, p);
-    const hybrid = hybridSearchScore(cos, facet, qlen, signals.hasStrongConstraints);
-    return { ...p, _cosine: cos, _facet: facet, _score: hybrid };
+  const hints = signals.catalogHints || [];
+  const scoredAll = products.map(({ d, catalog: cat }) => {
+    const cos = cosineSimilarity(queryEmbedding, d.embedding);
+    const facet = facetAlignmentScore(signals, d, facetDataOf(d));
+    // A query that names a product type ("choker", "heels", "watch") should rank that catalog first.
+    const catalogAdj = hints.length ? (hints.includes(cat) ? CATALOG_HINT_BOOST : -CATALOG_HINT_BOOST) : 0;
+    const hybrid = hybridSearchScore(cos, facet, qlen, signals.hasStrongConstraints) + catalogAdj;
+    return { d, styleGroup: d.styleGroup, _catalog: cat, _cosine: cos, _facet: facet, _score: hybrid };
   });
 
   const floor = similarityFloor(signals);
@@ -99,20 +139,27 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
     ranked = [...scoredAll].sort((a, b) => b._score - a._score).slice(0, Math.max(limit, 10));
   }
 
+  // One card per design: the same style in other colours is folded into its best-scoring colourway.
+  if (opts.collapseColorways !== false) ranked = collapseByStyleGroup(ranked);
+
   const scored = ranked.slice(0, limit);
-  const results = scored.map(({ embedding, _cosine, _facet, _score, _catalog, ...p }) => ({
+  const results = scored.map(({ d, _cosine, _facet, _score, _catalog, _variants }) => {
+    const { embedding, ...p } = d;
+    return {
     ...p,
+    ...(_variants ? { variantCount: _variants } : {}),
     catalog: _catalog,
     relevanceScore: parseFloat(_score.toFixed(4)),
     semanticCosine: parseFloat(_cosine.toFixed(4)),
     facetScore: parseFloat(_facet.toFixed(4))
-  }));
+    };
+  });
 
   return { results, relaxedFloor: relaxed, totalCandidates: products.length };
 }
 
 /**
- * Regex-based cross-catalog fallback for when HUGGING_FACE_API_KEY isn't set —
+ * Regex-based cross-catalog fallback for when embeddings aren't available —
  * checks BOTH the canonical color family AND the exact scraped shade (a photo
  * analysis often returns a specific shade like "maroon", which only lives in
  * primaryExactColor/exactColors, never in the canonical primaryColor field).
@@ -143,7 +190,7 @@ export async function regexSearchAcrossCatalogs({ color, keywords = [], gender }
   }
   if (!orClauses.length) return { results: [], relaxedFloor: false, totalCandidates: 0 };
 
-  const query = { $or: orClauses };
+  const query = { $or: orClauses, inStock: { $ne: false } };
   attachGenderFilter(query, gender);
 
   const perCatalog = await Promise.all(

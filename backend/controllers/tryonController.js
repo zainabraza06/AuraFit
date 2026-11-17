@@ -1,4 +1,7 @@
-import axios from 'axios';
+import { safeGetBuffer, assertSafeUrlShape } from '../utils/safeFetch.js';
+import { createTryonQueue, QueueBusyError } from '../services/tryonQueue.js';
+import { createMongoTryonStore } from '../services/tryonStore.js';
+import { callerKey } from '../middleware/quota.js';
 import { isCloudinaryConfigured, rehostUrlOnCloudinary } from '../services/cloudinary.js';
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 
@@ -11,8 +14,8 @@ async function resolveImageBytes(input) {
   if (Buffer.isBuffer(input.buffer)) {
     return { imageBase64: input.buffer.toString('base64'), mimeType: input.mimetype || 'image/jpeg' };
   }
-  const { data, headers } = await axios.get(input.url, { responseType: 'arraybuffer', timeout: 20000 });
-  return { imageBase64: Buffer.from(data).toString('base64'), mimeType: headers['content-type'] || 'image/jpeg' };
+  const { data, contentType } = await safeGetBuffer(input.url, { timeout: 20000 });
+  return { imageBase64: data.toString('base64'), mimeType: contentType || 'image/jpeg' };
 }
 
 /**
@@ -20,8 +23,8 @@ async function resolveImageBytes(input) {
  * half-body photo or one where the face is covered/cropped out produces a
  * visibly broken result (the model stretches/shortens the outfit to fit
  * whatever body region is in frame). Better to tell the user upfront than
- * show them a bad generation. Reuses the same vision fallback chain (Mistral
- * Pixtral → Gemini) as visual search — no new provider/dependency.
+ * show them a bad generation. Reuses the same Gemini vision chain
+ * as visual search — no new provider/dependency.
  *
  * `missingPortion` distinguishes a MINOR crop (just feet/ankles missing —
  * worth auto-extending) from a SIGNIFICANT one (only bust/waist-up — no
@@ -456,6 +459,124 @@ async function parseAndValidateInputs(req, res, { requireClothing = true } = {})
   }
 
   return { personInput, clothingInput, description };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ASYNC JOBS: POST /api/tryon/jobs -> 202 {id}, then poll GET /jobs/:id or stream GET /jobs/:id/events
+// (the synchronous POST /api/tryon below is kept for existing clients but holds a request open 60-120 s)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** The whole job body: photo check, optional extension, generation. Failures carry a shopper-safe message. */
+export async function prepareAndRunTryon({ person, clothing, description }) {
+  let personInput = person;
+  const photoCheck = await validatePersonPhoto(personInput);
+  if (!photoCheck.ok) throw Object.assign(new Error(photoCheck.message), { reason: 'bad_person_photo', userMessage: photoCheck.message });
+  if (photoCheck.needsExtension) {
+    try {
+      personInput = { url: await extendPersonPhoto(personInput) };
+    } catch (e) {
+      const msg = "This photo is almost full-length, but we couldn't extend it right now. Please try again shortly, or upload a full-length photo.";
+      throw Object.assign(new Error(e.message), { reason: 'bad_person_photo', userMessage: msg });
+    }
+  }
+  try {
+    return await runSingleTryon({ personInput, clothingInput: clothing, description });
+  } catch (e) {
+    throw Object.assign(new Error(e.message), { reason: 'providers_unavailable', userMessage: 'Virtual try-on is temporarily unavailable. Please try again shortly.' });
+  }
+}
+
+let defaultQueue;
+function getQueue(req) {
+  if (req.app.locals.tryonQueue) return req.app.locals.tryonQueue;
+  if (!defaultQueue) {
+    const store = createMongoTryonStore();
+    defaultQueue = createTryonQueue({
+      run: prepareAndRunTryon,
+      store,
+      maxConcurrent: Number(process.env.TRYON_CONCURRENCY || 2),
+      maxQueued: Number(process.env.TRYON_MAX_QUEUED || 20),
+    });
+    defaultQueue.failStale().then((n) => n && console.warn(`[TryOn] failed ${n} stale job(s) from a previous run`)).catch(() => {});
+    store.pruneOld().catch(() => {});
+  }
+  return defaultQueue;
+}
+
+/** Image inputs from multipart files or http(s) URLs. URLs are shape-checked now so bad ones fail fast with 400. */
+function collectJobInputs(req) {
+  const pick = (field, urlField) => {
+    const f = req.files?.[field]?.[0];
+    if (f) return { buffer: f.buffer, mimetype: f.mimetype };
+    const u = req.body?.[urlField];
+    if (typeof u === 'string' && u) {
+      assertSafeUrlShape(u);
+      return { url: u };
+    }
+    return null;
+  };
+  return { person: pick('person', 'personUrl'), clothing: pick('clothing', 'clothingUrl'), description: String(req.body?.description || '').slice(0, 300) };
+}
+
+export async function submitTryonJob(req, res) {
+  let inputs;
+  try {
+    inputs = collectJobInputs(req);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  if (!inputs.person || !inputs.clothing) return res.status(400).json({ error: 'A person image (or profile picture) and a clothing image are required.' });
+  try {
+    const job = await getQueue(req).submit(inputs, callerKey(req));
+    res.status(job.status === 'done' ? 200 : 202).location(`/api/tryon/jobs/${job.id}`).json(job);
+  } catch (e) {
+    if (e instanceof QueueBusyError) return res.status(429).set('Retry-After', '30').json({ error: e.message, reason: e.code });
+    console.error('[TryOn] submit failed:', e.message);
+    res.status(500).json({ error: 'Could not start the try-on. Please try again.' });
+  }
+}
+
+export async function getTryonJob(req, res) {
+  const job = await getQueue(req).get(req.params.id, callerKey(req));
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+}
+
+/** Server-Sent Events: the current state immediately, then every change until done/failed. */
+export async function streamTryonJob(req, res) {
+  const queue = getQueue(req);
+  const first = await queue.get(req.params.id, callerKey(req));
+  if (!first) return res.status(404).json({ error: 'Job not found' });
+
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders?.();
+  const send = (v) => res.write(`event: status\ndata: ${JSON.stringify(v)}\n\n`);
+  let beat;
+  let cap;
+  let off = () => {};
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(beat);
+    clearTimeout(cap);
+    off();
+  };
+  const finish = () => {
+    cleanup();
+    res.end();
+  };
+
+  off = queue.subscribe(req.params.id, (v) => {
+    send(v);
+    if (v.status === 'done' || v.status === 'failed') finish();
+  });
+  beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
+  cap = setTimeout(finish, 6 * 60 * 1000); // never hold a connection longer than a job can run
+  req.on('close', cleanup);
+
+  send(first);
+  if (first.status === 'done' || first.status === 'failed') finish();
 }
 
 export async function virtualTryon(req, res) {

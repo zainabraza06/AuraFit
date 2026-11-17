@@ -140,8 +140,9 @@ test('vector search endpoints return expected config errors', async () => {
   const noKey = await request(app).get('/api/search/semantic').query({ q: 'red kurta' });
   assert.equal(noKey.status, 503);
 
-  const embedNoKey = await request(app).post('/api/search/embed-all').send({ limit: 1 });
-  assert.equal(embedNoKey.status, 503);
+  // embed-all re-embeds the whole catalog: it must not be callable anonymously (it used to be)
+  const embedAnon = await request(app).post('/api/search/embed-all').send({ limit: 1 });
+  assert.equal(embedAnon.status, 401);
 });
 
 test('recommendations endpoints are reachable without calling AI', async () => {

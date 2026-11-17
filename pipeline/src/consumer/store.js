@@ -14,12 +14,35 @@ const isDuplicateKey = (err) => err?.code === 11000;
  *
  * @returns {Promise<{outcome: 'stored'|'duplicate', priceDrop?: object}>}
  */
-export function createStore({ ProductState, ProcessedEvent }) {
+export function createStore({ ProductState, ProcessedEvent, Feedback }) {
   // Raw driver collections on purpose: this is the hot path, and Mongoose's per-document
   // hydration/casting made the consumer CPU-bound. Schemas/indexes are still defined in db.js.
   const products = ProductState.collection;
   const events = ProcessedEvent.collection;
   return {
+    /** Feedback is append-only: one row per event, the unique eventId makes a redelivery a no-op. */
+    async saveFeedback(event) {
+      const { payload } = event;
+      try {
+        await Feedback.collection.insertOne({
+          eventId: event.eventId,
+          action: payload.action,
+          actor: payload.actor,
+          surface: payload.surface,
+          productUrl: payload.productUrl ?? null,
+          catalog: payload.catalog ?? null,
+          query: payload.query ?? null,
+          position: payload.position ?? null,
+          occurredAt: new Date(event.occurredAt),
+          storedAt: new Date(),
+        });
+        return { outcome: 'stored' };
+      } catch (err) {
+        if (isDuplicateKey(err)) return { outcome: 'duplicate' };
+        throw err;
+      }
+    },
+
     async save(event) {
       const { payload } = event;
       const incoming = event.type === EVENT_TYPES.PRICE_CHANGED ? payload.newPrice : payload.price;

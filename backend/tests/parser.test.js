@@ -280,3 +280,18 @@ describe('Style inference', () => {
     assert(p.style.includes('embroidered'), 'inferred style should be added');
   });
 });
+
+describe('text cleaning at parse time', () => {
+  test('HTML entities in name and description are decoded (regression: &amp; leaked into ~20% of rows)', () => {
+    const p = normalizeProduct(
+      makeRaw({
+        title: '3 Piece Suit &amp; Dupatta',
+        description: 'Embroidered Neckline &amp; Sleeve.&nbsp;Fabric: Lawn <b>Wash</b> care',
+      }),
+      makeConfig()
+    );
+    assert.equal(p.name, '3 Piece Suit & Dupatta');
+    assert.equal(p.description, 'Embroidered Neckline & Sleeve. Fabric: Lawn Wash care');
+    assert.ok(!/&amp;|&nbsp;|<b>/.test(`${p.name} ${p.description}`));
+  });
+});

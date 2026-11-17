@@ -19,6 +19,8 @@ import ShoeProduct from '../../models/ShoeProduct.js';
 import WatchProduct from '../../models/WatchProduct.js';
 import JewelryProduct from '../../models/JewelryProduct.js';
 import logger from './utils/logger.js';
+import { markUnseenOutOfStock } from './utils/stockSync.js';
+import { brandAllowed } from './utils/brandFilter.js';
 
 import { CLOTHING_BRANDS } from './config/clothingBrands.js';
 import { SHOE_BRANDS } from './config/shoeBrands.js';
@@ -92,7 +94,8 @@ const MODEL_BY_VERTICAL = {
 async function upsertToModel(Model, product) {
   const doc = await Model.findOneAndUpdate(
     { productUrl: product.productUrl },
-    { $set: product },
+    // Seen on the live site this run => available. (Previously these verticals never set stock at all.)
+    { $set: { ...product, inStock: true, stockLastChecked: new Date() } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   const age = Date.now() - new Date(doc.scrapedAt || doc.createdAt).getTime();
@@ -110,9 +113,10 @@ async function runOneVertical(vertical, dryRun) {
   if (!cfg) throw new Error(`Unknown vertical: ${vertical}`);
 
   const Model = MODEL_BY_VERTICAL[vertical];
-  let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalFailed = 0;
+  let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalFailed = 0, totalStockOut = 0;
 
   for (const brandConfig of cfg.brands) {
+    if (!brandAllowed(brandConfig.brand)) continue; // SCRAPER_ONLY_BRANDS
     const AdapterClass = cfg.adapters[brandConfig.adapter];
     if (!AdapterClass) {
       logger.warn(`No adapter ${brandConfig.adapter} for ${vertical}`);
@@ -123,6 +127,7 @@ async function runOneVertical(vertical, dryRun) {
 
     const collectionResults = await adapter.scrapeAll();
     let ins = 0, upd = 0, skp = 0, fail = 0;
+    const seenUrls = new Set();
 
     for (const result of collectionResults) {
       if (result.strategy === 'failed') {
@@ -137,6 +142,7 @@ async function runOneVertical(vertical, dryRun) {
         }
         try {
           const out = await upsertToModel(Model, product);
+          seenUrls.add(product.productUrl);
           if (out === 'inserted') ins++;
           else upd++;
         } catch (err) {
@@ -145,14 +151,26 @@ async function runOneVertical(vertical, dryRun) {
         }
       }
     }
+    // Anything of this brand we did not see is sold out / delisted - unless the run looks broken
+    let stockOut = 0;
+    if (!dryRun) {
+      const sweep = await markUnseenOutOfStock(Model, brandConfig.brand, seenUrls, {
+        failedCollections: fail,
+        totalCollections: collectionResults.length,
+      });
+      stockOut = sweep.marked;
+      if (sweep.skipped) logger.warn(`  ⚠ [${vertical}] stock sweep SKIPPED for ${brandConfig.brand}: ${sweep.reason}`);
+    }
+
     totalInserted += ins;
     totalUpdated += upd;
     totalSkipped += skp;
     totalFailed += fail;
-    logger.success(`✓ [${vertical}] ${brandConfig.brand}: +${ins} inserted, ~${upd} updated, ✗${fail} failed`);
+    totalStockOut += stockOut;
+    logger.success(`✓ [${vertical}] ${brandConfig.brand}: +${ins} inserted, ~${upd} updated, ↓${stockOut} out-of-stock, ✗${fail} failed`);
   }
 
-  return { totalInserted, totalUpdated, totalSkipped, totalFailed };
+  return { totalInserted, totalUpdated, totalSkipped, totalFailed, totalStockOut };
 }
 
 export async function runVerticalScraper(vertical = 'clothing', opts = {}) {
@@ -167,17 +185,18 @@ export async function runVerticalScraper(vertical = 'clothing', opts = {}) {
       ? ['clothing', 'shoes', 'watches', 'jewelry']
       : [vertical];
 
-  let sum = { totalInserted: 0, totalUpdated: 0, totalSkipped: 0, totalFailed: 0 };
+  let sum = { totalInserted: 0, totalUpdated: 0, totalSkipped: 0, totalFailed: 0, totalStockOut: 0 };
   for (const v of order) {
     const r = await runOneVertical(v, dryRun);
     sum.totalInserted += r.totalInserted;
+    sum.totalStockOut += r.totalStockOut;
     sum.totalUpdated += r.totalUpdated;
     sum.totalSkipped += r.totalSkipped;
     sum.totalFailed += r.totalFailed;
   }
 
   logger.success(
-    `Done [${vertical}]: Inserted ${sum.totalInserted} | Updated ${sum.totalUpdated} | Skipped ${sum.totalSkipped} | Failed ${sum.totalFailed}`
+    `Done [${vertical}]: Inserted ${sum.totalInserted} | Updated ${sum.totalUpdated} | Skipped ${sum.totalSkipped} | Out-of-stock ${sum.totalStockOut} | Failed ${sum.totalFailed}`
   );
   return sum;
 }

@@ -5,6 +5,8 @@
  */
 
 import { inferColors } from '../utils/colorInference.js';
+import { stripHtml, cleanName } from '../utils/textClean.js';
+import { deriveStyleKey } from '../utils/styleKey.js';
 
 // ─── Required fields ──────────────────────────────────────────────────────────
 const REQUIRED_FIELDS = ['name', 'price', 'productUrl', 'images'];
@@ -447,8 +449,10 @@ export function normalizeProduct(raw, brandConfig) {
   const { brand, category, subCategory: configSubCategory,
           occasion: configOccasion = [], style: configStyle = [], source } = brandConfig;
 
-  const name = (raw.title || raw.name || '').trim();
+  const name = cleanName(raw.title || raw.name || '');
   if (!name || name.length < 3) return null;
+  // Scrapers should already hand over clean text; this is the safety net for HTML-extracted rows.
+  raw = { ...raw, description: stripHtml(raw.description || '', 2000) };
 
   // ── Non-clothing filter ──
   const searchBlob = [name, raw.productType || '', (raw.tags || []).join(' ')]
@@ -595,6 +599,7 @@ export function normalizeProduct(raw, brandConfig) {
     productUrl,
     source: source || brand,
     handle: raw.handle || undefined,
+    ...deriveStyleKey({ name, productUrl, brand }),
     aiEnriched: false,
     metadataScore
   };

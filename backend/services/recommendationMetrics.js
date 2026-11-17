@@ -2,11 +2,14 @@
  * Lightweight in-process counters + structured logs for recommendation / LLM flows.
  * Safe no-op style: never throws. Optional snapshot for a future health endpoint.
  */
+import { appEvents } from '../observability/metrics.js';
+
 const counts = Object.create(null);
 
 /** @param {string} name */
 export function bumpMetric(name, delta = 1) {
   counts[name] = (counts[name] || 0) + delta;
+  appEvents.inc({ name }, delta);
 }
 
 export function snapshotRecommendationMetrics() {

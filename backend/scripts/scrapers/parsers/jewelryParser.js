@@ -28,7 +28,10 @@ const NON_JEWELRY_NAME = new RegExp(
     // bags & leather goods
     'bag|bags|clutch|purse|purses|wallet|backpack|tote|handbag|satchel|pouch|belt|belts|' +
     // apparel / textile
-    'kurta|kurti|shirt|trouser|dupatta|shawl|stole|scarf|abaya|hijab|suit|saree|lehenga|' +
+    'kurta|kurti|shirt|trouser|trousers|dupatta|shawl|stole|scarf|abaya|hijab|suit|saree|lehenga|' +
+    // Clothing words that leaked in from brands selling both (J., Gul Ahmed, Alkaram). Deliberately NOT
+    // "top"/"tops": "tops" are stud earrings. "pret" and "rtw" are ready-to-wear labels.
+    'kameez|qameez|shalwar|salwar|waistcoat|jacket|coat|pant|pants|pajama|pyjama|sherwani|frock|tunic|maxi|gown|blouse|culotte|rtw|rts|pret|khaddar|' +
     // beauty / misc
     'perfume|fragrance|lipstick|makeup|nail\\s*polish|sunglass|sunglasses|watch|watches' +
   ')\\b',
@@ -166,3 +169,8 @@ export const JEWELRY_ADAPTER_HOOKS = {
   needsAiRefinement: needsJewelryAi,
   vertical: 'jewelry'
 };
+
+/** True when a product NAME clearly belongs to another vertical (clothing, footwear, bags...). Used by the cleanup script. */
+export function isNonJewelryName(name) {
+  return NON_JEWELRY_NAME.test(String(name || ''));
+}

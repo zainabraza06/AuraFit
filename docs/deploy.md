@@ -13,7 +13,9 @@ On any Linux server with Docker + the compose plugin (a small VPS is enough for 
 2. Create an SSH key pair, add the public key to the server user's `authorized_keys`.
 3. In the GitHub repo: **Settings -> Secrets and variables -> Actions**
    - Variables: `DEPLOY_HOST` (server IP/hostname), `DEPLOY_USER`
-   - Secret: `DEPLOY_SSH_KEY` (the private key)
+   - Secrets: `DEPLOY_SSH_KEY` (the private key), `METRICS_TOKEN` (protects the API's `/metrics`), `GRAFANA_ADMIN_PASSWORD`.
+     The deploy job refuses to run without the last two, so a server is never exposed with the dev defaults.
+     Use alphanumeric values: Docker Compose interpolates `$` inside `.env` files.
 4. Create a GitHub **Environment** named `production` (optionally with required reviewers).
 5. Put app secrets (`JWT_SECRET`, API keys) in `~/aurafit/backend/.env` on the server and keep it out of git.
 

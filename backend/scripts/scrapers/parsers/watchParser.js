@@ -59,6 +59,7 @@ export function normalizeWatchProduct(raw, brandConfig) {
   if (!name || name.length < 2) return null;
   const blob = [name, raw.description || '', ...(raw.tags || [])].join(' ').toLowerCase();
   if (NEG.some((n) => blob.includes(n))) return null;
+  if (isNonWatchName(name)) return null; // scarves/shoes/bags that leak into watch collections
 
   const price = raw.price;
   if (!price || price <= 0) return null;
@@ -133,3 +134,24 @@ export const WATCH_ADAPTER_HOOKS = {
   needsAiRefinement: needsWatchAi,
   vertical: 'watches'
 };
+
+/**
+ * Names that clearly belong to another vertical. Watch collections on multi-category retailers
+ * (ECS, Limelight) leak scarves, shirts, shoes and bags. A POSITIVE rule is not possible here:
+ * real ECS watches are named like "Structured Dial" or "Tonneau Roman" with no "watch" in them.
+ */
+const NON_WATCH_NAME = new RegExp(
+  '\\b(' +
+    'sandal|sandals|slipper|slippers|khussa|pump|pumps|sneaker|sneakers|shoe|shoes|boot|boots|loafer|loafers|mule|mules|wedge|wedges|footwear|' +
+    'bag|bags|clutch|purse|wallet|backpack|tote|handbag|satchel|' +
+    'scarf|scarves|shawl|stole|shirt|kurta|kurti|dupatta|suit|trouser|trousers|piece|pret|rtw|rts|khaddar|lawn|abaya|hijab|saree|lehenga|' +
+    'kameez|shalwar|salwar|waistcoat|jacket|coat|frock|tunic|blouse|' +
+    'perfume|fragrance|lipstick|makeup|earring|earrings|necklace|bangle|bangles' +
+  ')\\b',
+  'i'
+);
+
+/** True when a product NAME is clearly not a watch. Used by the parser and the cleanup script. */
+export function isNonWatchName(name) {
+  return NON_WATCH_NAME.test(String(name || ''));
+}
