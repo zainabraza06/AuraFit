@@ -19,6 +19,11 @@ ApiClient clientFor(MockClient mock, {String? token}) => ApiClient(baseUrl: () =
 
 void main() {
   group('Product.fromJson', () {
+    test('reads the compact shape the stylist agent returns (image, url)', () {
+      final p = Product.fromJson({'id': 'a1', 'name': 'Slipper', 'brand': 'STYLO', 'price': 1470, 'image': 'https://x/s.jpg', 'url': 'https://x/p', 'catalog': 'shoes'});
+      expect(p.imageUrl, 'https://x/s.jpg');
+      expect(p.productUrl, 'https://x/p');
+    });
     test('reads a clothing record and formats the price', () {
       final p = Product.fromJson({
         '_id': 'abc', 'name': 'Lawn 3-Piece', 'brand': 'Khaadi', 'price': 5000, 'imageUrl': 'https://x/a.jpg',

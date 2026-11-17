@@ -49,7 +49,8 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> j, {String? why}) {
     final images = _strings(j['images']);
-    final main = (j['imageUrl'] as String?)?.trim();
+    // the stylist agent's compact products say `image` and `url`; catalog products say `imageUrl` and `productUrl`
+    final main = ((j['imageUrl'] ?? j['image']) as String?)?.trim();
     final cat = (j['catalog'] ?? j['category'] ?? 'clothing').toString().toLowerCase();
     return Product(
       id: '${j['_id'] ?? j['id'] ?? ''}',
@@ -63,7 +64,7 @@ class Product {
       primaryColor: (j['primaryExactColor'] ?? j['primaryColor']) as String?,
       occasion: _strings(j['occasion']),
       sizes: _strings(j['sizes']),
-      productUrl: j['productUrl'] as String?,
+      productUrl: (j['productUrl'] ?? j['url']) as String?,
       catalog: const {'clothing', 'shoes', 'jewelry', 'watches'}.contains(cat) ? cat : _catalogFromCategory(cat),
       inStock: j['inStock'] != false,
       why: why ?? (j['why'] as String?),
