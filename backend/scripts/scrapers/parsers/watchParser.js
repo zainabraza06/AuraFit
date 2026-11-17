@@ -146,6 +146,8 @@ const NON_WATCH_NAME = new RegExp(
     'bag|bags|clutch|purse|wallet|backpack|tote|handbag|satchel|' +
     'scarf|scarves|shawl|stole|shirt|kurta|kurti|dupatta|suit|trouser|trousers|piece|pret|rtw|rts|khaddar|lawn|abaya|hijab|saree|lehenga|' +
     'kameez|shalwar|salwar|waistcoat|jacket|coat|frock|tunic|blouse|' +
+    // seen leaking from a site-wide fallback (Limelight): tops, co-ords, knitwear, hosiery, slides, eyewear, jewelry
+    'top|tops|cardigan|co[-\\s]?ord|coord|tights|slip[-\\s]?ons?|slides?|sunglass|sunglasses|hoop|hoops|bracelet|bracelets|' +
     'perfume|fragrance|lipstick|makeup|earring|earrings|necklace|bangle|bangles' +
   ')\\b',
   'i'
