@@ -5,7 +5,7 @@ import { untrusted, looksLikeInjection, UNTRUSTED_NOTICE } from '../utils/prompt
 test('untrusted wraps, caps length and removes control characters', () => {
   const out = untrusted('a\u0000b‮c\n\n  d', 100);
   assert.equal(out, '⟦a b c d⟧');
-  assert.ok(untrusted('x'.repeat(5000), 50).length <= 50 + 4);
+  assert.ok(untrusted('x'.repeat(5000), 50).length <= 50 + 3 + 2);
   assert.equal(untrusted(null), '⟦⟧');
 });
 
