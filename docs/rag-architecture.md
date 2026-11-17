@@ -53,11 +53,41 @@ Unchanged: scraping, text cleaning, the facet/hybrid scoring, constraint relaxat
 - **First start** downloads about 600 MB (cached afterwards in `backend/.model-cache`).
 - **Switching models** later only means changing `EMBEDDING_MODEL_ID`/repo: `npm run embed:all` then re-embeds everything stale. Vectors of different models are never mixed.
 
-## What is still brute force
+## Searching on shorter vectors (measured)
 
-Ranking is exact cosine in Node over the cached candidates. At a few thousand products that is fast (milliseconds once cached).
-When the catalog grows past roughly 20-50k rows, move candidates into a real vector index (Atlas Vector Search or pgvector); the provider, model tagging and
-weekly job above stay exactly as they are. This is step 2.2 in [PLAN.md](PLAN.md).
+Qwen3-Embedding is trained so the first N dimensions of a vector are themselves a usable embedding. Stored vectors stay 1024-dim; search truncates
+and re-normalises them (`EMBEDDING_SEARCH_DIMS`, default 256), and the database sends only those numbers (`$slice`). Measured on the 35-query golden set
+(`npm run eval:search`):
+
+| Dims | Precision@10 | Recall@10 | MRR | nDCG@10 | Payload / memory |
+|---|---|---|---|---|---|
+| 1024 | 0.809 | 0.842 | 0.946 | 0.892 | 1x |
+| 512 | 0.794 | 0.827 | 0.945 | 0.881 | 0.5x |
+| **256 (default)** | 0.806 | 0.838 | 0.948 | 0.885 | **0.25x** |
+| 128 | 0.768 | 0.799 | 0.945 | 0.862 | 0.125x |
+
+256 is within noise of full size at a quarter of the data. Caveat: 35 queries is a small set; re-run the eval before changing it.
+
+## Pictures: CLIP image vectors
+
+Text vectors cannot tell a print or a silhouette. Each product photo also gets a CLIP vector (`Xenova/clip-vit-base-patch32`, 512-dim, local, ~150 ms/image;
+`npm run embed:images`, resumable). CLIP puts images and sentences in one space, so:
+
+* **photo search** compares the uploaded picture with every product picture and fuses that ranking with the description-based one (reciprocal-rank fusion);
+* text-to-image works with the same vectors (verified: "gold earrings", "a pair of shoes", "a lawn suit dress", "a wrist watch" each ranked the right catalog photo first).
+
+## What is still brute force, and when that stops being fine
+
+Ranking is exact cosine in Node over cached candidates. Measured (`npm run bench:vectors`, synthetic unit vectors, this laptop):
+
+| Products | 256-dim p95 | 1024-dim p95 | Memory (256 / 1024) |
+|---|---|---|---|
+| 3,400 (today) | 4.5 ms | 12 ms | 3 / 14 MB |
+| 20,000 | 25 ms | 87 ms | 20 / 82 MB |
+| 100,000 | 153 ms | 539 ms | 102 / 410 MB |
+
+So an index is **not needed** at today's size, and not before roughly 50k products at 256 dims. Past that, move candidates into a vector index
+(Atlas Vector Search or pgvector); the provider, model tagging and weekly job stay as they are. This is step 2.2 in [PLAN.md](PLAN.md): measured, deliberately not built.
 
 ## The weekly loop
 
