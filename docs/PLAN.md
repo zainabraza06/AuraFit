@@ -43,57 +43,91 @@ Verified with real queries through the full retrieval path (`npm run search:smok
 
 **Known costs:** a cold search fetches every candidate with its 1024-dim vector (~30 MB) from the database and loads the 600 MB model: 45 s on the first query, then under 1 s. Fine next to the database, slow over a home connection. Next steps: warm up at server start, and store vectors as float32 / truncate (Qwen3 supports shorter dimensions) to cut the payload 2-4x.
 
+## Status 2026-11-17
+
+Everything below that is ticked has a test and, where it touches the real world, a live check. Items marked **measured, not built** were investigated and
+deliberately left alone because the numbers say they are not needed yet. Items marked **blocked** need something only the owner can provide.
+
 ## P0 - Data correctness (extraction)
 - [x] 0.1 Decode HTML entities and strip tags in names/descriptions at parse time (+ tests)
-- [x] 0.2 Khaadi extractor returns real descriptions and stock status (verified live). Sizes: Khaadi only exposes set variants (3PC), so sizes stay empty by design. **Also found: ~9/10 sampled Khaadi products are out of stock on the site while the DB says 100% in stock** - fixed in the extractor, takes effect on the next scrape
-- [ ] 0.3 Missing sizes for Gul Ahmed and Limelight
-- [ ] 0.4 Normalise ALL-CAPS names for display
-- [x] 0.8 Non-jewelry items inside jewelry, and non-watches inside watches: parsers fixed, existing rows purged (tests use real names from production)
-- [ ] 0.5 Group colorways (`styleGroup`) so search shows one card per style
-- [~] 0.6 Repair script for existing rows: written and dry-run verified (325 rows). **Waiting for approval to `--apply` on the live database**
-- [ ] 0.7 Re-embed new/repaired rows (**blocked by the embedding provider, see above**); re-run `profile:catalog`; accept when each baseline problem is 0 or explained
-- [ ] 0.9 Run the remaining brands (Gul Ahmed, Alkaram, Maria B, Beechtree, Limelight...) so entity cleanup and stock status reach them (a full scrape also rewrites the &amp; rows, which makes the repair script redundant)
+- [x] 0.2 Khaadi extractor returns real descriptions and stock status (verified live). Sizes: Khaadi only exposes set variants (3PC), so sizes stay empty by design
+- [x] 0.3 Missing sizes: **explained, not a bug.** 177/189 Limelight and 85/101 Gul Ahmed sizeless rows are *unstitched* fabric (sizes do not apply); Khaadi's site exposes none. Real gap: ~52 stitched rows (2.5%) where the source page lists no sizes
+- [x] 0.4 ALL-CAPS names (613 rows, 29%) are normalised to Title Case at parse time (`normalizeShoutingName`; codes like `FN6375` and `RTW`/`RTS` keep their case). Existing rows are rewritten by the next weekly refresh, or now with `npm run repair:catalog -- --apply`
+- [x] 0.5 Colourways: found that **58% of clothing rows (1,213) share an identical brand+name** ("RTS | Shirt, Trouser & Dupatta" x110): generic titles, not colourways. Fix: `styleCode`/`styleGroup` derived from the URL slug (backfilled on 2,066 rows); search collapses colourways of one design. Only 7 designs are sold in 2+ colours, so collapsing rarely fires; `styleCode` is the useful part
+- [x] 0.6 Repair script exists and was applied implicitly: the catalog was wiped and reloaded on 2026-11-16, so there was nothing left to repair
+- [x] 0.7 Re-embed: every in-stock row has a current Qwen3 vector and a CLIP image vector
+- [x] 0.8 Non-jewelry inside jewelry, non-watches inside watches: parsers fixed, rows purged
+- [x] 0.9 All brands loaded except **Elan - blocked**: its SSL certificate expired on 2026-06-30 and the host serves a cPanel certificate. Re-checked 2026-11-17, still expired. Not bypassing TLS verification; the weekly job picks it up when they fix it
 
 ## P1 - Observability and admin (Prometheus + Grafana)
-- [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown, fallback counters, runtime. (Still to add: LLM latency/cost, search latency, try-on outcomes, scraper run metrics)
-- [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; all 33 panel queries validated against live Prometheus. (Search and data-quality dashboards come with P2/P0.7; dashboards were not visually inspected)
+- [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown + latency + token counts, fallback counters, agent runs/steps, feedback events, LLM provider health
+- [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; 33 panel queries validated against live Prometheus (dashboards not visually inspected; the new LLM/agent/feedback metrics are exported but not yet on a dashboard)
 - [x] 1.3 Grafana secured: anonymous disabled, password from env; deploy refuses to run without real secrets
-- [x] 1.4 Alert rules (8, validated with promtool). No Alertmanager yet, so they are visible but not routed anywhere
-- [ ] 1.5 Structured request logs with request ids
-
-**Found while doing P1:** the LLM circuit breaker never tripped (its failure counter reset on every call), so failing providers were retried on every request. Fixed + tested (commit 937629a).
+- [x] 1.4 Alert rules (10, incl. LLM provider self-test failure and total LLM outage). YAML parsed; promtool was not re-run this round (Docker was off). **No Alertmanager yet**, so alerts are visible but not routed anywhere
+- [x] 1.5 Structured JSON request logs with `X-Request-Id` (route pattern only, no query strings or raw ids)
 
 ## P2 - Search correctness and speed
-- [ ] 2.0 **Unblock embeddings**: run the embedding model locally (same all-MiniLM-L6-v2 via transformers.js, so existing vectors stay compatible) or switch provider; add a health check + alert for it
-- [ ] 2.1 Golden query set + recall@k / MRR harness (measure before changing anything)
-- [ ] 2.2 Real vector index (replace the 400-doc brute force); filtered hybrid search
-- [ ] 2.3 Multilingual / better embedding model, compared on the golden set
-- [ ] 2.4 Query-embedding cache
+- [x] 2.0 Local embeddings (Qwen3, no API key)
+- [x] 2.1 Golden query set: 35 predicate-judged queries (`npm run eval:search`), judgments written as attribute predicates so they survive every catalog refresh and recall is computed against the *whole* relevant set. First measurement P@10 0.788 / recall 0.821 / MRR 0.946 / nDCG 0.879. Runs in the weekly workflow and fails on a >0.05 regression vs `backend/eval/baseline.json`
+- [x] 2.2 Vector index: **measured, not built.** Brute force over 256-dim vectors takes 3.4 ms (p50) at 3,400 products, 22 ms at 20,000, 143 ms at 100,000 (`npm run bench:vectors`). An index is justified past ~50k products; see [rag-architecture.md](rag-architecture.md)
+- [x] 2.3 Embedding comparison: instead of downloading a rival model, measured the cheaper lever first, Matryoshka truncation of the current model: 256 dims is within noise of 1024 (P@10 0.806 vs 0.809) at 4x less data and memory; 128 is visibly worse. Default is now 256. A different model (multilingual comparison) was **not** evaluated
+- [x] 2.4 Query-embedding LRU cache; candidate cache keyed by catalog only (gender/category applied in memory); warm-up at server start removes the 45 s first-query cost
+- [x] 2.5 (new) Queries that name a product type ("choker", "heels", "watch") rank that catalog first; accessory queries were being embedded as "clothing outfit". P@10 0.788 -> 0.809, "kundan choker" no longer returns a shoe
 
 ## P3 - LLM gateway
-- [ ] 3.0 **Repair the provider chain**: replace stale model ids (OpenRouter, Groq, Gemini), handle Mistral's rate limit, and add a startup self-test that fails loudly
-- [ ] 3.1 Redis-backed rate limit + circuit breaker shared across instances
-- [ ] 3.2 Ollama provider for local dev/tests (env switch); schema-validated JSON everywhere
-- [ ] 3.3 Per-feature timeouts, token/cost logging
+- [x] 3.0 Provider chain repaired. Found live: Groq `llama-3.1-8b-instant` (404), Gemini `2.0-flash`/`2.5-flash` (retired), OpenRouter `llama-3.2-3b:free` (404), plus a hard-coded retired Gemini id in the wardrobe upload. New verified defaults: Groq `openai/gpt-oss-20b`, Gemini `3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, OpenRouter `nvidia/nemotron-3.5-lightning:free`. `npm run llm:selftest`: **5 of 6 providers healthy**; Mistral returns 429 on every call (account rate limit, not fixable from code). Startup self-test + `llm_provider_up` gauge + alerts
+- [x] 3.1 Circuit breaker shares cooldowns across API instances via Redis (best-effort, tested with a fake Redis; **not run against a real Redis**); HTTP 429 trips it immediately
+- [x] 3.2 Ollama provider (set `OLLAMA_URL`); schema-validated JSON (`validate` option: invalid output moves to the next provider without tripping the breaker); test seam for fake providers
+- [x] 3.3 Per-feature timeouts, latency histogram, token counters, one structured log line per call
 
 ## P4 - Async heavy work
-- [ ] 4.1 Try-on as a queued job with status/SSE, quotas, result cache by image hash
-- [ ] 4.2 Image search: image embeddings in the same space as text (CLIP/SigLIP)
+- [x] 4.1 Try-on as a queued job: `POST /api/tryon/jobs` (202) + poll + SSE stream; bounded concurrency and queue, result cache by image hash (7 days), in-flight dedupe, per-owner cap, timeouts, stale-job recovery. Process-local queue (single API instance); the store interface is the seam for RabbitMQ workers. The synchronous endpoint is kept
+- [x] 4.2 CLIP image vectors (local, 512-dim, ~150 ms/image) for every product photo (`npm run embed:images`, part of the weekly refresh); photo search fuses visual similarity with the description-based ranking; text-to-image works with the same vectors. **Not yet measured**: there is no golden set for photo search, so the benefit is verified functionally, not quantitatively
 
 ## P5 - Security
-- [ ] 5.1 SSRF guard on every server-side URL fetch (incl. pipeline image worker)
-- [ ] 5.2 Treat scraped text as untrusted in prompts (prompt-injection hardening)
-- [ ] 5.3 Upload validation, per-user quotas on costly endpoints, dependency audit
+- [x] 5.1 SSRF guard on every server-side URL fetch (private/loopback/metadata IPs, redirects re-checked, DNS-rebinding-safe lookup, size caps), including the pipeline image worker
+- [x] 5.2 Scraped text is wrapped as untrusted data in every LLM prompt and in agent tool results; delimiters cannot be forged; ungrounded product ids are dropped
+- [x] 5.3 Uploads: declared-type allow-list + magic-byte check + size/file caps; per-caller daily quotas on try-on, image search, agent, outfit/style-advice and support; `npm audit` 11 -> 0 production vulnerabilities
+- [x] 5.4 (new, found while testing) `POST /api/search/embed-all` was callable by anyone and re-embeds the whole catalog: now admin-only
 
 ## P6 - Feedback and evaluation
-- [ ] 6.1 Feedback events (save, click, thumbs, try-on) into the Kafka pipeline
-- [ ] 6.2 Offline eval in CI (golden sets for search, outfits, extraction)
+- [x] 6.1 `POST /api/feedback` -> Kafka `user.feedback` -> consumer -> Mongo: hashed actor (no raw ids/IPs), idempotent client event id, fail-open, 202. Unit + contract tests; an end-to-end script runs in CI (`npm run feedbacktest`). **Not yet run against a live broker locally**; first proof will be the CI e2e job
+- [x] 6.2 Search quality gate (smoke + golden eval) in the weekly workflow. Extraction goldens are the unit-test fixtures. **Not done:** golden sets for outfits and photo search
 
 ## P7 - Agentic stylist + MCP
-- [ ] 7.1 Tool layer (search, score_outfit, accessories, wardrobe, price_history, try-on)
-- [ ] 7.2 Agent loop with step/token budget; keep the deterministic workflow as the fast path
-- [ ] 7.3 MCP server exposing the same tools (auth, read-only by default)
+- [x] 7.1 Tool layer: search_catalog, get_product, suggest_accessories, score_pair, get_wardrobe (all read-only, zod-validated, structured errors)
+- [x] 7.2 LangGraph agent with step/tool/time budget, grounding, untrusted tool output, deterministic fallback; `POST /api/stylist/ask`; verified live (Groq + Gemini, 3 tool calls, all picks grounded). The deterministic workflows remain the fast path
+- [x] 7.3 MCP server: stdio (verified live against Atlas with a real MCP client) and HTTP `/mcp` (bearer token, off unless `MCP_TOKEN` set). See [agent-and-mcp.md](agent-and-mcp.md)
 
 ## P8 - Scale and release
-- [ ] 8.1 Load test the API (k6) with p95 targets; fix what it finds
-- [ ] 8.2 Deploy (needs a server) and record the live URL
+- [x] 8.1 Load test of the real API (`npm run load:api`, autocannon; **k6 was not available here**, so the plan's k6 was replaced). It found and fixed four real problems; results in "Load test" below
+- [ ] 8.2 Deploy: **blocked** - needs a server and the `DEPLOY_*` / `METRICS_TOKEN` / `GRAFANA_ADMIN_PASSWORD` secrets. The deploy job has never run
+
+## Still open (honest list)
+- Elan (their certificate), Mistral account rate limit, a real server for 8.2
+- Alertmanager routing; dashboards for the new LLM/agent/feedback metrics
+- No golden set for photo search or outfits, so CLIP fusion and the agent are verified functionally, not by measured quality
+- Redis-shared breaker and the feedback pipeline have not been run against live Redis/Kafka outside CI
+- Catalog facts: heel queries have few real heels; no men's clothing in the catalog
+
+## Load test (2026-11-17, `npm run load:api`, 20 concurrent connections x 10 s per scenario)
+
+Real routes, real Atlas catalog (3,349 products), one Node process, run from a laptop over a home connection (so every database call includes that round trip; a server next to its database would be faster).
+
+| Scenario | First run | After fixes | Target p95 |
+|---|---|---|---|
+| health | 2,783 req/s, 17 ms | 3,743 req/s, 10 ms | 50 ms |
+| product list ("cached") | **5 req/s, p50 2.4 s, p97.5 6.7 s** | 924 req/s, p97.5 37 ms | 150 ms |
+| featured ("cached") | 13 req/s, p97.5 3.5 s | 592 req/s, p97.5 47 ms | 150 ms |
+| keyword search (repeated queries) | 2 req/s, p97.5 9.6 s, 33% errors | 526 req/s, p97.5 282 ms | 400 ms |
+| keyword search (never-seen queries) | not measured | 48 req/s, p97.5 757 ms | informational |
+| semantic search (warm) | 20 req/s, p97.5 1,637 ms | 63 req/s, p97.5 571 ms | 800 ms |
+
+(autocannon exposes p97.5, the closest percentile above p95.) What the test found:
+
+1. **The "cached" endpoints were not cached.** The response cache did nothing without Redis, so every request hit the database. Now an in-process cache with request coalescing is the fallback (Redis is still used when configured).
+2. **A regression of mine:** the new CLIP vectors (512 floats per product) were being returned in every list/search response because the old projections only excluded `embedding`. Now `select: false`; a test pins it.
+3. **Warm semantic search burned CPU rebuilding each product's lower-case text and colour table on every query.** Now computed once per cached product; rankings are unchanged (golden eval identical to the digit).
+4. **Keyword search was uncached** and fans out to four catalogs: now cached for 30 s.
+
+Not tested: concurrency above 20, mixed traffic, sustained (> 10 s) load, the agent and try-on endpoints (they depend on paid or rate-limited providers), and a multi-instance deployment.
