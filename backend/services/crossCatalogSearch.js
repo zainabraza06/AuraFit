@@ -13,6 +13,9 @@ import { loadCandidates } from './vectorCache.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
 import { attachGenderFilter } from '../utils/catalogQuery.js';
 
+/** Score adjustment for products in (+) / outside (-) the catalog a query names. */
+export const CATALOG_HINT_BOOST = Number(process.env.CATALOG_HINT_BOOST || 0.08);
+
 export const CATALOGS = [
   {
     key: 'clothing',
@@ -88,7 +91,10 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
   const scoredAll = products.map((p) => {
     const cos = cosineSimilarity(queryEmbedding, p.embedding);
     const facet = facetAlignmentScore(signals, p);
-    const hybrid = hybridSearchScore(cos, facet, qlen, signals.hasStrongConstraints);
+    // A query that names a product type ("choker", "heels", "watch") should rank that catalog first.
+    const hints = signals.catalogHints || [];
+    const catalogAdj = hints.length ? (hints.includes(p._catalog) ? CATALOG_HINT_BOOST : -CATALOG_HINT_BOOST) : 0;
+    const hybrid = hybridSearchScore(cos, facet, qlen, signals.hasStrongConstraints) + catalogAdj;
     return { ...p, _cosine: cos, _facet: facet, _score: hybrid };
   });
 

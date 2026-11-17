@@ -47,6 +47,24 @@ const QUERY_GARMENT_MAP = [
   { kw: ['co-ord', 'coord', 'co ord'], val: 'co-ord' }
 ];
 
+/**
+ * Which NON-clothing catalog(s) a query is about, from product-type nouns. Word-boundary matching so
+ * "ring" does not fire inside "earring" or "string". Clothing is the default and has no hint.
+ */
+const CATALOG_NOUNS = {
+  jewelry: ['earring', 'earrings', 'jhumka', 'jhumki', 'jhumkay', 'chandbali', 'necklace', 'choker', 'pendant', 'bangle', 'bangles', 'bracelet', 'kada', 'ring', 'rings', 'tikka', 'maang', 'jhoomar', 'nath', 'anklet', 'payal', 'brooch', 'mala', 'jewelry', 'jewellery', 'studs'],
+  shoes: ['shoe', 'shoes', 'heel', 'heels', 'sandal', 'sandals', 'khussa', 'khussay', 'kolhapuri', 'sneaker', 'sneakers', 'boot', 'boots', 'loafer', 'loafers', 'flats', 'slipper', 'slippers', 'wedge', 'wedges', 'pump', 'pumps', 'footwear', 'chappal', 'mules'],
+  watches: ['watch', 'watches', 'smartwatch', 'wristwatch', 'chronograph']
+};
+
+export function inferCatalogHints(lower) {
+  const hints = [];
+  for (const [catalog, nouns] of Object.entries(CATALOG_NOUNS)) {
+    if (nouns.some((n) => new RegExp(`(^|[^a-z])${n}($|[^a-z])`).test(lower))) hints.push(catalog);
+  }
+  return hints;
+}
+
 function inferGenderHint(lower) {
   if (/\b(kids|children|child|junior|toddler|baby)\b/.test(lower)) return 'kids';
   if (/\bunisex\b/.test(lower)) return 'unisex';
@@ -84,6 +102,7 @@ export function analyzeSearchQuery(raw) {
   const occasions = inferFromMap(lower, QUERY_OCCASION_MAP);
   const garmentHints = inferFromMap(lower, QUERY_GARMENT_MAP);
   const genderHint = inferGenderHint(lower);
+  const catalogHints = inferCatalogHints(lower);
   const hasStrongConstraints = hasExplicitColor && occasions.length > 0;
   return {
     raw: q,
@@ -93,6 +112,7 @@ export function analyzeSearchQuery(raw) {
     occasions,
     garmentHints,
     genderHint,
+    catalogHints,
     hasStrongConstraints
   };
 }
@@ -117,7 +137,9 @@ export function buildSemanticQueryText(signals) {
   if (signals.genderHint) {
     lines.push(`Gender: ${signals.genderHint}`);
   }
-  lines.push('Fashion clothing outfit search.');
+  // The old text always said "clothing outfit", which pulled jewelry/shoe/watch queries toward clothing.
+  const hints = signals.catalogHints || [];
+  lines.push(hints.length ? `Fashion ${hints.join(' / ')} product search.` : 'Fashion clothing outfit search.');
   return lines.filter((x) => x && String(x).trim()).join('\n');
 }
 
