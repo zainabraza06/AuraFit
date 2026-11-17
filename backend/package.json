@@ -36,7 +36,10 @@
     "bench:vectors": "node scripts/benchVectors.js",
     "embed:images": "node scripts/embedImages.js",
     "load:api": "node scripts/loadTestApi.js",
-    "eval:visual": "node scripts/evalVisual.js"
+    "eval:visual": "node scripts/evalVisual.js",
+    "compare:clip": "node scripts/compareImageModels.js",
+    "eval:agent": "node scripts/evalAgent.js",
+    "eval:outfits": "node scripts/evalOutfits.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

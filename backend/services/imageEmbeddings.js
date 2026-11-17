@@ -31,34 +31,41 @@ const normalize = (arr) => {
   return Array.from(v);
 };
 
-let modelsPromise = null;
-async function loadModels() {
-  const t = await import('@huggingface/transformers');
-  t.env.cacheDir = process.env.EMBEDDING_CACHE_DIR || path.resolve(__dirname, '../.model-cache');
-  const [processor, vision, tokenizer, text] = await Promise.all([
-    t.AutoProcessor.from_pretrained(MODEL_REPO),
-    t.CLIPVisionModelWithProjection.from_pretrained(MODEL_REPO, { dtype: MODEL_DTYPE }),
-    t.AutoTokenizer.from_pretrained(MODEL_REPO),
-    t.CLIPTextModelWithProjection.from_pretrained(MODEL_REPO, { dtype: MODEL_DTYPE }),
-  ]);
-  return { RawImage: t.RawImage, processor, vision, tokenizer, text };
+/**
+ * A CLIP-family backend for any transformers.js-compatible repo (separate vision/text ONNX towers).
+ * Exported so scripts/compareImageModels.js can evaluate alternatives with exactly the same code path.
+ */
+export function createClipBackend({ repo = MODEL_REPO, dtype = MODEL_DTYPE } = {}) {
+  let modelsPromise = null;
+  async function loadModels() {
+    const t = await import('@huggingface/transformers');
+    t.env.cacheDir = process.env.EMBEDDING_CACHE_DIR || path.resolve(__dirname, '../.model-cache');
+    const [processor, vision, tokenizer, text] = await Promise.all([
+      t.AutoProcessor.from_pretrained(repo),
+      t.CLIPVisionModelWithProjection.from_pretrained(repo, { dtype }),
+      t.AutoTokenizer.from_pretrained(repo),
+      t.CLIPTextModelWithProjection.from_pretrained(repo, { dtype }),
+    ]);
+    return { RawImage: t.RawImage, processor, vision, tokenizer, text };
+  }
+  return {
+    async embedImage(buffer) {
+      modelsPromise ||= loadModels();
+      const m = await modelsPromise;
+      const image = await m.RawImage.fromBlob(new Blob([buffer]));
+      const { image_embeds } = await m.vision(await m.processor(image));
+      return normalize(image_embeds.data);
+    },
+    async embedText(text) {
+      modelsPromise ||= loadModels();
+      const m = await modelsPromise;
+      const { text_embeds } = await m.text(m.tokenizer([text], { padding: true, truncation: true }));
+      return normalize(text_embeds.data);
+    },
+  };
 }
 
-const localBackend = {
-  async embedImage(buffer) {
-    modelsPromise ||= loadModels();
-    const m = await modelsPromise;
-    const image = await m.RawImage.fromBlob(new Blob([buffer]));
-    const { image_embeds } = await m.vision(await m.processor(image));
-    return normalize(image_embeds.data);
-  },
-  async embedText(text) {
-    modelsPromise ||= loadModels();
-    const m = await modelsPromise;
-    const { text_embeds } = await m.text(m.tokenizer([text], { padding: true, truncation: true }));
-    return normalize(text_embeds.data);
-  },
-};
+const localBackend = createClipBackend();
 
 let backend = localBackend;
 
