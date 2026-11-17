@@ -71,7 +71,7 @@ test('embedPendingImages embeds new products, skips unfetchable/undecodable ones
   assert.equal(first.skipped, 2);
   assert.equal(first.failures.length, 2);
 
-  const red = await ClothingProduct.findOne({ name: 'Red One' }).lean();
+  const red = await ClothingProduct.findOne({ name: 'Red One' }).select('+imageEmbedding').lean();
   assert.deepEqual(red.imageEmbedding, [1, 0, 0]);
   assert.equal(red.imageEmbeddingModel, IMAGE_EMBEDDING_MODEL_ID);
   assert.equal(red.imageEmbeddingUrl, 'https://img/red.jpg');
@@ -142,4 +142,14 @@ test('fuseRankings: items in both lists rise above items in one; order is determ
 test('embedImage / embedTextForImages go through the injected backend', async () => {
   assert.deepEqual(await embedImage(Buffer.from([2, 9])), [0, 0, 1]);
   assert.deepEqual(await embedTextForImages('red'), [1, 0, 0]);
+});
+
+test('imageEmbedding is never returned by default (it used to leak into every list/search response)', async () => {
+  await ClothingProduct.create({ ...base, name: 'Has Vector', productUrl: 'https://t/hv', imageEmbedding: [1, 0, 0], imageEmbeddingModel: IMAGE_EMBEDDING_MODEL_ID });
+  const plain = await ClothingProduct.findOne({ name: 'Has Vector' }).lean();
+  assert.equal('imageEmbedding' in plain, false);
+  const withoutText = await ClothingProduct.findOne({ name: 'Has Vector' }, { embedding: 0 }).lean();
+  assert.equal('imageEmbedding' in withoutText, false, 'the common {embedding:0} projection must not bring it back');
+  const asked = await ClothingProduct.findOne({ name: 'Has Vector' }, 'imageEmbedding').lean();
+  assert.deepEqual(asked.imageEmbedding, [1, 0, 0], 'still available when asked for by name');
 });

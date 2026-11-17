@@ -38,7 +38,7 @@ export function isImageVectorStale(p, modelId = IMAGE_EMBEDDING_MODEL_ID) {
  * @returns {Promise<{ scanned: number, embedded: number, skipped: number, failures: string[] }>}
  */
 export async function embedPendingImages(Model, { limit = Infinity, concurrency = 6, fetchImage = (u) => safeGetBuffer(u, { timeout: 20000 }).then((r) => r.data), embed = embedImage, log = () => {}, force = false } = {}) {
-  const docs = await Model.find(force ? { inStock: { $ne: false } } : needsImageEmbeddingFilter(), 'imageUrl images imageEmbedding imageEmbeddingModel imageEmbeddingUrl name').lean();
+  const docs = await Model.find(force ? { inStock: { $ne: false } } : needsImageEmbeddingFilter(), 'imageUrl images +imageEmbedding imageEmbeddingModel imageEmbeddingUrl name').lean();
   const todo = docs.filter((d) => imageUrlOf(d) && (force || isImageVectorStale(d))).slice(0, limit);
   const result = { scanned: todo.length, embedded: 0, skipped: 0, failures: [] };
 
