@@ -1,16 +1,18 @@
 import express from 'express';
-import multer from 'multer';
+import { imageUpload, verifyImages, uploadErrorHandler } from '../middleware/uploads.js';
 import { protect } from '../middleware/auth.js';
 import { register, login, getMe, changePassword, updateProfilePicture } from '../controllers/authController.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = imageUpload({ maxBytes: 5 * 1024 * 1024, maxFiles: 1 });
 
 // `upload.single('image')` is optional here — registration works with or without a picture.
-router.post('/register', upload.single('image'), register);
+router.post('/register', upload.single('image'), verifyImages, register);
 router.post('/login', login);
 router.get('/me', protect, getMe);
 router.put('/change-password', protect, changePassword);
-router.put('/profile-picture', protect, upload.single('image'), updateProfilePicture);
+router.put('/profile-picture', protect, upload.single('image'), verifyImages, updateProfilePicture);
+
+router.use(uploadErrorHandler);
 
 export default router;
