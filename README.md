@@ -118,11 +118,11 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 | Backend | Node.js, Express 4 (ES Modules) |
 | Database | MongoDB via Mongoose 8 |
 | Authentication | JWT (jsonwebtoken), bcryptjs |
-| AI — Text (primary) | Mistral (`mistral-small-latest`) |
-| AI — Text (fallback) | OpenRouter → Groq → Gemini |
-| AI — Vision (primary) | Mistral Pixtral (`pixtral-12b-2409`) |
-| AI — Vision (fallback) | Google Gemini |
-| Vector Embeddings | HuggingFace `sentence-transformers/all-MiniLM-L6-v2` |
+| AI — Text | Provider chain, order configurable (`LLM_PROVIDER_ORDER`): Groq (`gpt-oss`) → Gemini 3.x → OpenRouter → Mistral; optional local Ollama. Circuit breaker, per-feature timeouts, startup self-test (`npm run llm:selftest`) |
+| AI — Vision | Gemini 3.x → Mistral |
+| Text embeddings | Qwen3-Embedding-0.6B, local (no API key), searched at 256 dims (measured vs 1024: [docs/rag-architecture.md](docs/rag-architecture.md)) |
+| Image embeddings | CLIP ViT-B/32, local; photo search fuses visual similarity with the description-based ranking |
+| Agent / MCP | LangGraph stylist agent (`POST /api/stylist/ask`) and an MCP server (stdio + HTTP) over the same read-only tools: [docs/agent-and-mcp.md](docs/agent-and-mcp.md) |
 | Virtual Try-On (paid) | Replicate `IDM-VTON` |
 | Virtual Try-On (free) | Hugging Face Space `yisol/IDM-VTON` via `@gradio/client` |
 | Image Hosting | Cloudinary |
@@ -158,6 +158,11 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 | Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
 | Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
 | CI | **Passing on GitHub** ([PR #1](https://github.com/zainabraza06/AuraFit/pull/1)): tests on every push/PR, both Docker images build, and the end-to-end job brings up the whole stack on a GitHub runner and passes the load test (5,500 events) and the consumer-SIGKILL test (11,000 events) with 0 lost and 0 duplicated |
+| Search quality | **Measured**: 35 predicate-judged queries, P@10 0.806, recall 0.838, MRR 0.948, nDCG 0.885 (`npm run eval:search`); runs in the weekly workflow and fails on regression |
+| API performance | **Load-tested** (20 connections, real catalog): product list 924 req/s p97.5 37 ms, semantic search 63 req/s p97.5 571 ms; the test found and fixed an uncached "cached" endpoint. Details in [docs/PLAN.md](docs/PLAN.md) |
+| Security | SSRF guard on server-side fetches, upload validation (magic bytes), prompt-injection hardening, per-caller quotas on costly endpoints, 0 known production vulnerabilities (`npm audit`) |
+| Agent and MCP | **Verified live** (real LLMs, real catalog, real MCP client); grounded answers; budget-limited |
+| Feedback events | API → Kafka → consumer → Mongo, idempotent. Unit/contract-tested; end-to-end run is in CI |
 | CD (deploy) | **Implemented, not yet run.** On `main` the pipeline publishes images to GHCR and deploys over SSH with a health smoke test ([docs/deploy.md](docs/deploy.md)). It needs a server and the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` settings, and is skipped until then. Nothing is deployed yet |
 
 ### Run it (one command)
