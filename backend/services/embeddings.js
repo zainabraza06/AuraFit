@@ -54,6 +54,7 @@ let backend = localBackend;
 /** @param {{ embed(texts: string[]): Promise<number[][]> } | null} replacement  null restores the default. */
 export function setEmbeddingBackend(replacement) {
   backend = replacement || localBackend;
+  clearQueryCache(); // vectors from another backend are not comparable
 }
 
 // ONNX sessions are not safe to run concurrently; serialise calls through one queue.
@@ -71,11 +72,39 @@ async function embedMany(texts) {
   return vectors;
 }
 
-/** One search query -> vector (with the task instruction). */
+// Query-embedding cache: people repeat searches (and the same text is embedded for paging, refinements,
+// and the weekly eval). An embedding costs ~100-300 ms of CPU on the single ONNX queue; a hit costs ~0.
+const QUERY_CACHE_MAX = Number(process.env.EMBEDDING_QUERY_CACHE_MAX || 1000);
+const queryCache = new Map(); // text -> vector (Map keeps insertion order => cheap LRU)
+const queryCacheStats = { hits: 0, misses: 0 };
+
+export function queryCacheInfo() {
+  return { size: queryCache.size, ...queryCacheStats };
+}
+
+export function clearQueryCache() {
+  queryCache.clear();
+  queryCacheStats.hits = 0;
+  queryCacheStats.misses = 0;
+}
+
+/** One search query -> vector (with the task instruction). Cached per exact normalised text. */
 export async function embedQuery(text) {
   const clean = String(text ?? '').trim();
   if (!clean) throw new Error('embedQuery: empty text');
-  return (await embedMany([formatQuery(clean)]))[0];
+  const key = clean.toLowerCase().replace(/\s+/g, ' ');
+  const hit = queryCache.get(key);
+  if (hit) {
+    queryCacheStats.hits++;
+    queryCache.delete(key); // refresh recency
+    queryCache.set(key, hit);
+    return hit;
+  }
+  queryCacheStats.misses++;
+  const vector = (await embedMany([formatQuery(clean)]))[0];
+  queryCache.set(key, vector);
+  if (queryCache.size > QUERY_CACHE_MAX) queryCache.delete(queryCache.keys().next().value);
+  return vector;
 }
 
 /** Product / document texts -> vectors, in order. Processes in small batches to bound memory. */

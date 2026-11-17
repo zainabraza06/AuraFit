@@ -72,3 +72,22 @@ test('cosine: identical = 1, orthogonal = 0, mismatched dimensions = 0 (never Na
 test('model id is exported so stored vectors can be tagged with it', () => {
   assert.match(EMBEDDING_MODEL_ID, /Qwen3-Embedding/);
 });
+
+// ── query cache ──────────────────────────────────────────────────────────────
+import { embedQuery as _embedQuery, queryCacheInfo, clearQueryCache } from './embeddings.js';
+import { setEmbeddingBackend as _setBackend } from './embeddings.js';
+
+test('repeated queries are served from the cache (case/space-insensitive) and the cache is bounded by backend swaps', async () => {
+  let calls = 0;
+  _setBackend({ embed: async (texts) => { calls += texts.length; return texts.map(() => [1, 0]); } });
+  clearQueryCache();
+  await _embedQuery('Red  Lehnga');
+  await _embedQuery('red lehnga');
+  await _embedQuery('  RED LEHNGA ');
+  assert.equal(calls, 1);
+  assert.deepEqual(queryCacheInfo(), { size: 1, hits: 2, misses: 1 });
+  await _embedQuery('blue kurta');
+  assert.equal(calls, 2);
+  _setBackend(null);
+  assert.equal(queryCacheInfo().size, 0, 'swapping the backend clears vectors that are no longer comparable');
+});
