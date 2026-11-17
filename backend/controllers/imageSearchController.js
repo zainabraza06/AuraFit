@@ -1,4 +1,6 @@
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
+import { embedImage, isImageEmbeddingConfigured } from '../services/imageEmbeddings.js';
+import { searchByImageVector, fuseRankings } from '../services/visualSearch.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../services/searchQueryIntel.js';
 import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs, cosineSimilarity } from '../services/crossCatalogSearch.js';
 import { isEmbeddingConfigured, EMBEDDING_MODEL_ID } from '../services/embeddings.js';
@@ -410,9 +412,28 @@ export async function searchByImage(req, res) {
       engine = 'keyword fallback (embeddings unavailable)';
     }
 
+    // Pixel-level similarity (CLIP) fused with the description-based ranking above: the description knows
+    // facets (catalog, colour family, occasion); the picture knows print, silhouette and embellishment.
+    // Best-effort: any failure (model not downloaded, no vectors yet) leaves the existing results untouched.
+    let visualUsed = false;
+    if (process.env.IMAGE_VISUAL_SEARCH !== 'false' && isImageEmbeddingConfigured()) {
+      try {
+        const imageVector = await embedImage(req.file.buffer);
+        const visual = await searchByImageVector(imageVector, { catalog: detectedCatalog, limit: limit * 2 });
+        if (visual.length) {
+          matches = fuseRankings(matches, visual).slice(0, limit);
+          visualUsed = true;
+          engine = `${engine} + CLIP visual similarity`;
+        }
+      } catch (e) {
+        console.warn('[imageSearch] visual similarity skipped:', e.message);
+      }
+    }
+
     res.json({
       analysis,
       detectedCatalog,
+      visualSimilarity: visualUsed,
       intent: intentUsed,
       matches,
       engine,
