@@ -29,10 +29,13 @@ How it runs (`backend/services/agent/graph.js`, a LangGraph state machine):
 ```
 START -> decide --(tool)--> act --> decide ...
             |
-            +--(final | budget exhausted)--> END
+            +--(final)--> verify --(violates a stated budget/catalog, 1st time)--> decide
+            |               |
+            |               +--(ok, or already revised)--> END
+            +--(budget exhausted | LLM down)--> END (fallback answer)
 ```
 
-* **Budget**: at most 6 decisions, 5 tool calls, 45 s. Enforced in one place. A model that never stops calling tools is cut off and answered from what it already found.
+* **Budget**: at most 7 decisions, 5 tool calls, 60 s, and one revision. Enforced in one place. A model that never stops calling tools is cut off and answered from what it already found.
 * **Grounding**: the answer may only recommend product ids that a tool returned *in this run*. Invented ids are dropped (`droppedUngroundedPicks` in the trace).
 * **Untrusted data**: tool output (product names/descriptions scraped from retailer sites) is wrapped in delimiters the model is told never to obey, and the wrapper cannot be forged from inside the text.
 * **Verify and revise**: after the model answers, a budget stated in PKR (total, or "each piece") and any catalog the shopper named ("with shoes", "matching jewelry") are checked with plain code. If the answer breaks one, the model is sent back once with the exact numbers and must search again. This exists because the evaluation showed it overshooting an 8000 PKR budget (8360) and forgetting requested jewelry.
