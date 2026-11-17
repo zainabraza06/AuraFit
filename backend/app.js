@@ -64,8 +64,9 @@ export function createApp() {
     })
   );
 
-  // Disable rate limiting in tests to keep smoke runs deterministic.
-  if (process.env.NODE_ENV !== 'test') {
+  // Disable rate limiting in tests to keep smoke runs deterministic, and in `npm run load:api` (NODE_ENV=loadtest)
+  // so the load test measures the app, not the limiter. There is deliberately no env flag that disables it in production.
+  if (process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'loadtest') {
     // With REDIS_URL the counters are shared across API instances; otherwise per-process memory.
     const redis = getRedis();
     const store = (prefix) => redis

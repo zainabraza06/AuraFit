@@ -34,7 +34,8 @@
     "agent:demo": "node scripts/agentDemo.js",
     "backfill:stylekeys": "node scripts/backfillStyleKeys.js",
     "bench:vectors": "node scripts/benchVectors.js",
-    "embed:images": "node scripts/embedImages.js"
+    "embed:images": "node scripts/embedImages.js",
+    "load:api": "node scripts/loadTestApi.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -66,6 +67,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "autocannon": "^9.0.0",
     "cross-env": "^10.1.0",
     "mongodb-memory-server": "^10.2.0",
     "nodemon": "^3.1.9",
