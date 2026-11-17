@@ -1,0 +1,12 @@
+{
+  "k": 10,
+  "date": "2026-11-17",
+  "note": "First measurement on the clean-reloaded catalog, before any search changes",
+  "queries": 35,
+  "scored": 34,
+  "unanswerable": ["shalwar-kameez-men"],
+  "precision": 0.788,
+  "recall": 0.821,
+  "mrr": 0.946,
+  "ndcg": 0.879
+}

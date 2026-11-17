@@ -63,7 +63,9 @@ export function queryMetrics(ranked, spec, relevantTotal, k = 10) {
     precision: top.length ? hits / top.length : 0,
     recall: relevantTotal > 0 ? hits / Math.min(relevantTotal, k) : null, // capped: can't retrieve more than k
     rr: firstHit === -1 ? 0 : 1 / (firstHit + 1),
-    ndcg: ideal > 0 ? dcg / ideal : null,
+    // Ideal ranking = every relevant item first. Partially relevant items can push DCG above that ideal
+    // when few fully-relevant items exist, so cap at 1.
+    ndcg: ideal > 0 ? Math.min(1, dcg / ideal) : null,
     hits,
     relevantTotal,
   };

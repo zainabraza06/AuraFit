@@ -28,7 +28,8 @@
     "embed:clothing": "node scripts/embedAll.js",
     "embed:accessories": "node scripts/embedAccessories.js",
     "test": "node --test",
-    "llm:selftest": "node scripts/llmSelfTest.js"
+    "llm:selftest": "node scripts/llmSelfTest.js",
+    "eval:search": "node scripts/evalSearch.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
