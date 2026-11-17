@@ -61,9 +61,9 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 
 ## P1 - Observability and admin (Prometheus + Grafana)
 - [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown + latency + token counts, fallback counters, agent runs/steps, feedback events, LLM provider health
-- [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; 33 panel queries validated against live Prometheus (dashboards not visually inspected; the new LLM/agent/feedback metrics are exported but not yet on a dashboard)
+- [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; now 39 panel queries, all validated against live Prometheus, including 6 new panels for LLM latency/tokens/provider health, agent runs/steps and feedback events (dashboards still not visually inspected in a browser)
 - [x] 1.3 Grafana secured: anonymous disabled, password from env; deploy refuses to run without real secrets
-- [x] 1.4 Alert rules (10, incl. LLM provider self-test failure and total LLM outage). `promtool check rules`: SUCCESS, 10 rules. **No Alertmanager yet**, so alerts are visible but not routed anywhere
+- [x] 1.4 Alert rules (10, incl. LLM provider self-test failure and total LLM outage). `promtool check rules`: SUCCESS, 10 rules, all healthy in a live Prometheus. **Alertmanager added and verified**: Prometheus reports it as an active alertmanager, and a synthetic alert fired in it was delivered to a webhook receiver (`status=firing`). Notifications go out only if `ALERT_SLACK_WEBHOOK_URL` and/or `ALERT_WEBHOOK_URL` is set; with neither, alerts are visible at :9093 but go nowhere. Slack delivery itself was not tested (no workspace)
 - [x] 1.5 Structured JSON request logs with `X-Request-Id` (route pattern only, no query strings or raw ids)
 
 ## P2 - Search correctness and speed
@@ -76,7 +76,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 
 ## P3 - LLM gateway
 - [x] 3.0 Provider chain repaired. Found live: Groq `llama-3.1-8b-instant` (404), Gemini `2.0-flash`/`2.5-flash` (retired), OpenRouter `llama-3.2-3b:free` (404), plus a hard-coded retired Gemini id in the wardrobe upload. New verified defaults: Groq `openai/gpt-oss-20b`, Gemini `3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, OpenRouter `nvidia/nemotron-3.5-lightning:free`. `npm run llm:selftest`: 5 of 6 providers were healthy; Mistral returned 429 on every call (account rate limit), so **Mistral was removed entirely on 2026-11-17** and the chain is Groq, Gemini, OpenRouter (+ optional Ollama). Startup self-test + `llm_provider_up` gauge + alerts
-- [x] 3.1 Circuit breaker shares cooldowns across API instances via Redis (best-effort, tested with a fake Redis; **not run against a real Redis**); HTTP 429 trips it immediately
+- [x] 3.1 Circuit breaker shares cooldowns across API instances via Redis (best-effort; tested with a fake Redis and **against a real Redis**: trip is visible to a second instance, and the cooldown expires on its own; the real-Redis test also runs in CI); HTTP 429 trips it immediately
 - [x] 3.2 Ollama provider (set `OLLAMA_URL`); schema-validated JSON (`validate` option: invalid output moves to the next provider without tripping the breaker); test seam for fake providers
 - [x] 3.3 Per-feature timeouts, latency histogram, token counters, one structured log line per call
 
@@ -105,9 +105,8 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 
 ## Still open (honest list)
 - Elan (their certificate), a real server for 8.2
-- Alertmanager routing; dashboards for the new LLM/agent/feedback metrics
+- Slack/Pager delivery of alerts is configured but untested against a real workspace; dashboards were validated by query, not looked at in a browser
 - No golden set for outfits, and none for the agent's answers: those are verified functionally, not by measured quality. The photo-search eval measures the CLIP index, not the full fused pipeline
-- The Redis-shared LLM circuit breaker has been tested with a fake Redis only (not a real one)
 - Catalog facts: heel queries have few real heels; no men's clothing in the catalog
 
 ## Load test (2026-11-17, `npm run load:api`, 20 concurrent connections x 10 s per scenario)

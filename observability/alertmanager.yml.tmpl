@@ -1,0 +1,30 @@
+# Alertmanager config TEMPLATE. The container entrypoint (docker-compose.yml) turns it into
+# /tmp/alertmanager.yml, filling in only the receivers whose URL is set in the environment:
+#
+#   ALERT_SLACK_WEBHOOK_URL   Slack incoming-webhook URL        (formatted Slack messages)
+#   ALERT_WEBHOOK_URL         any HTTP endpoint                  (Alertmanager's JSON webhook payload)
+#
+# With neither set, alerts are still evaluated and shown in the Alertmanager UI (http://localhost:9093) and in
+# Prometheus (/alerts); nothing is sent anywhere. That is the honest default: no silent "notifications" that go nowhere.
+route:
+  receiver: default
+  group_by: [alertname, provider]
+  group_wait: 20s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # severity=page alerts are urgent: shorter grouping, repeated more often
+    - matchers: [severity="page"]
+      receiver: default
+      group_wait: 5s
+      repeat_interval: 1h
+
+inhibit_rules:
+  # If nothing can be scraped at all, the per-service alerts are noise: show only the root cause.
+  - source_matchers: [alertname="TargetDown"]
+    target_matchers: [severity=~"ticket|page"]
+    equal: [job]
+
+receivers:
+  - name: default
+#__RECEIVERS__

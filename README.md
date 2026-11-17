@@ -156,7 +156,7 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 | Scraper and consumer agree on the event format | **Verified** by a contract test |
 | Full stack via `docker compose up` | **Run end to end** (Kafka, RabbitMQ, Redis, Mongo, 2 consumers, worker, Prometheus, Grafana) |
 | Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
-| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
+| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboards (39 validated queries); 10 alert rules routed through Alertmanager (delivery to a webhook verified) |
 | CI | **Passing on GitHub** ([PR #1](https://github.com/zainabraza06/AuraFit/pull/1)): tests on every push/PR, both Docker images build, and the end-to-end job brings up the whole stack on a GitHub runner and passes the load test (5,500 events) and the consumer-SIGKILL test (11,000 events) with 0 lost and 0 duplicated |
 | Search quality | **Measured**: 35 predicate-judged queries, P@10 0.806, recall 0.838, MRR 0.948, nDCG 0.885 (`npm run eval:search`); runs in the weekly workflow and fails on regression |
 | API performance | **Load-tested** (20 connections, real catalog): product list 924 req/s p97.5 37 ms, semantic search 63 req/s p97.5 571 ms; the test found and fixed an uncached "cached" endpoint. Details in [docs/PLAN.md](docs/PLAN.md) |
