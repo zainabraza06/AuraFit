@@ -1,5 +1,5 @@
 import { validateEvent } from '../common/events.js';
-import { QUEUES } from '../common/topics.js';
+import { QUEUES, EVENT_TYPES } from '../common/topics.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -45,6 +45,23 @@ export function createHandler({ store, dedupe, jobs, sendToDlq, metrics, logger,
       if (await dedupe.has(event.eventId)) {
         metrics.events.inc({ type: event.type, outcome: 'duplicate' });
         return;
+      }
+
+      if (event.type === EVENT_TYPES.FEEDBACK) {
+        // Append-only analytics: no product state, no jobs. Same retry + DLQ discipline as the rest.
+        let err;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            const res = await store.saveFeedback(event);
+            await dedupe.mark(event.eventId);
+            metrics.events.inc({ type: event.type, outcome: res.outcome });
+            return;
+          } catch (e) {
+            err = e;
+            if (attempt < maxRetries) await sleep(backoffMs * 2 ** (attempt - 1));
+          }
+        }
+        return await fail(rawValue, `feedback store failed after ${maxRetries} attempts: ${err.message}`, 'dlq', event.type);
       }
 
       let lastErr;

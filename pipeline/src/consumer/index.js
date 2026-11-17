@@ -43,7 +43,7 @@ async function main() {
   const batchConcurrency = Number(process.env.BATCH_CONCURRENCY || 32);
   const consumer = kafka.consumer({ groupId: config.kafka.groupId });
   await consumer.connect();
-  await consumer.subscribe({ topics: [TOPICS.discovered, TOPICS.priceChanged], fromBeginning: true });
+  await consumer.subscribe({ topics: [TOPICS.discovered, TOPICS.priceChanged, TOPICS.feedback], fromBeginning: true });
   await consumer.run({
     // Different partitions run in parallel, and within a fetched batch up to BATCH_CONCURRENCY
     // messages are in flight so MongoDB can group its journal commits. Offsets are resolved only
@@ -63,7 +63,7 @@ async function main() {
     },
   });
 
-  const stopLag = await startLagMonitor(kafka, config.kafka.groupId, [TOPICS.discovered, TOPICS.priceChanged]);
+  const stopLag = await startLagMonitor(kafka, config.kafka.groupId, [TOPICS.discovered, TOPICS.priceChanged, TOPICS.feedback]);
   const depthTimer = setInterval(async () => {
     for (const q of [QUEUES.image, QUEUES.notify, QUEUES.deadLetter]) {
       try { metrics.queueDepth.set({ queue: q }, await rabbit.depth(q)); } catch { /* channel closing */ }
