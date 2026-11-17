@@ -34,7 +34,25 @@ export function stripHtml(html, maxLen = Infinity) {
   return decodeEntities(noTags).replace(/[ ​]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
 
-/** Product title: same cleaning, plus fix doubled spaces and stray separators. */
+// Abbreviations that stay upper-case when a shouting title is normalised.
+const KEEP_UPPER = new Set(['RTW', 'RTS', 'PC', 'PCS', 'UV', 'LED', 'USB', 'GPS', 'II', 'III', 'IV', 'XL', 'XXL', 'XS', 'EID', 'PU']);
+
+/**
+ * "VISCOSE SLUB SHIRT (PRET)" -> "Viscose Slub Shirt (Pret)". Only touches titles that are ENTIRELY upper
+ * case (4+ letters); mixed-case titles are left alone. Tokens with digits ("FN6375", "3PC") and known
+ * abbreviations (RTW, RTS...) keep their case, so product codes stay recognisable.
+ */
+export function normalizeShoutingName(name) {
+  const s = String(name ?? '');
+  const letters = s.replace(/[^A-Za-z]/g, '');
+  if (letters.length < 4 || letters !== letters.toUpperCase()) return s;
+  return s.replace(/[A-Za-z0-9']+/g, (tok) => {
+    if (/\d/.test(tok) || KEEP_UPPER.has(tok)) return tok;
+    return tok[0] + tok.slice(1).toLowerCase();
+  });
+}
+
+/** Product title: same cleaning, plus fix doubled spaces and stray separators, and un-shout ALL-CAPS titles. */
 export function cleanName(name) {
-  return stripHtml(name).replace(/\s+([,.;:])/g, '$1').replace(/^[-–—|]+\s*|\s*[-–—|]+$/g, '').trim();
+  return normalizeShoutingName(stripHtml(name).replace(/\s+([,.;:])/g, '$1').replace(/^[-–—|]+\s*|\s*[-–—|]+$/g, '').trim());
 }
