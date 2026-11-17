@@ -159,6 +159,9 @@ const ClothingProductSchema = new mongoose.Schema(
     productUrl: { type: String, required: true, unique: true },
     source:     { type: String },
     handle:     { type: String },
+    // Design identity from the URL slug (see scrapers/utils/styleKey.js): many rows share one generic title.
+    styleCode:  { type: String, index: true },
+    styleGroup: { type: String, index: true }, // same design in other colours shares this key
 
     // ─── AI Layer ────────────────────────────────────────────────────────
     embedding:      [{ type: Number }],

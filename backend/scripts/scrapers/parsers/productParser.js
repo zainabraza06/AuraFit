@@ -6,6 +6,7 @@
 
 import { inferColors } from '../utils/colorInference.js';
 import { stripHtml, cleanName } from '../utils/textClean.js';
+import { deriveStyleKey } from '../utils/styleKey.js';
 
 // ─── Required fields ──────────────────────────────────────────────────────────
 const REQUIRED_FIELDS = ['name', 'price', 'productUrl', 'images'];
@@ -598,6 +599,7 @@ export function normalizeProduct(raw, brandConfig) {
     productUrl,
     source: source || brand,
     handle: raw.handle || undefined,
+    ...deriveStyleKey({ name, productUrl, brand }),
     aiEnriched: false,
     metadataScore
   };

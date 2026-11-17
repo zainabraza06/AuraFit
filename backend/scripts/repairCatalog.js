@@ -28,7 +28,8 @@ const DIRTY = /&(#x?[0-9a-f]+|[a-z][a-z0-9]*);|<[a-z/][^>]*>|\u00a0/i;
 export function repairPatch(doc) {
   const patch = {};
   const name = cleanName(doc.name);
-  if (doc.name && DIRTY.test(doc.name) && name && name !== doc.name) patch.name = name;
+  // cleanName also un-shouts ALL-CAPS titles, so a differing result is a repair whether or not entities were present
+  if (doc.name && name && name !== doc.name) patch.name = name;
   const description = stripHtml(doc.description, 2000);
   if (doc.description && DIRTY.test(doc.description) && description !== doc.description) patch.description = description;
   return Object.keys(patch).length ? patch : null;
