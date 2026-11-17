@@ -49,6 +49,13 @@ export const llmTokens = new client.Counter({
   registers: [registry],
 });
 
+export const feedbackEvents = new client.Counter({
+  name: 'feedback_events_total',
+  help: 'Shopper feedback accepted by the API, by action and publish result (sent|disabled|failed)',
+  labelNames: ['action', 'result'],
+  registers: [registry],
+});
+
 export const agentRuns = new client.Counter({
   name: 'agent_runs_total',
   help: 'Stylist agent runs by how they ended (answered|budget|llm_failed)',
