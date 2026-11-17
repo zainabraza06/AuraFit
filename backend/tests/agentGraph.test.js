@@ -137,3 +137,66 @@ test('agent runs are exported as metrics', async () => {
   assert.match(text, /agent_runs_total\{outcome="answered"\} \d+/);
   assert.match(text, /agent_steps_count \d+/);
 });
+
+// ── verify & revise: stated budgets and named catalogs are checked after the model answers ──
+const ID3 = 'c'.repeat(24);
+const mixedHit = { products: [
+  { id: ID1, catalog: 'clothing', name: 'Green Suit', brand: 'B', price: 5000, color: 'Green' },
+  { id: ID2, catalog: 'shoes', name: 'Gold Khussa', brand: 'B', price: 4000, color: 'Gold' },
+  { id: ID3, catalog: 'clothing', name: 'Cheap Green Kurta', brand: 'B', price: 2500, color: 'Green' },
+] };
+
+test('verify: an over-budget answer is sent back once with the exact problem, and the revision is used', async () => {
+  const { llm, calls } = scripted([
+    { action: 'tool', tool: 'search_catalog', args: { query: 'green outfit' } },
+    { action: 'final', answer: 'Suit and khussa.', picks: [{ id: ID1, why: 'a' }, { id: ID2, why: 'b' }] },        // 9000 > 8000
+    { action: 'final', answer: 'Cheaper kurta and khussa.', picks: [{ id: ID3, why: 'a' }, { id: ID2, why: 'b' }] }, // 6500
+  ]);
+  const r = await runStylistAgent({ message: 'a green outfit with shoes, 8000 PKR in total', llm, tools: fakeTools, exec: execReturning(mixedHit) });
+  assert.equal(r.revisions, 1);
+  assert.deepEqual(r.unresolvedViolations, []);
+  assert.deepEqual(r.picks.map((p) => p.name).sort(), ['Cheap Green Kurta', 'Gold Khussa']);
+  assert.match(calls[2].user, /9000 PKR in total but the shopper's budget is 8000/, 'the revision prompt names the actual numbers');
+});
+
+test('verify: only ONE revision; a still-violating answer is returned as is, with the violation reported', async () => {
+  const { llm, calls } = scripted([
+    { action: 'tool', tool: 'search_catalog', args: { query: 'x' } },
+    { action: 'final', answer: 'First.', picks: [{ id: ID1, why: 'a' }, { id: ID2, why: 'b' }] },
+    { action: 'final', answer: 'Second, still too expensive.', picks: [{ id: ID1, why: 'a' }, { id: ID2, why: 'b' }] },
+  ]);
+  const r = await runStylistAgent({ message: 'green outfit with shoes, 8000 PKR in total', llm, tools: fakeTools, exec: execReturning(mixedHit) });
+  assert.equal(r.revisions, 1);
+  assert.deepEqual(r.unresolvedViolations, ['budget_total']);
+  assert.equal(r.answer, 'Second, still too expensive.');
+  assert.equal(calls.length, 3, 'no third attempt');
+});
+
+test('verify: a requested catalog that is missing triggers a revision; requests with no stated constraint are never revised', async () => {
+  const { llm } = scripted([
+    { action: 'tool', tool: 'search_catalog', args: { query: 'dress' } },
+    { action: 'final', answer: 'Dress only.', picks: [{ id: ID1, why: 'a' }] },
+    { action: 'final', answer: 'Dress and shoes.', picks: [{ id: ID1, why: 'a' }, { id: ID2, why: 'b' }] },
+  ]);
+  const r = await runStylistAgent({ message: 'a green dress with matching shoes', llm, tools: fakeTools, exec: execReturning(mixedHit) });
+  assert.equal(r.revisions, 1);
+  assert.equal(r.picks.length, 2);
+
+  const calm = scripted([
+    { action: 'tool', tool: 'search_catalog', args: { query: 'kurta' } },
+    { action: 'final', answer: 'A kurta.', picks: [{ id: ID1, why: 'a' }] },
+  ]);
+  const r2 = await runStylistAgent({ message: 'a green kurta for eid', llm: calm.llm, tools: fakeTools, exec: execReturning(mixedHit) });
+  assert.equal(r2.revisions, 0);
+  assert.equal(calm.calls.length, 2);
+});
+
+test('verify: no revision is attempted when the tool budget is already spent', async () => {
+  const { llm } = scripted([
+    { action: 'tool', tool: 'search_catalog', args: { query: 'a' } },
+    { action: 'final', answer: 'Over budget.', picks: [{ id: ID1, why: 'a' }, { id: ID2, why: 'b' }] },
+  ]);
+  const r = await runStylistAgent({ message: 'outfit under 1000 PKR', llm, tools: fakeTools, exec: execReturning(mixedHit), budget: { maxToolCalls: 1 } });
+  assert.equal(r.revisions, 0);
+  assert.deepEqual(r.unresolvedViolations, ['budget_total']);
+});
