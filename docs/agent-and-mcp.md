@@ -35,6 +35,7 @@ START -> decide --(tool)--> act --> decide ...
 * **Budget**: at most 6 decisions, 5 tool calls, 45 s. Enforced in one place. A model that never stops calling tools is cut off and answered from what it already found.
 * **Grounding**: the answer may only recommend product ids that a tool returned *in this run*. Invented ids are dropped (`droppedUngroundedPicks` in the trace).
 * **Untrusted data**: tool output (product names/descriptions scraped from retailer sites) is wrapped in delimiters the model is told never to obey, and the wrapper cannot be forged from inside the text.
+* **Verify and revise**: after the model answers, a budget stated in PKR (total, or "each piece") and any catalog the shopper named ("with shoes", "matching jewelry") are checked with plain code. If the answer breaks one, the model is sent back once with the exact numbers and must search again. This exists because the evaluation showed it overshooting an 8000 PKR budget (8360) and forgetting requested jewelry.
 * **Degrades, never errors**: if every LLM provider is down, the answer is built from the best search hits and says so.
 * **Cost control**: validated before the quota check (bad requests are free); 30/day signed-in, 5/day anonymous (`AGENT_DAILY_LIMIT`, `AGENT_ANON_DAILY_LIMIT`).
 
@@ -69,3 +70,11 @@ Verified: a real MCP client over stdio against the Atlas catalog (lists tools, s
 * LangGraph: explicit states and transitions make the budget and the fallbacks auditable, and the graph can grow (planner, critic, human-in-the-loop) without rewriting the loop.
 * LangChain chains/retrievers: not used. Retrieval is our own hybrid search over local embeddings; wrapping it adds a dependency without a capability.
 * The tool definitions are plain functions with zod schemas, so MCP and LangGraph are two thin adapters over the same code and neither is a lock-in.
+
+## How well does it work? (measured)
+
+`npm run eval:agent` runs 13 tasks (budgets, colours, multi-catalog looks, a request the catalog cannot satisfy, a prompt-injection attempt) against the live catalog and real LLMs, and grades every answer with code, not with another LLM:
+answered, every pick grounded in a tool result, in stock, no duplicates, the pick really is what its catalog says (a co-ord set listed as a watch fails), budget, colour, required catalogs, forbidden ids.
+
+Latest run: **13/13 tasks passed every check**; median 22 s, p90 89 s, 1.8 tool calls on average. Honest limits: one run (the output varies; the same code scored 11/13 and 13/13 before the verify step), 13 tasks is small, and "is the outfit stylish" is not measured.
+`npm run eval:outfits` checks the rule-based outfit matcher against random picks: colour harmony 1.06x (jewelry), 1.16x (watches), 1.15x (shoes) of a random pick, every suggestion in stock and gender-compatible.
