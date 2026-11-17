@@ -162,7 +162,7 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 | API performance | **Load-tested** (20 connections, real catalog): product list 924 req/s p97.5 37 ms, semantic search 63 req/s p97.5 571 ms; the test found and fixed an uncached "cached" endpoint. Details in [docs/PLAN.md](docs/PLAN.md) |
 | Security | SSRF guard on server-side fetches, upload validation (magic bytes), prompt-injection hardening, per-caller quotas on costly endpoints, 0 known production vulnerabilities (`npm audit`) |
 | Agent and MCP | **Verified live** (real LLMs, real catalog, real MCP client); grounded answers; budget-limited |
-| Feedback events | API → Kafka → consumer → Mongo, idempotent. Unit/contract-tested; end-to-end run is in CI |
+| Feedback events | API → Kafka → consumer → Mongo, idempotent. **Run against the real stack**: 200 stored exactly once under 100 duplicate deliveries, malformed events dead-lettered; also in the CI e2e job |
 | CD (deploy) | **Implemented, not yet run.** On `main` the pipeline publishes images to GHCR and deploys over SSH with a health smoke test ([docs/deploy.md](docs/deploy.md)). It needs a server and the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` settings, and is skipped until then. Nothing is deployed yet |
 
 ### Run it (one command)

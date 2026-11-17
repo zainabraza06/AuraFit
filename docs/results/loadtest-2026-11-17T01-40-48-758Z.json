@@ -1,0 +1,26 @@
+{
+  "runId": "rmwk0zpjb",
+  "at": "2026-11-17T01:40:48.758Z",
+  "input": {
+    "products": 3000,
+    "uniqueEvents": 3300,
+    "duplicatesSent": 150,
+    "malformedSent": 50
+  },
+  "result": {
+    "stored": 3300,
+    "distinctEventIds": 3300,
+    "notifications": 300,
+    "productsWithCorrectFinalPrice": 300,
+    "expectedFinalPrices": 300,
+    "lost": 0,
+    "duplicatesStored": 0,
+    "deadLettered": 50,
+    "timedOut": false
+  },
+  "performance": {
+    "publishSeconds": 0.4,
+    "endToEndSeconds": 13.78,
+    "eventsPerSecondEndToEnd": 239
+  }
+}

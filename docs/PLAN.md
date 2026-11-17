@@ -63,7 +63,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 - [x] 1.1 API `/metrics`: HTTP latency/errors per route pattern, LLM outcomes + cooldown + latency + token counts, fallback counters, agent runs/steps, feedback events, LLM provider health
 - [x] 1.2 Prometheus scrapes the API (token-protected); dashboards for API+LLM and pipeline; 33 panel queries validated against live Prometheus (dashboards not visually inspected; the new LLM/agent/feedback metrics are exported but not yet on a dashboard)
 - [x] 1.3 Grafana secured: anonymous disabled, password from env; deploy refuses to run without real secrets
-- [x] 1.4 Alert rules (10, incl. LLM provider self-test failure and total LLM outage). YAML parsed; promtool was not re-run this round (Docker was off). **No Alertmanager yet**, so alerts are visible but not routed anywhere
+- [x] 1.4 Alert rules (10, incl. LLM provider self-test failure and total LLM outage). `promtool check rules`: SUCCESS, 10 rules. **No Alertmanager yet**, so alerts are visible but not routed anywhere
 - [x] 1.5 Structured JSON request logs with `X-Request-Id` (route pattern only, no query strings or raw ids)
 
 ## P2 - Search correctness and speed
@@ -91,7 +91,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 - [x] 5.4 (new, found while testing) `POST /api/search/embed-all` was callable by anyone and re-embeds the whole catalog: now admin-only
 
 ## P6 - Feedback and evaluation
-- [x] 6.1 `POST /api/feedback` -> Kafka `user.feedback` -> consumer -> Mongo: hashed actor (no raw ids/IPs), idempotent client event id, fail-open, 202. Unit + contract tests; an end-to-end script runs in CI (`npm run feedbacktest`). **Not yet run against a live broker locally**; first proof will be the CI e2e job
+- [x] 6.1 `POST /api/feedback` -> Kafka `user.feedback` -> consumer -> Mongo: hashed actor (no raw ids/IPs), idempotent client event id, fail-open, 202. Unit + contract tests, and **run against the real stack (Kafka + consumer + Mongo): 200 events stored exactly once although 100 were published twice, 5 malformed events dead-lettered**. The same script runs in CI (`npm run feedbacktest`). The original product-event pipeline was re-run after the handler change: 3,000 products, zero loss, zero duplicates
 - [x] 6.2 Search quality gate (smoke + golden eval) in the weekly workflow. Extraction goldens are the unit-test fixtures. **Not done:** golden sets for outfits and photo search
 
 ## P7 - Agentic stylist + MCP
@@ -107,7 +107,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 - Elan (their certificate), Mistral account rate limit, a real server for 8.2
 - Alertmanager routing; dashboards for the new LLM/agent/feedback metrics
 - No golden set for photo search or outfits, so CLIP fusion and the agent are verified functionally, not by measured quality
-- Redis-shared breaker and the feedback pipeline have not been run against live Redis/Kafka outside CI
+- The Redis-shared LLM circuit breaker has been tested with a fake Redis only (not a real one)
 - Catalog facts: heel queries have few real heels; no men's clothing in the catalog
 
 ## Load test (2026-11-17, `npm run load:api`, 20 concurrent connections x 10 s per scenario)
