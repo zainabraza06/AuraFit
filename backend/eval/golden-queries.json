@@ -36,5 +36,5 @@
   { "id": "kids-watch", "query": "watch for kids", "catalog": "watches", "clauses": [{ "any": ["kids", "kid", "children", "boys", "girls"] }] },
   { "id": "golden-watch", "query": "golden watch", "catalog": "watches", "clauses": [{ "any": ["gold", "golden", "rose gold"] }] },
   { "id": "smartwatch", "query": "smart watch with bluetooth", "catalog": "watches", "clauses": [{ "any": ["smart", "bluetooth", "fitness"] }] },
-  { "id": "ladies-watch", "query": "ladies bracelet watch", "catalog": "watches", "clauses": [{ "any": ["ladies", "women", "womens", "lady", "bracelet"] }] }
+  { "id": "ladies-watch", "query": "ladies bracelet watch", "catalog": "watches", "clauses": [{ "any": ["ladies", "women", "womens", "lady"] }] }
 ]

@@ -58,3 +58,11 @@ test('summarize counts passes per check, tasks passed, median/p90 latency and me
   assert.equal(s.medianMs, 2000);
   assert.equal(s.meanToolCalls, 3);
 });
+
+test('catalog_sane: a garment listed as a watch fails an otherwise perfect run', () => {
+  const picks = [pick({ catalog: 'watches', name: 'Premium Silk Co-ord Set' })];
+  const misfiled = (p) => /co-ord/i.test(p.name);
+  assert.equal(by(judgeAgentRun({ checks: {} }, run(picks), { misfiled }), 'catalog_sane').ok, false);
+  assert.equal(by(judgeAgentRun({ checks: {} }, run([pick({ catalog: 'watches', name: 'Golden Gents Watch' })]), { misfiled }), 'catalog_sane').ok, true);
+  assert.equal(by(judgeAgentRun({ checks: {} }, run(picks)), 'catalog_sane'), undefined, 'not applied unless a predicate is supplied');
+});

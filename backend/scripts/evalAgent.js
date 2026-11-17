@@ -16,6 +16,12 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { runStylistAgent } from '../services/agent/graph.js';
 import { judgeAgentRun, taskPassed, summarizeAgentEval } from '../services/agentEval.js';
+import { isNonJewelryName } from './scrapers/parsers/jewelryParser.js';
+import { isNonWatchName } from './scrapers/parsers/watchParser.js';
+import { isNonShoeName } from './scrapers/parsers/shoeParser.js';
+
+const MISFILED = { jewelry: isNonJewelryName, watches: isNonWatchName, shoes: isNonShoeName };
+const misfiled = (p) => Boolean(MISFILED[p.catalog]?.(p.name));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -51,7 +57,7 @@ async function main() {
       run = { stopReason: `crashed: ${e.message}`, picks: [], droppedUngroundedPicks: 0, ms: 0, toolCalls: 0, steps: 0, answer: '' };
     }
     const stockById = await stockLookup(run.picks.map((p) => String(p.id)));
-    const checks = judgeAgentRun(task, run, { stockById });
+    const checks = judgeAgentRun(task, run, { stockById, misfiled });
     const passed = taskPassed(checks);
     rows.push({ id: task.id, message: task.message, passed, checks, ms: run.ms, toolCalls: run.toolCalls, steps: run.steps, stopReason: run.stopReason, answer: run.answer, picks: run.picks.map((p) => ({ id: p.id, catalog: p.catalog, name: p.name, price: p.price, color: p.color })) });
     console.log(`${passed ? 'PASS' : 'FAIL'}  ${String(run.ms).padStart(6)} ms  ${run.toolCalls} tools  ${run.picks.length} picks${passed ? '' : `   <- ${checks.filter((c) => !c.ok).map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`).join('; ')}`}`);

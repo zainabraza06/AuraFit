@@ -10,13 +10,16 @@
  *   forbidIds     none of these ids may appear in the picks
  *   allowNoPicks  an honest empty answer is acceptable (otherwise zero picks fails the task)
  * Always checked: the run ended with an answer (not a budget cut-off or LLM failure fallback), every pick came
- * from a tool result (grounding), every pick is in stock in the database, and picks are not duplicates.
+ * from a tool result (grounding), every pick is in stock in the database, picks are not duplicates, and (when a
+ * `misfiled(pick)` predicate is supplied) no pick is a different kind of product than its catalog says: a garment
+ * listed under "watches" passes every other check, which is how the first run of this eval looked perfect while
+ * recommending a co-ord set as a watch.
  */
 
 const norm = (s) => String(s ?? '').toLowerCase();
 
 /** @returns {{ name: string, ok: boolean, detail?: string }[]} */
-export function judgeAgentRun(task, run, { stockById = new Map() } = {}) {
+export function judgeAgentRun(task, run, { stockById = new Map(), misfiled = null } = {}) {
   const c = task.checks || {};
   const picks = run.picks || [];
   const out = [];
@@ -26,6 +29,10 @@ export function judgeAgentRun(task, run, { stockById = new Map() } = {}) {
   add('grounded', (run.droppedUngroundedPicks || 0) === 0, run.droppedUngroundedPicks ? `${run.droppedUngroundedPicks} invented id(s) were dropped` : undefined);
   add('in_stock', picks.every((p) => stockById.get(String(p.id)) !== false), 'a pick is sold out');
   add('no_duplicates', new Set(picks.map((p) => p.id)).size === picks.length);
+  if (misfiled) {
+    const bad = picks.filter((p) => misfiled(p));
+    add('catalog_sane', bad.length === 0, bad.length ? `not a ${bad[0].catalog}: ${bad.map((p) => p.name).join(', ')}` : undefined);
+  }
   add('has_picks', picks.length > 0 || c.allowNoPicks === true, 'no products were recommended');
 
   if (c.maxTotal != null) {
