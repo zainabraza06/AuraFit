@@ -82,7 +82,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 
 ## P4 - Async heavy work
 - [x] 4.1 Try-on as a queued job: `POST /api/tryon/jobs` (202) + poll + SSE stream; bounded concurrency and queue, result cache by image hash (7 days), in-flight dedupe, per-owner cap, timeouts, stale-job recovery. Process-local queue (single API instance); the store interface is the seam for RabbitMQ workers. The synchronous endpoint is kept
-- [x] 4.2 CLIP image vectors (local, 512-dim, ~150 ms/image) for every product photo (`npm run embed:images`, part of the weekly refresh); photo search fuses visual similarity with the description-based ranking; text-to-image works with the same vectors. **Not yet measured**: there is no golden set for photo search, so the benefit is verified functionally, not quantitatively
+- [x] 4.2 CLIP image vectors (local, 512-dim, ~150 ms/image) for every product photo (`npm run embed:images`, part of the weekly refresh); photo search fuses visual similarity with the description-based ranking; text-to-image works with the same vectors. **Measured** (`npm run eval:visual`, baseline in `backend/eval/baseline-visual.json`): photo -> photo retrieval returns the same catalog 97.3% of the time and the same product type 66.1% (top 5, 150 product photos, query product excluded). Text -> photo alone is weak (P@10 0.274, MRR 0.412 vs 0.806 / 0.948 for text search), which is why CLIP is only used for photo queries, fused with the description ranking, and never for text queries. The general-purpose CLIP B/32 was not compared with a fashion-tuned model
 
 ## P5 - Security
 - [x] 5.1 SSRF guard on every server-side URL fetch (private/loopback/metadata IPs, redirects re-checked, DNS-rebinding-safe lookup, size caps), including the pipeline image worker
@@ -106,7 +106,7 @@ deliberately left alone because the numbers say they are not needed yet. Items m
 ## Still open (honest list)
 - Elan (their certificate), a real server for 8.2
 - Alertmanager routing; dashboards for the new LLM/agent/feedback metrics
-- No golden set for photo search or outfits, so CLIP fusion and the agent are verified functionally, not by measured quality
+- No golden set for outfits, and none for the agent's answers: those are verified functionally, not by measured quality. The photo-search eval measures the CLIP index, not the full fused pipeline
 - The Redis-shared LLM circuit breaker has been tested with a fake Redis only (not a real one)
 - Catalog facts: heel queries have few real heels; no men's clothing in the catalog
 

@@ -74,7 +74,7 @@ Text vectors cannot tell a print or a silhouette. Each product photo also gets a
 `npm run embed:images`, resumable). CLIP puts images and sentences in one space, so:
 
 * **photo search** compares the uploaded picture with every product picture and fuses that ranking with the description-based one (reciprocal-rank fusion);
-* text-to-image works with the same vectors (verified: "gold earrings", "a pair of shoes", "a lawn suit dress", "a wrist watch" each ranked the right catalog photo first).
+* text-to-image works with the same vectors but is **weak on its own** (measured P@10 0.274 vs 0.806 for text search), so it is not used for text queries (verified in a 4-product smoke test: "gold earrings", "a pair of shoes", "a lawn suit dress", "a wrist watch" each ranked the right catalog photo first).
 
 ## What is still brute force, and when that stops being fine
 
