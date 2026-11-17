@@ -77,6 +77,10 @@ const JewelryProductSchema = new mongoose.Schema(
     embedding: [{ type: Number }],
     embeddingModel: { type: String },
     embeddingTextHash: { type: String }, // hash of the text the vector was made from; a change means the vector is stale
+    // CLIP image vector (see services/imageEmbeddings.js): lets photo search compare pixels, not just a description
+    imageEmbedding:      [{ type: Number }],
+    imageEmbeddingModel: { type: String },
+    imageEmbeddingUrl:   { type: String }, // the image URL the vector was computed from; a different imageUrl means stale
     aiEnriched: { type: Boolean, default: false },
     metadataScore: { type: Number, default: 0 },
 

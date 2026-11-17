@@ -33,8 +33,8 @@ export function vectorCacheSize() {
  * @param {object} projection  fields to select (must include `embedding`)
  * @returns {Promise<object[]>} rows whose `embedding` is a Float32Array
  */
-export async function loadCandidates(Model, catalogKey, matchQuery, projection, { truncate = 0 } = {}) {
-  const key = `${catalogKey}:${JSON.stringify(matchQuery)}:${truncate || 'full'}`;
+export async function loadCandidates(Model, catalogKey, matchQuery, projection, { truncate = 0, field = 'embedding' } = {}) {
+  const key = `${catalogKey}:${field}:${JSON.stringify(matchQuery)}:${truncate || 'full'}`;
   const now = Date.now();
   const hit = cache.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.promise;
@@ -44,7 +44,7 @@ export async function loadCandidates(Model, catalogKey, matchQuery, projection, 
     .lean()
     .then((docs) => {
       // Vectors may already be truncated by the projection ($slice); re-normalise so cosine stays correct.
-      for (const d of docs) d.embedding = truncate ? truncateAndNormalize(d.embedding, truncate) : Float32Array.from(d.embedding);
+      for (const d of docs) d[field] = truncate ? truncateAndNormalize(d[field], truncate) : Float32Array.from(d[field]);
       return docs;
     });
   cache.set(key, { at: now, promise });
