@@ -60,8 +60,8 @@ test('a cooldown tripped on one instance is seen by another through Redis', asyn
 });
 
 test('immediate trip honours a provider-specified cooldown (HTTP 429 Retry-After)', () => {
-  recordLlmProviderFailure('mistral', { immediate: true, cooldownMs: 5000 });
-  assert.equal(canUseLlmProvider('mistral'), false);
+  recordLlmProviderFailure('groq', { immediate: true, cooldownMs: 5000 });
+  assert.equal(canUseLlmProvider('groq'), false);
 });
 
 test('Redis errors never break local breaker behaviour', async () => {

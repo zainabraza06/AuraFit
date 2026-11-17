@@ -55,7 +55,6 @@ jobs:
           MONGO_URI: ${{ secrets.MONGO_URI }}
           SCRAPER_ONLY_BRANDS: ${{ github.event.inputs.only_brands }}
           SCRAPER_DELAY_MS: '3000'          # be gentler than local runs: retailers rate-limit CI IPs
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

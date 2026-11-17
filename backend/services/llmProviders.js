@@ -24,7 +24,7 @@ function wrapHttpError(err, label) {
   return e;
 }
 
-/** OpenAI-compatible chat completions (Mistral, Groq, OpenRouter, Ollama's /v1). */
+/** OpenAI-compatible chat completions (Groq, OpenRouter, Ollama's /v1). */
 async function openAiChat({ label, url, headers, body, timeoutMs, signal }) {
   try {
     const { data } = await axios.post(url, body, { headers, timeout: timeoutMs, signal });
@@ -37,14 +37,6 @@ async function openAiChat({ label, url, headers, body, timeoutMs, signal }) {
 }
 
 const messages = (system, user) => [{ role: 'system', content: system }, { role: 'user', content: user }];
-
-// Mistral's free tier allows ~1 request/second: throttle globally.
-let mistralNextAt = 0;
-async function mistralThrottle() {
-  const wait = Math.max(0, mistralNextAt - Date.now());
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  mistralNextAt = Date.now() + 1100;
-}
 
 export function geminiModelChain(env = process.env) {
   const raw = env.GEMINI_FALLBACK_MODELS;
@@ -88,21 +80,6 @@ export function buildProviders(env = process.env) {
   }
 
   providers.push({
-    id: 'mistral',
-    enabled: () => isRealKey(env.MISTRAL_API_KEY, 'your_mistral_api_key_here'),
-    async call({ system, user, temperature, timeoutMs, signal }) {
-      await mistralThrottle();
-      return openAiChat({
-        label: 'Mistral',
-        url: 'https://api.mistral.ai/v1/chat/completions',
-        headers: { Authorization: `Bearer ${env.MISTRAL_API_KEY}` },
-        body: { model: env.MISTRAL_MODEL || 'mistral-small-latest', messages: messages(system, user), temperature, response_format: { type: 'json_object' } },
-        timeoutMs, signal,
-      });
-    },
-  });
-
-  providers.push({
     id: 'openrouter',
     enabled: () => isRealKey(env.OPENROUTER_API_KEY, 'your_openrouter_api_key_here'),
     call: ({ system, user, temperature, timeoutMs, signal }) =>
@@ -137,11 +114,11 @@ export function buildProviders(env = process.env) {
 }
 
 /**
- * Provider order. LLM_PROVIDER_ORDER="groq,gemini,mistral,openrouter,ollama" ("gemini" expands to its model chain).
+ * Provider order. LLM_PROVIDER_ORDER="groq,gemini,openrouter,ollama" ("gemini" expands to its model chain).
  * Default puts providers that were verified working first.
  */
 export function orderProviders(providers, env = process.env) {
-  const order = (env.LLM_PROVIDER_ORDER || 'ollama,groq,gemini,openrouter,mistral').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const order = (env.LLM_PROVIDER_ORDER || 'ollama,groq,gemini,openrouter').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   const groupOf = (p) => (p.id.startsWith('gemini') ? 'gemini' : p.id);
   const rank = (p) => { const i = order.indexOf(groupOf(p)); return i === -1 ? order.length : i; };
   return [...providers].sort((a, b) => rank(a) - rank(b)); // stable: keeps the Gemini model order

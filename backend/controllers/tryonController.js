@@ -23,8 +23,8 @@ async function resolveImageBytes(input) {
  * half-body photo or one where the face is covered/cropped out produces a
  * visibly broken result (the model stretches/shortens the outfit to fit
  * whatever body region is in frame). Better to tell the user upfront than
- * show them a bad generation. Reuses the same vision fallback chain (Mistral
- * Pixtral → Gemini) as visual search — no new provider/dependency.
+ * show them a bad generation. Reuses the same Gemini vision chain
+ * as visual search — no new provider/dependency.
  *
  * `missingPortion` distinguishes a MINOR crop (just feet/ankles missing —
  * worth auto-extending) from a SIGNIFICANT one (only bust/waist-up — no

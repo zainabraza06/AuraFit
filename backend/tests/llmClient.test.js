@@ -84,7 +84,8 @@ test('provider registry: only configured providers are enabled; Ollama is opt-in
   const enabled = buildProviders(env).filter((p) => p.enabled()).map((p) => p.id);
   assert.ok(enabled.includes('groq') && enabled.includes('gemini-3.5-flash-lite'));
   assert.ok(!enabled.includes('openrouter'), 'placeholder key is not a real key');
-  assert.ok(!enabled.includes('mistral') && !enabled.includes('ollama'));
+  assert.ok(!enabled.includes('ollama'));
+  assert.ok(!buildProviders({ MISTRAL_API_KEY: 'k' }).some((p) => /mistral/i.test(p.id)), 'Mistral is not a provider any more, even with a key set');
   assert.ok(buildProviders({ ...env, OLLAMA_URL: 'http://localhost:11434' }).some((p) => p.id === 'ollama' && p.enabled()));
 
   const ordered = orderProviders(buildProviders(env), { LLM_PROVIDER_ORDER: 'gemini,groq' }).map((p) => p.id);

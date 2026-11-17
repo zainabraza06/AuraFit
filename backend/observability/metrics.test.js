@@ -51,8 +51,8 @@ test('scraping /metrics does not count itself', async () => {
 });
 
 test('llm counter records outcomes per provider', async () => {
-  llmCalls.inc({ provider: 'mistral', outcome: 'failure' });
-  assert.match(await registry.metrics(), /llm_calls_total\{provider="mistral",outcome="failure"\} 1/);
+  llmCalls.inc({ provider: 'test-provider', outcome: 'failure' });
+  assert.match(await registry.metrics(), /llm_calls_total\{provider="test-provider",outcome="failure"\} 1/);
 });
 
 test('routeLabel handles missing route', () => {

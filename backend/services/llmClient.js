@@ -8,7 +8,6 @@
  *   - Prometheus latency + token metrics and one structured log line.
  * Tests can swap the whole provider list with setProvidersForTests().
  */
-import axios from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   canUseLlmProvider,
@@ -147,45 +146,6 @@ export async function parseIntentWithProviderOrder(message, prompt) {
 
 // ─── Vision (image analysis) ────────────────────────────────────────────────────
 
-const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
-
-function hasMistral() {
-  const k = process.env.MISTRAL_API_KEY;
-  return k && k !== 'your_mistral_api_key_here';
-}
-
-/** Mistral vision call (mistral-small is multimodal; override with MISTRAL_VISION_MODEL). */
-async function callMistralVision(system, imageBase64, mimeType, temperature = 0.1) {
-  const model = process.env.MISTRAL_VISION_MODEL || 'mistral-small-latest';
-  const { data } = await axios.post(
-    MISTRAL_URL,
-    {
-      model,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: system },
-            { type: 'image_url', image_url: `data:${mimeType};base64,${imageBase64}` }
-          ]
-        }
-      ],
-      temperature,
-      response_format: { type: 'json_object' }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 60000
-    }
-  );
-  const text = data?.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Mistral vision empty response');
-  return text;
-}
-
 async function callGeminiVision(modelName, prompt, imageBase64, mimeType, temperature = 0.1) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -204,7 +164,7 @@ async function callGeminiVision(modelName, prompt, imageBase64, mimeType, temper
 
 /**
  * Analyze an image with a text prompt, trying vision-capable providers in order:
- * Gemini (current flash models) → Mistral. Returns parsed JSON.
+ * the current Gemini flash models. Returns parsed JSON.
  * @param {{ prompt: string, imageBase64: string, mimeType: string }} opts
  * @returns {Promise<{ data: object, provider: string }>}
  */
@@ -225,17 +185,6 @@ export async function analyzeImageWithProviderFallback(opts) {
         recordLlmProviderFailure(modelName);
         console.warn(`[llmClient] ${modelName} vision failed:`, e.message);
       }
-    }
-  }
-
-  if (hasMistral() && canUseLlmProvider('mistral-vision')) {
-    try {
-      const text = await callMistralVision(prompt, imageBase64, mimeType, 0.2);
-      recordLlmProviderSuccess('mistral-vision');
-      return { data: parseJsonLoose(text), provider: 'mistral-vision' };
-    } catch (e) {
-      recordLlmProviderFailure('mistral-vision', e.response?.status === 429 ? { immediate: true } : {});
-      console.warn('[llmClient] Mistral vision failed:', e.message);
     }
   }
 

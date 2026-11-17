@@ -340,7 +340,7 @@ export async function searchByImage(req, res) {
     } catch (e) {
       return res.status(503).json({
         error: 'Image analysis is temporarily unavailable',
-        hint: 'All vision AI providers (Mistral, Gemini) failed — check API keys/quota in .env',
+        hint: 'All vision AI providers (Gemini) failed — check API keys/quota in .env',
         details: e.message
       });
     }
