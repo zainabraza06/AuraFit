@@ -95,6 +95,8 @@ services:
       # /metrics requires this bearer token; Prometheus reads the same value from observability/secrets/metrics_token
       METRICS_TOKEN: ${METRICS_TOKEN:-dev-metrics-token}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+    volumes:
+      - models:/models   # embedding models download here on first use (~0.7 GB); keep them across restarts
     depends_on:
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
@@ -147,3 +149,4 @@ services:
 
 volumes:
   mongo-data:
+  models:
