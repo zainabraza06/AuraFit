@@ -87,24 +87,34 @@ export async function refreshCatalog() {
   const { runScraper } = await import('./scrapers/index.js');
   const { runVerticalScraper } = await import('./scrapers/runVertical.js');
   const { embedAllCatalogs } = await import('../services/embeddingJobs.js');
+  const { embedAllImages } = await import('../services/imageEmbeddingJobs.js');
 
   await mongoose.connect(process.env.MONGO_URI);
   const db = mongoose.connection.db;
   const before = await snapshotCatalogs(db, EMBEDDING_MODEL_ID);
 
-  console.log('\n=== 1/3 clothing ===');
+  console.log('\n=== 1/4 clothing ===');
   await runScraper({ triggeredBy: 'weekly' });
   for (const v of ['shoes', 'watches', 'jewelry']) {
-    console.log(`\n=== 2/3 ${v} ===`);
+    console.log(`\n=== 2/4 ${v} ===`);
     await runVerticalScraper(v);
   }
 
-  console.log('\n=== 3/3 embeddings ===');
+  console.log('\n=== 3/4 text embeddings ===');
   const embedResults = await embedAllCatalogs();
   const embedFailed = Object.values(embedResults).reduce((n, r) => n + r.failed, 0);
 
+  // Picture vectors (CLIP) for new/changed photos. A few unreachable images are normal (retailer CDN hiccups)
+  // and only reported; if more than 10% fail something systematic is wrong, so that fails the run.
+  console.log('\n=== 4/4 image embeddings ===');
+  const imageResults = await embedAllImages({ log: console.log });
+  const imgScanned = Object.values(imageResults).reduce((n, r) => n + r.scanned, 0);
+  const imgSkipped = Object.values(imageResults).reduce((n, r) => n + r.skipped, 0);
+  console.log(`images: ${imgScanned - imgSkipped} embedded, ${imgSkipped} skipped of ${imgScanned}`);
+
   const after = await snapshotCatalogs(db, EMBEDDING_MODEL_ID);
   const problems = findProblems(before, after, { embedFailed });
+  if (imgScanned >= 20 && imgSkipped / imgScanned > 0.1) problems.push(`${imgSkipped} of ${imgScanned} product images could not be embedded (>10%)`);
   const summary = renderSummary(before, after, problems, Math.round((Date.now() - started) / 60000));
   console.log('\n' + summary);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);

@@ -44,11 +44,11 @@ jobs:
 
       - run: npm ci
 
-      # ~600 MB model: downloaded once, then restored from cache on later runs
+      # Text model (~600 MB) + CLIP image model (~90 MB): downloaded once, then restored from cache on later runs
       - uses: actions/cache@v4
         with:
           path: backend/.model-cache
-          key: embedding-model-qwen3-0.6b-q8-v1
+          key: embedding-models-qwen3-0.6b-q8-clip-b32-q8-v2
 
       - name: Refresh catalog (scrape, stock check, embed)
         env:
