@@ -35,7 +35,7 @@ const normalize = (arr) => {
  * A CLIP-family backend for any transformers.js-compatible repo (separate vision/text ONNX towers).
  * Exported so scripts/compareImageModels.js can evaluate alternatives with exactly the same code path.
  */
-export function createClipBackend({ repo = MODEL_REPO, dtype = MODEL_DTYPE } = {}) {
+export function createClipBackend({ repo = MODEL_REPO, dtype = MODEL_DTYPE, textLength = 0 } = {}) {
   let modelsPromise = null;
   async function loadModels() {
     const t = await import('@huggingface/transformers');
@@ -59,7 +59,9 @@ export function createClipBackend({ repo = MODEL_REPO, dtype = MODEL_DTYPE } = {
     async embedText(text) {
       modelsPromise ||= loadModels();
       const m = await modelsPromise;
-      const { text_embeds } = await m.text(m.tokenizer([text], { padding: true, truncation: true }));
+      // Some exported text towers have a fixed input length (e.g. Marqo: 77 tokens); others accept any length.
+      const tokenOptions = textLength ? { padding: 'max_length', max_length: textLength, truncation: true } : { padding: true, truncation: true };
+      const { text_embeds } = await m.text(m.tokenizer([text], tokenOptions));
       return normalize(text_embeds.data);
     },
   };

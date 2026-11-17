@@ -27,7 +27,7 @@ const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -
 const MODELS = [
   { label: 'CLIP ViT-B/32 (current, general)', repo: 'Xenova/clip-vit-base-patch32', dtype: 'q8' },
   { label: 'FashionCLIP (ViT-B/32, fashion-tuned)', repo: 'ff13/fashion-clip', dtype: 'q8' },
-  { label: 'Marqo-FashionCLIP (ViT-B/16, fashion-tuned)', repo: 'Marqo/marqo-fashionCLIP', dtype: 'q8' },
+  { label: 'Marqo-FashionCLIP (ViT-B/16, fashion-tuned)', repo: 'Marqo/marqo-fashionCLIP', dtype: 'q8', textLength: 77 },
 ];
 const TYPE_FIELD = { clothing: 'dressStyle', shoes: 'shoeType', jewelry: 'jewelryType', watches: 'watchType' };
 const FIELDS = 'name description tags dressStyle subCategory shoeType jewelryType watchType category primaryColor primaryExactColor colors exactColors imageUrl images';
@@ -60,7 +60,7 @@ async function downloadAll(products, concurrency = 8) {
 }
 
 async function evaluate(model, products, buffers, specs, k = 10) {
-  const backend = createClipBackend({ repo: model.repo, dtype: model.dtype });
+  const backend = createClipBackend({ repo: model.repo, dtype: model.dtype, textLength: model.textLength });
   const t0 = Date.now();
   const usable = products.filter((p) => buffers.has(String(p._id)));
   const vecs = new Map();
@@ -102,8 +102,13 @@ async function main() {
   const buffers = await downloadAll(products);
   console.log(`downloaded ${buffers.size}/${products.length}\n`);
 
-  const results = [];
-  for (const model of MODELS) {
+  // --only <repo[,repo]> re-runs just those models and keeps the other saved results
+  const onlyArg = arg('only', '');
+  const only = onlyArg ? onlyArg.split(',') : [];
+  const OUT = path.resolve(__dirname, '../eval/clip-comparison.json');
+  const kept = only.length && fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')).results.filter((r) => !only.includes(r.repo)) : [];
+  const results = [...kept];
+  for (const model of MODELS.filter((m) => !only.length || only.includes(m.repo))) {
     process.stdout.write(`evaluating ${model.label} ... `);
     try {
       const r = await evaluate(model, products, buffers, specs);
@@ -120,7 +125,7 @@ async function main() {
     if (r.error) { console.log(`${r.label.padEnd(44)}  ${r.error}`); continue; }
     console.log(`${r.label.padEnd(44)}  ${String(r.photos).padStart(5)}   ${f(r.text2img.precision)} ${f(r.text2img.recall)} ${f(r.text2img.mrr)} ${f(r.text2img.ndcg)}   (${r.queriesScored} queries)      ${f(r.img2img.sameCatalog)} / ${f(r.img2img.sameType)}`);
   }
-  fs.writeFileSync(path.resolve(__dirname, '../eval/clip-comparison.json'), `${JSON.stringify({ date: new Date().toISOString().slice(0, 10), perCatalog, results }, null, 2)}\n`);
+  fs.writeFileSync(OUT, `${JSON.stringify({ date: new Date().toISOString().slice(0, 10), perCatalog, results }, null, 2)}\n`);
   console.log('\nsaved backend/eval/clip-comparison.json');
 }
 
