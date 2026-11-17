@@ -38,6 +38,20 @@ groups:
         annotations:
           summary: "More than half of calls to {{ $labels.provider }} are failing"
 
+      - alert: LlmProviderSelfTestFailed
+        expr: llm_provider_up == 0
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.provider }} failed its startup self-test (retired model id, bad key or quota?). Run npm run llm:selftest"
+
+      - alert: LlmAllProvidersDown
+        expr: max(llm_provider_up) == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Every configured LLM provider failed its self-test: AI features are running on fallbacks only"
+
   - name: pipeline
     rules:
       - alert: ConsumerLagHigh
