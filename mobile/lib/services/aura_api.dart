@@ -108,7 +108,11 @@ class AuraApi {
   }
 
   static final _rng = Random();
-  static String _eventId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_rng.nextInt(1 << 32).toRadixString(36)}';
+
+  /// 2^32 written as a literal: on the web `1 << 32` is a 32-bit JavaScript shift and evaluates to 0, which made
+  /// `nextInt` throw at startup (found by running the web build; the Dart VM tests could not see it).
+  static const int _maxRandom = 4294967296;
+  static String _eventId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_rng.nextInt(_maxRandom).toRadixString(36)}';
 
   static http.MultipartFile _imagePart(String field, Uint8List bytes, String filename) {
     final lower = filename.toLowerCase();
@@ -126,5 +130,5 @@ class AuraApi {
   static String contentTypeFor(String filename) => _imagePart('x', Uint8List(0), filename).contentType.mimeType;
 
   /// A fresh random id for [sessionId].
-  static String newSessionId() => 'm-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}-${_rng.nextInt(1 << 32).toRadixString(36)}';
+  static String newSessionId() => 'm-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}-${_rng.nextInt(_maxRandom).toRadixString(36)}';
 }
