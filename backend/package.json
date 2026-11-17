@@ -30,7 +30,8 @@
     "test": "node --test",
     "llm:selftest": "node scripts/llmSelfTest.js",
     "eval:search": "node scripts/evalSearch.js",
-    "mcp:stdio": "node scripts/mcpStdio.js"
+    "mcp:stdio": "node scripts/mcpStdio.js",
+    "agent:demo": "node scripts/agentDemo.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
