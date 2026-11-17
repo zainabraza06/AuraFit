@@ -82,6 +82,9 @@ jobs:
       - name: Load test
         run: npm run loadtest -- --products=5000
         working-directory: pipeline
+      - name: Feedback events end to end (API publisher -> Kafka -> consumer -> Mongo)
+        run: npm run feedbacktest -- --events=200
+        working-directory: pipeline
       - name: Failure test (SIGKILL one consumer mid-run)
         run: npm run failuretest -- --products=10000 --mode=one
         working-directory: pipeline
