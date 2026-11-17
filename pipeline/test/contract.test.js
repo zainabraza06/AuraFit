@@ -27,3 +27,20 @@ test('everything the scraper emits passes consumer validation', () => {
     assert.equal(r.ok, true, r.reason);
   }
 });
+
+// ── feedback: API (backend) -> consumer (pipeline) ───────────────────────────
+import { buildFeedbackEvent, feedbackEventId } from '../../backend/events/feedbackEvents.js';
+
+test('feedback built by the API passes consumer validation and the ids agree', () => {
+  const body = { action: 'save', clientEventId: 'evt-12345678', surface: 'product', productUrl: 'https://b.pk/p/1', catalog: 'shoes', query: 'black heels', position: 3 };
+  const e = buildFeedbackEvent(body, 'u:abc');
+  const r = validateEvent(e);
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(e.eventId, pipelineId('user.feedback', e.payload));
+  assert.equal(feedbackEventId(e.payload), pipelineId('user.feedback', e.payload));
+});
+
+test('feedback without a product (e.g. a thumbs-down on an agent answer) is still valid', () => {
+  const e = buildFeedbackEvent({ action: 'thumb_down', clientEventId: 'evt-87654321', surface: 'agent', query: 'mehndi outfit' }, 'sess-xyz12345');
+  assert.equal(validateEvent(e).ok, true);
+});
