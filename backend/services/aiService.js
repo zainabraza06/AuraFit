@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { untrusted, UNTRUSTED_NOTICE } from '../utils/promptSafety.js';
 import { completeJsonWithProviderFallback, parseIntentWithProviderOrder } from './llmClient.js';
 
 dotenv.config();
@@ -14,7 +15,7 @@ export async function rankProductsWithAI(products, intent) {
 
   const productList = products
     .map((p, i) =>
-      `[${i + 1}] "${p.name}" by ${p.brand}
+      `[${i + 1}] ${untrusted(p.name, 200)} by ${p.brand}
   Price: PKR ${p.price}
   Color: ${p.primaryExactColor || p.primaryColor || 'N/A'}
   Occasion: ${(p.occasion || []).join(', ') || 'N/A'}
@@ -22,7 +23,7 @@ export async function rankProductsWithAI(products, intent) {
   Print/Work: ${p.print || p.pattern || 'N/A'}
   Stitching: ${p.stitching || p.stitchedType || 'N/A'}
   Fabric: ${p.fabric || 'N/A'}
-  Description: ${(p.description || '').slice(0, 2000)}`
+  Description: ${untrusted(p.description, 2000)}`
     )
     .join('\n\n');
 
@@ -43,6 +44,7 @@ export async function rankProductsWithAI(products, intent) {
     : '';
 
   const prompt = `You are AuraFit's AI fashion ranker for Pakistani women's fashion.
+${UNTRUSTED_NOTICE}
 
 User asked for: "${intent.originalMessage || intent.intentSummary}"
 
@@ -118,14 +120,15 @@ export async function rankShoesWithAI(dress, candidates, maxPicks = 6) {
   if (!candidates.length) return { picks: [], sufficientMatch: true, note: null };
 
   const shoeList = candidates
-    .map((s, i) => `[${i}] "${s.name}" — type: ${s.shoeType || 'N/A'}, color: ${s.primaryColor || 'N/A'}, occasion: ${(s.occasion || []).join(', ') || 'N/A'}
-  Description: ${(s.description || '').slice(0, 800) || 'N/A'}`)
+    .map((s, i) => `[${i}] ${untrusted(s.name, 200)} — type: ${s.shoeType || 'N/A'}, color: ${s.primaryColor || 'N/A'}, occasion: ${(s.occasion || []).join(', ') || 'N/A'}
+  Description: ${untrusted(s.description, 800)}`)
     .join('\n');
 
   const prompt = `You are AuraFit's footwear stylist for Pakistani women's fashion.
+${UNTRUSTED_NOTICE}
 
-The outfit: "${dress.name}" — dress style: ${dress.dressStyle || dress.subCategory || 'N/A'}, color: ${dress.primaryColor || 'N/A'}, occasion: ${(dress.occasion || []).join(', ') || 'N/A'}.
-Description: ${(dress.description || '').slice(0, 1200) || 'N/A'}
+The outfit: ${untrusted(dress.name, 200)} — dress style: ${dress.dressStyle || dress.subCategory || 'N/A'}, color: ${dress.primaryColor || 'N/A'}, occasion: ${(dress.occasion || []).join(', ') || 'N/A'}.
+Description: ${untrusted(dress.description, 1200)}
 
 Candidate shoes (read each description — it often carries texture/embellishment/heel-height detail the structured fields miss):
 ${shoeList}
@@ -185,14 +188,15 @@ export async function rankComplementaryClothingWithAI(source, candidates, maxPic
   if (!candidates.length) return { picks: [], sufficientMatch: true, note: null };
 
   const list = candidates
-    .map((c, i) => `[${i}] "${c.name}" — style: ${c.dressStyle || c.subCategory || 'N/A'}, color: ${c.primaryColor || 'N/A'}, occasion: ${(c.occasion || []).join(', ') || 'N/A'}, fabric: ${c.fabric || 'N/A'}
-  Description: ${(c.description || '').slice(0, 800) || 'N/A'}`)
+    .map((c, i) => `[${i}] ${untrusted(c.name, 200)} — style: ${c.dressStyle || c.subCategory || 'N/A'}, color: ${c.primaryColor || 'N/A'}, occasion: ${(c.occasion || []).join(', ') || 'N/A'}, fabric: ${c.fabric || 'N/A'}
+  Description: ${untrusted(c.description, 800)}`)
     .join('\n');
 
   const prompt = `You are AuraFit's fashion stylist for Pakistani women's fashion, picking "Complementary Styles" for a shopper viewing this item:
+${UNTRUSTED_NOTICE}
 
-"${source.name}" — dress style: ${source.dressStyle || source.subCategory || 'N/A'}, color: ${source.primaryColor || 'N/A'}, occasion: ${(source.occasion || []).join(', ') || 'N/A'}, fabric: ${source.fabric || 'N/A'}.
-Description: ${(source.description || '').slice(0, 1200) || 'N/A'}
+${untrusted(source.name, 200)} — dress style: ${source.dressStyle || source.subCategory || 'N/A'}, color: ${source.primaryColor || 'N/A'}, occasion: ${(source.occasion || []).join(', ') || 'N/A'}, fabric: ${source.fabric || 'N/A'}.
+Description: ${untrusted(source.description, 1200)}
 
 Candidate pieces (read each description — it often carries fabric/embellishment/silhouette detail the structured fields miss):
 ${list}
