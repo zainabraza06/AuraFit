@@ -101,3 +101,13 @@ test('compactProduct prefers the exact colour and truncates occasions', () => {
   assert.equal(c.color, 'Maroon');
   assert.equal(c.occasion.length, 4);
 });
+
+test('sloppy LLM arguments (null, empty strings, numeric strings) are accepted, not rejected as "invalid"', async () => {
+  const { cleanArgs } = await import('../services/agent/tools.js');
+  assert.deepEqual(cleanArgs({ query: 'x', catalog: null, gender: '', maxPrice: 'none', limit: undefined }), { query: 'x' });
+  assert.deepEqual(cleanArgs(null), {});
+  assert.deepEqual(cleanArgs([1]), {});
+  const r = await runTool('search_catalog', { query: 'red kurta', catalog: null, gender: 'any', maxPrice: '1000', limit: '5' });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.deepEqual(r.products.map((p) => p.name), ['Cheap Red Kurta'], 'maxPrice "1000" was coerced to a number and applied');
+});
