@@ -150,3 +150,11 @@ test('keyword fallback ranks by how many terms match and treats user text as tex
   const hostile = await regexSearchAcrossCatalogs({ keywords: ['(a+)+$', '.*'] }, { limit: 5, catalog: 'clothing' });
   assert.equal(hostile.results.length, 0);
 });
+
+test('product-page recommendations never ship raw embedding vectors to the client', async () => {
+  const src = await ClothingProduct.create({ name: 'Rec Source Suit', brand: 'TestBrand', gender: 'women', price: 3000, productUrl: 'https://t.pk/recsrc', inStock: true, embedding: [1, 0, 0], embeddingModel: EMBEDDING_MODEL_ID, primaryColor: 'Red', colors: ['Red'], occasion: ['party'] });
+  await ClothingProduct.create({ name: 'Rec Other Suit', brand: 'TestBrand', gender: 'women', price: 3200, productUrl: 'https://t.pk/recother', inStock: true, embedding: [1, 0, 0], embeddingModel: EMBEDDING_MODEL_ID, primaryColor: 'Red', colors: ['Red'], occasion: ['party'] });
+  const res = await request(app).get(`/api/recommendations/${src._id}`);
+  assert.equal(res.status, 200);
+  assert.ok(!JSON.stringify(res.body).includes('"embedding"'), 'a raw embedding vector reached the client');
+});
