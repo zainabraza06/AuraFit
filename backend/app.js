@@ -29,6 +29,7 @@ import { httpMetrics, metricsHandler } from './observability/metrics.js';
 import { RedisStore }       from 'rate-limit-redis';
 import { requestLogger }    from './middleware/requestLogger.js';
 import { createMcpRouter }  from './routes/mcp.js';
+import stylistRoutes        from './routes/stylist.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,6 +107,7 @@ export function createApp() {
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/support', supportRoutes);
+  app.use('/api/stylist', stylistRoutes);
 
   // MCP (Model Context Protocol) endpoint for external agents. Off unless MCP_TOKEN is set; bearer-token protected.
   if (process.env.MCP_TOKEN) app.use('/mcp', createMcpRouter());
