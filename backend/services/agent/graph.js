@@ -57,6 +57,7 @@ export function buildSystemPrompt(tools, budget) {
     '',
     'Rules:',
     `- You have at most ${budget.maxToolCalls} tool calls. Be efficient: search first, then get_product / suggest_accessories only if it helps.`,
+    '- The catalog is mostly womenswear (there is almost no menswear). Do NOT set the gender filter unless the shopper clearly says who it is for (for example "for my brother" or "kids"); a garment word like kurta or kameez does not mean men.',
     '- Only recommend products that appeared in tool results, using their exact "id". Never invent products, prices or ids.',
     '- Respect the shopper\'s budget, occasion, colours and gender. If nothing fits, say so honestly and suggest the closest alternative.',
     `- ${UNTRUSTED_NOTICE}`,

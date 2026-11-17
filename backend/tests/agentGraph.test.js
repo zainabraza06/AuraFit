@@ -200,3 +200,9 @@ test('verify: no revision is attempted when the tool budget is already spent', a
   assert.equal(r.revisions, 0);
   assert.deepEqual(r.unresolvedViolations, ['budget_total']);
 });
+
+test('the system prompt tells the model the catalog is mostly women\'s and not to guess a gender filter', () => {
+  const prompt = buildSystemPrompt(fakeTools, DEFAULT_BUDGET);
+  assert.match(prompt, /mostly womenswear/);
+  assert.match(prompt, /Do NOT set the gender filter/);
+});
