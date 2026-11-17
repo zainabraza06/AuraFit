@@ -27,6 +27,7 @@ import supportRoutes        from './routes/support.js';
 import { getRedis }         from './config/redis.js';
 import { httpMetrics, metricsHandler } from './observability/metrics.js';
 import { RedisStore }       from 'rate-limit-redis';
+import { requestLogger }    from './middleware/requestLogger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,8 @@ export function createApp() {
 
   // Prometheus: latency/count per route pattern, scraped from GET /metrics (token-protected if METRICS_TOKEN is set)
   app.use(httpMetrics);
+  // Structured JSON access log + X-Request-Id (silent under test unless LOG_REQUESTS=true)
+  if (process.env.NODE_ENV !== 'test' || process.env.LOG_REQUESTS === 'true') app.use(requestLogger());
   app.get('/metrics', metricsHandler);
 
   // ─── Security Middleware ───────────────────────────────────────────────────
@@ -116,7 +119,7 @@ export function createApp() {
   // ─── Global Error Handler ────────────────────────────────────────────────
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
+    console.error(JSON.stringify({ level: 'error', msg: 'unhandled_error', reqId: req.id, route: req.originalUrl?.split('?')[0], error: err.message, stack: process.env.NODE_ENV === 'production' ? undefined : err.stack }));
     res.status(err.status || 500).json({
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
     });
