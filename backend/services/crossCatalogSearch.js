@@ -11,7 +11,7 @@ import WatchProduct from '../models/WatchProduct.js';
 import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID } from './embeddings.js';
 import { loadCandidates } from './vectorCache.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
-import { attachGenderFilter } from '../utils/catalogQuery.js';
+import { parseGenderFilter } from '../utils/catalogQuery.js';
 
 /** Score adjustment for products in (+) / outside (-) the catalog a query names. */
 export const CATALOG_HINT_BOOST = Number(process.env.CATALOG_HINT_BOOST || 0.08);
@@ -74,13 +74,16 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
   const perCatalogResults = await Promise.all(
     wantCatalogs.map(async ({ key, Model, fields }) => {
       // Only vectors from the CURRENT model are comparable with the query vector
+      // The cache key is the catalog only: gender/category are applied in memory below, so one warm cache
+      // serves every filter combination (it used to be one ~30 MB database fetch per distinct filter).
       const matchQuery = { embedding: { $exists: true, $ne: [] }, embeddingModel: EMBEDDING_MODEL_ID, inStock: { $ne: false } };
-      if (category && key === 'clothing') matchQuery.category = category;
-      attachGenderFilter(matchQuery, gender ?? signals.genderHint);
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
       // Whole candidate set (cached, Float32 vectors) - this used to be .limit(400), i.e. most of the catalog was never searched
       const docs = await loadCandidates(Model, key, matchQuery, selectObj);
-      return docs.map((d) => ({ ...d, _catalog: key }));
+      const genders = parseGenderFilter(gender ?? signals.genderHint);
+      const wantCategory = category && key === 'clothing' ? category : null;
+      const kept = (genders || wantCategory) ? docs.filter((d) => (!genders || genders.includes(d.gender)) && (!wantCategory || d.category === wantCategory)) : docs;
+      return kept.map((d) => ({ ...d, _catalog: key }));
     })
   );
 

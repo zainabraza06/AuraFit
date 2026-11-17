@@ -105,3 +105,22 @@ test('semantic search sees the WHOLE catalog, not just the first 400 rows (regre
   assert.ok(totalCandidates > 450, `only ${totalCandidates} candidates were considered`);
   assert.equal(results[0].name, 'Zinnia Gold Bridal Lehnga');
 });
+
+test('gender/category filters are applied in memory on ONE cached candidate set', async () => {
+  clearVectorCache();
+  await ClothingProduct.create([
+    { name: 'Mens Cotton Kurta', brand: 'TestBrand', gender: 'men', price: 3000, productUrl: 'https://t.pk/men1', inStock: true, embedding: [0, 0, 1], embeddingModel: EMBEDDING_MODEL_ID },
+    { name: 'Kids Frock', brand: 'TestBrand', gender: 'kids', price: 1500, productUrl: 'https://t.pk/kid1', inStock: true, embedding: [0, 0, 1], embeddingModel: EMBEDDING_MODEL_ID },
+  ]);
+  const { searchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
+  const { analyzeSearchQuery } = await import('../services/searchQueryIntel.js');
+  const { vectorCacheSize } = await import('../services/vectorCache.js');
+  const sig = analyzeSearchQuery('kurta');
+  const men = await searchAcrossCatalogs(sig, [0, 0, 1], { limit: 50, catalog: 'clothing', gender: 'men' });
+  assert.ok(men.results.length >= 1 && men.results.every((r) => r.gender === 'men'));
+  const kids = await searchAcrossCatalogs(sig, [0, 0, 1], { limit: 50, catalog: 'clothing', gender: 'kids' });
+  assert.ok(kids.results.length >= 1 && kids.results.every((r) => r.gender === 'kids'));
+  const both = await searchAcrossCatalogs(sig, [0, 0, 1], { limit: 50, catalog: 'clothing', gender: 'men,kids' });
+  assert.ok(both.results.every((r) => ['men', 'kids'].includes(r.gender)));
+  assert.equal(vectorCacheSize(), 1, 'three different filters must share one cache entry');
+});
