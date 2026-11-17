@@ -34,6 +34,21 @@ export const llmCalls = new client.Counter({
   registers: [registry],
 });
 
+export const llmDuration = new client.Histogram({
+  name: 'llm_call_duration_seconds',
+  help: 'LLM provider call latency by provider, feature and outcome',
+  labelNames: ['provider', 'feature', 'outcome'],
+  buckets: [0.25, 0.5, 1, 2, 4, 8, 15, 30, 60],
+  registers: [registry],
+});
+
+export const llmTokens = new client.Counter({
+  name: 'llm_tokens_total',
+  help: 'LLM tokens used by provider, feature and direction (input|output), as reported by the provider',
+  labelNames: ['provider', 'feature', 'direction'],
+  registers: [registry],
+});
+
 export const llmCooldown = new client.Gauge({
   name: 'llm_provider_in_cooldown',
   help: '1 while the circuit breaker is skipping this provider',
