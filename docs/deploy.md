@@ -25,3 +25,19 @@ The deploy job is skipped, not failed, while `DEPLOY_HOST` is unset.
 
 Re-run an earlier successful workflow, or on the server:
 `IMAGE_PREFIX=ghcr.io/<owner>/<repo> TAG=<old sha> docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build`
+
+## Alerts and what to expose
+
+Prometheus evaluates the rules in `observability/alerts.yml` and sends firing alerts to Alertmanager (in `docker-compose.yml`).
+Alertmanager sends notifications only if you set one of these in the server's environment (for example in the deploy `.env`):
+
+| Variable | Sends to |
+|---|---|
+| `ALERT_SLACK_WEBHOOK_URL` | a Slack channel (incoming webhook) |
+| `ALERT_WEBHOOK_URL` | any HTTP endpoint (Alertmanager's JSON webhook payload; use it for Discord/Teams relays, PagerDuty adapters, your own handler) |
+
+With neither set, alerts are still evaluated and visible at `:9093` and in Prometheus, but nothing is sent. Webhook delivery was verified with a
+synthetic alert; Slack delivery was not (no workspace was available).
+
+**Do not publish ports 9090 (Prometheus), 9093 (Alertmanager) or 3000 (Grafana) to the internet.** Prometheus and Alertmanager have no login; the compose
+file maps them for local use. On a server, firewall them or bind them to `127.0.0.1` and reach them through an SSH tunnel or a reverse proxy with authentication.
