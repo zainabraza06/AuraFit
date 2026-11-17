@@ -1,12 +1,12 @@
 {
   "k": 10,
   "date": "2026-11-17",
-  "note": "After catalog-hint boost and removing the 'clothing outfit' suffix from accessory queries. Before: precision 0.788, recall 0.821, MRR 0.946, nDCG 0.879",
+  "note": "256-dim search vectors + catalog hints + colourway collapse. History: 0.788/0.821/0.946/0.879 (first measurement) -> 0.809/0.842/0.946/0.892 (catalog hints, 1024 dims) -> this",
   "queries": 35,
   "scored": 34,
   "unanswerable": ["shalwar-kameez-men"],
-  "precision": 0.809,
-  "recall": 0.842,
-  "mrr": 0.946,
-  "ndcg": 0.892
+  "precision": 0.806,
+  "recall": 0.838,
+  "mrr": 0.948,
+  "ndcg": 0.885
 }
