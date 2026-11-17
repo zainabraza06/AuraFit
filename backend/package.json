@@ -33,7 +33,8 @@
     "mcp:stdio": "node scripts/mcpStdio.js",
     "agent:demo": "node scripts/agentDemo.js",
     "backfill:stylekeys": "node scripts/backfillStyleKeys.js",
-    "bench:vectors": "node scripts/benchVectors.js"
+    "bench:vectors": "node scripts/benchVectors.js",
+    "embed:images": "node scripts/embedImages.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
