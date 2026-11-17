@@ -11,6 +11,7 @@ import { getRedis } from './config/redis.js';
 import { enableSharedCircuit } from './services/llmCircuitBreaker.js';
 import { buildProviders } from './services/llmProviders.js';
 import { selfTestProviders } from './services/llmHealth.js';
+import { warmUpSearch } from './services/searchWarmup.js';
 
 export const app = createApp();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +30,11 @@ export async function bootstrap() {
   // Fail loudly (in the log and the llm_provider_up gauge) if a provider chain is broken. Non-blocking.
   if (process.env.NODE_ENV !== 'test' && process.env.LLM_SELFTEST !== 'false') {
     selfTestProviders().catch((e) => console.error('llm self-test crashed:', e.message));
+  }
+
+  // Load the embedding model and the candidate vectors now, in the background, not on the first search.
+  if (process.env.NODE_ENV !== 'test' && process.env.SEARCH_WARMUP !== 'false') {
+    warmUpSearch().catch(() => {});
   }
 
   // The in-process scraper cron is OFF by default: every API instance would run its own copy, and a
