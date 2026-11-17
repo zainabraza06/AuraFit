@@ -40,6 +40,16 @@ export class BaseAdapter {
     this._repairWithLlm = parserHooks.enableLlmRepair !== false;
   }
 
+  /**
+   * Strategy 2 reads the WHOLE site's /products.json. For clothing that is the intended broad import, but for
+   * shoes / watches / jewelry an empty or dead collection used to fall through to the site's first 250 products with
+   * no filter at all (keywords are empty for these verticals), so Limelight's missing watch collection filled the
+   * watches catalog with tops, co-ord sets, sunglasses and cardigans. Outside clothing it now requires keywords.
+   */
+  siteWideFallbackAllowed() {
+    return this._vertical === 'clothing' || this.shopifyKeywords.length > 0;
+  }
+
   async scrapeCollection(collection) {
     const collectionUrl = `${this.baseUrl}${collection.path}`;
     const maxItems = Number(process.env.SCRAPER_MAX_PER_BRAND ?? 50);
@@ -67,7 +77,7 @@ export class BaseAdapter {
       logger.warn(`[${this.brand}] Strategy 1 failed: ${err.message}`);
     }
 
-    if (rawProducts.length === 0) {
+    if (rawProducts.length === 0 && this.siteWideFallbackAllowed()) {
       try {
         const result = await extractFromShopifyAll(collectionUrl, maxItems, this.shopifyKeywords);
         if (result.products.length > 0) {
