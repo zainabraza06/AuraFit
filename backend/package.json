@@ -31,7 +31,8 @@
     "llm:selftest": "node scripts/llmSelfTest.js",
     "eval:search": "node scripts/evalSearch.js",
     "mcp:stdio": "node scripts/mcpStdio.js",
-    "agent:demo": "node scripts/agentDemo.js"
+    "agent:demo": "node scripts/agentDemo.js",
+    "backfill:stylekeys": "node scripts/backfillStyleKeys.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
