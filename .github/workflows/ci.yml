@@ -82,6 +82,11 @@ jobs:
       - name: Load test
         run: npm run loadtest -- --products=5000
         working-directory: pipeline
+      - name: LLM circuit breaker shared across instances, against the real Redis
+        run: node --test services/llmCircuitBreaker.redis.test.js
+        working-directory: backend
+        env:
+          REDIS_TEST_URL: redis://localhost:6379
       - name: Feedback events end to end (API publisher -> Kafka -> consumer -> Mongo)
         run: npm run feedbacktest -- --events=200
         working-directory: pipeline
