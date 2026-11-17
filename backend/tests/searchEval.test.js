@@ -61,3 +61,15 @@ test('regressions flags drops beyond the tolerance only', () => {
   assert.equal(bad.length, 2);
   assert.deepEqual(regressions({ mrr: 0 }, null), []);
 });
+
+test('a result from another catalog is never relevant, so recall cannot exceed 1', () => {
+  const spec = { id: 'w', query: 'ladies watch', catalog: 'watches', clauses: [{ any: ['women'] }] };
+  const watch = { name: "Fluted Curve Women's Watch", catalog: 'watches' };
+  const jewelry = { name: "Women's Bracelet", catalog: 'jewelry' };
+  assert.equal(isRelevant(watch, spec), true);
+  assert.equal(isRelevant(jewelry, spec), false);
+  const m = queryMetrics([jewelry, jewelry, watch], spec, 1, 3);
+  assert.equal(m.hits, 1);
+  assert.ok(m.recall <= 1);
+  assert.equal(m.rr, 1 / 3);
+});

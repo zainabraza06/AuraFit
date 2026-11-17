@@ -39,7 +39,8 @@
     "eval:visual": "node scripts/evalVisual.js",
     "compare:clip": "node scripts/compareImageModels.js",
     "eval:agent": "node scripts/evalAgent.js",
-    "eval:outfits": "node scripts/evalOutfits.js"
+    "eval:outfits": "node scripts/evalOutfits.js",
+    "backfill:watchgender": "node scripts/backfillWatchGender.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

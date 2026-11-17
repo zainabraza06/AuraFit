@@ -46,3 +46,19 @@ test('the shoe parser itself rejects scarves/bags and accepts real shoes', async
   for (const n of LEAKED_FROM_SHOES) assert.equal(normalizeShoeProduct(raw(n), cfg), null, n);
   for (const n of REAL_SHOES) assert.ok(normalizeShoeProduct(raw(n), cfg), `real shoe rejected: ${n}`);
 });
+
+// ── watch gender comes from the name, not the collection config ──
+test('genderFromWatchName: name beats the collection (Stylo labelled gents and kids watches as women)', async () => {
+  const { genderFromWatchName, normalizeWatchProduct } = await import('./scrapers/parsers/watchParser.js');
+  assert.equal(genderFromWatchName('Golden Gents Watch J34101'), 'men');
+  assert.equal(genderFromWatchName('Accented Markers Men\'s Watch'), 'men');
+  assert.equal(genderFromWatchName('Kids Ferozy Watch J20013'), 'kids');
+  assert.equal(genderFromWatchName("Fluted Curve Women's Watch"), 'women');
+  assert.equal(genderFromWatchName('Structured Dial'), null);
+  assert.equal(genderFromWatchName('Menthol Blue Dial'), null, '"men" inside another word is not a gender');
+  const cfg = { brand: 'Stylo', category: 'watches', source: 't', gender: 'women' };
+  const raw = (title) => ({ title, price: 2940, images: ['https://e.com/a.jpg'], productUrl: `https://e.com/${encodeURIComponent(title)}`, description: '', tags: [] });
+  assert.equal(normalizeWatchProduct(raw('Golden Gents Watch J34101'), cfg).gender, 'men');
+  assert.equal(normalizeWatchProduct(raw('Kids Purple Watch J20013'), cfg).gender, 'kids');
+  assert.equal(normalizeWatchProduct(raw('Elegant Pearl Dial'), cfg).gender, 'women', 'no gender in the name: the configured one applies');
+});
