@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { safeGetBuffer } from '../utils/safeFetch.js';
 import { isCloudinaryConfigured, rehostUrlOnCloudinary } from '../services/cloudinary.js';
 import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 
@@ -11,8 +11,8 @@ async function resolveImageBytes(input) {
   if (Buffer.isBuffer(input.buffer)) {
     return { imageBase64: input.buffer.toString('base64'), mimeType: input.mimetype || 'image/jpeg' };
   }
-  const { data, headers } = await axios.get(input.url, { responseType: 'arraybuffer', timeout: 20000 });
-  return { imageBase64: Buffer.from(data).toString('base64'), mimeType: headers['content-type'] || 'image/jpeg' };
+  const { data, contentType } = await safeGetBuffer(input.url, { timeout: 20000 });
+  return { imageBase64: data.toString('base64'), mimeType: contentType || 'image/jpeg' };
 }
 
 /**

@@ -10,7 +10,7 @@
  * degrade gracefully (the app must not crash when Cloudinary is absent).
  */
 import { v2 as cloudinary } from 'cloudinary';
-import axios from 'axios';
+import { safeGetBuffer } from '../utils/safeFetch.js';
 
 let _configured = null;
 
@@ -97,8 +97,8 @@ export function uploadBufferToCloudinary(buffer, opts = {}) {
  * @returns {Promise<{ url: string, publicId: string }>}
  */
 export async function rehostUrlOnCloudinary(sourceUrl, opts = {}) {
-  const { data } = await axios.get(sourceUrl, { responseType: 'arraybuffer', timeout: 30000 });
-  return uploadBufferToCloudinary(Buffer.from(data), {
+  const { data } = await safeGetBuffer(sourceUrl, { timeout: 30000 });
+  return uploadBufferToCloudinary(data, {
     folder: 'aurafit/tryon',
     transformation: [{ width: 1024, height: 1024, crop: 'limit' }, { quality: 'auto', fetch_format: 'auto' }],
     ...opts
