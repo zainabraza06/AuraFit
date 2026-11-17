@@ -10,6 +10,8 @@
  * Freshness: entries live VECTOR_CACHE_TTL_MS (default 5 min). A weekly refresh therefore shows up
  * in search within minutes. clearVectorCache() forces it (used after embedding jobs and in tests).
  */
+import { truncateAndNormalize } from './embeddings.js';
+
 const TTL_MS = Number(process.env.VECTOR_CACHE_TTL_MS || 5 * 60 * 1000);
 const MAX_ENTRIES = Number(process.env.VECTOR_CACHE_MAX_ENTRIES || 24);
 
@@ -31,8 +33,8 @@ export function vectorCacheSize() {
  * @param {object} projection  fields to select (must include `embedding`)
  * @returns {Promise<object[]>} rows whose `embedding` is a Float32Array
  */
-export async function loadCandidates(Model, catalogKey, matchQuery, projection) {
-  const key = `${catalogKey}:${JSON.stringify(matchQuery)}`;
+export async function loadCandidates(Model, catalogKey, matchQuery, projection, { truncate = 0 } = {}) {
+  const key = `${catalogKey}:${JSON.stringify(matchQuery)}:${truncate || 'full'}`;
   const now = Date.now();
   const hit = cache.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.promise;
@@ -41,7 +43,8 @@ export async function loadCandidates(Model, catalogKey, matchQuery, projection) 
   const promise = Model.find(matchQuery, projection)
     .lean()
     .then((docs) => {
-      for (const d of docs) d.embedding = Float32Array.from(d.embedding);
+      // Vectors may already be truncated by the projection ($slice); re-normalise so cosine stays correct.
+      for (const d of docs) d.embedding = truncate ? truncateAndNormalize(d.embedding, truncate) : Float32Array.from(d.embedding);
       return docs;
     });
   cache.set(key, { at: now, promise });

@@ -8,7 +8,7 @@ import ClothingProduct from '../models/ClothingProduct.js';
 import ShoeProduct from '../models/ShoeProduct.js';
 import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
-import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID } from './embeddings.js';
+import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID, EMBEDDING_DIM, searchDims, truncateAndNormalize } from './embeddings.js';
 import { loadCandidates } from './vectorCache.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor } from './searchQueryIntel.js';
 import { parseGenderFilter } from '../utils/catalogQuery.js';
@@ -20,7 +20,7 @@ export const CATALOGS = [
   {
     key: 'clothing',
     Model: ClothingProduct,
-    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl inStock'
+    fields: 'embedding name brand category subCategory dressStyle description tags colors price gender images primaryColor occasion style productUrl inStock styleCode styleGroup'
   },
   {
     key: 'shoes',
@@ -39,10 +39,29 @@ export const CATALOGS = [
   }
 ];
 
+/**
+ * Keeps the best-scoring product of each styleGroup (input must already be sorted best-first) and records
+ * how many colourways were folded into it. Products without a styleGroup are never merged.
+ */
+export function collapseByStyleGroup(ranked) {
+  const seen = new Map();
+  const out = [];
+  for (const p of ranked) {
+    if (!p.styleGroup) { out.push(p); continue; }
+    const first = seen.get(p.styleGroup);
+    if (first) { first._variants = (first._variants || 1) + 1; continue; }
+    seen.set(p.styleGroup, p);
+    out.push(p);
+  }
+  return out;
+}
+
 /** Query -> vector with the current model, or null when embeddings are unavailable. */
 export async function getEmbedding(text) {
   if (!isEmbeddingConfigured()) return null;
-  return embedQuery(text);
+  const v = await embedQuery(text);
+  const dims = searchDims();
+  return dims < EMBEDDING_DIM && v.length > dims ? truncateAndNormalize(v, dims) : v;
 }
 
 export function cosineSimilarity(a, b) {
@@ -77,9 +96,12 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
       // The cache key is the catalog only: gender/category are applied in memory below, so one warm cache
       // serves every filter combination (it used to be one ~30 MB database fetch per distinct filter).
       const matchQuery = { embedding: { $exists: true, $ne: [] }, embeddingModel: EMBEDDING_MODEL_ID, inStock: { $ne: false } };
+      const dims = searchDims();
       const selectObj = fields.split(' ').reduce((o, f) => ({ ...o, [f]: 1 }), {});
+      // $slice makes MongoDB send only the first `dims` numbers of each vector (4x less data at 256 dims)
+      if (dims < EMBEDDING_DIM) selectObj.embedding = { $slice: dims };
       // Whole candidate set (cached, Float32 vectors) - this used to be .limit(400), i.e. most of the catalog was never searched
-      const docs = await loadCandidates(Model, key, matchQuery, selectObj);
+      const docs = await loadCandidates(Model, key, matchQuery, selectObj, { truncate: dims < EMBEDDING_DIM ? dims : 0 });
       const genders = parseGenderFilter(gender ?? signals.genderHint);
       const wantCategory = category && key === 'clothing' ? category : null;
       const kept = (genders || wantCategory) ? docs.filter((d) => (!genders || genders.includes(d.gender)) && (!wantCategory || d.category === wantCategory)) : docs;
@@ -109,9 +131,13 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
     ranked = [...scoredAll].sort((a, b) => b._score - a._score).slice(0, Math.max(limit, 10));
   }
 
+  // One card per design: the same style in other colours is folded into its best-scoring colourway.
+  if (opts.collapseColorways !== false) ranked = collapseByStyleGroup(ranked);
+
   const scored = ranked.slice(0, limit);
-  const results = scored.map(({ embedding, _cosine, _facet, _score, _catalog, ...p }) => ({
+  const results = scored.map(({ embedding, _cosine, _facet, _score, _catalog, _variants, ...p }) => ({
     ...p,
+    ...(_variants ? { variantCount: _variants } : {}),
     catalog: _catalog,
     relevanceScore: parseFloat(_score.toFixed(4)),
     semanticCosine: parseFloat(_cosine.toFixed(4)),

@@ -64,3 +64,41 @@ test('a failed read is not cached, so the next request retries', async () => {
   const good = fakeModel(rows(2));
   assert.equal((await loadCandidates(good, 'clothing', {}, {})).length, 2);
 });
+
+// ── truncated (Matryoshka) vectors ───────────────────────────────────────────
+import { truncateAndNormalize as _trunc, searchDims as _searchDims } from './embeddings.js';
+
+test('truncateAndNormalize keeps the first N dims and re-normalises to unit length', () => {
+  const v = _trunc([3, 4, 100, 100], 2);
+  assert.equal(v.length, 2);
+  assert.ok(Math.abs(v[0] - 0.6) < 1e-6 && Math.abs(v[1] - 0.8) < 1e-6);
+  assert.ok(Math.abs(Math.hypot(...v) - 1) < 1e-6);
+  assert.equal(_trunc([1, 2], 10).length, 2, 'never longer than the input');
+  assert.deepEqual([..._trunc([0, 0, 0], 2)], [0, 0], 'zero vector does not produce NaN');
+});
+
+test('loadCandidates truncates + normalises and caches truncated and full sets separately', async () => {
+  clearVectorCache();
+  let finds = 0;
+  const Model = { find: () => ({ lean: async () => { finds++; return [{ name: 'a', embedding: [3, 4, 9, 9] }]; } }) };
+  const full = await loadCandidates(Model, 'c', {}, {});
+  const cut = await loadCandidates(Model, 'c', {}, {}, { truncate: 2 });
+  assert.equal(full[0].embedding.length, 4);
+  assert.equal(cut[0].embedding.length, 2);
+  assert.ok(Math.abs(cut[0].embedding[0] - 0.6) < 1e-6);
+  assert.equal(finds, 2);
+  await loadCandidates(Model, 'c', {}, {}, { truncate: 2 });
+  assert.equal(finds, 2, 'second truncated load is a cache hit');
+});
+
+test('searchDims defaults to 256, can be set up to full size, and ignores nonsense values', () => {
+  delete process.env.EMBEDDING_SEARCH_DIMS;
+  assert.equal(_searchDims(), 256);
+  process.env.EMBEDDING_SEARCH_DIMS = '1024';
+  assert.equal(_searchDims(), 1024);
+  process.env.EMBEDDING_SEARCH_DIMS = '7';
+  assert.equal(_searchDims(), 256);
+  process.env.EMBEDDING_SEARCH_DIMS = 'abc';
+  assert.equal(_searchDims(), 256);
+  delete process.env.EMBEDDING_SEARCH_DIMS;
+});

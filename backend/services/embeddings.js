@@ -115,6 +115,34 @@ export async function embedDocuments(texts, { batchSize = 8 } = {}) {
   return out;
 }
 
+/**
+ * Dimensions used for SEARCH. Qwen3-Embedding is trained with Matryoshka representation learning, so the
+ * first N dims of a vector are themselves a usable embedding. Fewer dims = smaller database payload,
+ * less memory and faster cosine. Measured on the golden set (eval:search, 34 answerable queries):
+ *   1024: P@10 0.809 R 0.842 MRR 0.946 nDCG 0.892   (baseline)
+ *    512: 0.794 / 0.827 / 0.945 / 0.881
+ *    256: 0.806 / 0.838 / 0.948 / 0.885   <- default: within noise of full size, 4x smaller
+ *    128: 0.768 / 0.799 / 0.945 / 0.862   (visibly worse)
+ * Stored vectors are never changed; truncation happens when candidates are loaded. Set
+ * EMBEDDING_SEARCH_DIMS=1024 to search with the full vectors.
+ */
+const DEFAULT_SEARCH_DIMS = 256;
+export function searchDims() {
+  const n = Number(process.env.EMBEDDING_SEARCH_DIMS || DEFAULT_SEARCH_DIMS);
+  return Number.isInteger(n) && n >= 32 && n <= EMBEDDING_DIM ? n : DEFAULT_SEARCH_DIMS;
+}
+
+/** First `dims` components, re-normalised to unit length (so dot product = cosine). Returns a Float32Array. */
+export function truncateAndNormalize(vec, dims) {
+  const n = Math.min(dims, vec.length);
+  const out = new Float32Array(n);
+  let norm = 0;
+  for (let i = 0; i < n; i++) { out[i] = vec[i]; norm += vec[i] * vec[i]; }
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < n; i++) out[i] /= norm;
+  return out;
+}
+
 /** Cosine similarity for already-normalised vectors is just the dot product; this also works for unnormalised ones. */
 export function cosine(a, b) {
   if (!a || !b || a.length !== b.length) return 0;
