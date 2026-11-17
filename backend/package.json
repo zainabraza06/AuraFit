@@ -36,6 +36,9 @@
     "@gradio/client": "^2.3.1",
     "@huggingface/inference": "^4.13.15",
     "@huggingface/transformers": "^4.3.2",
+    "@langchain/core": "^1.4.1",
+    "@langchain/langgraph": "^1.7.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.0.0",
@@ -54,7 +57,8 @@
     "prom-client": "^15.1.3",
     "rate-limit-redis": "^6.0.1",
     "replicate": "^1.4.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
