@@ -19,7 +19,8 @@ const facetDataOf = (d) => {
   if (!fx) FACET_MEMO.set(d, (fx = precomputeFacetData(d)));
   return fx;
 };
-import { parseGenderFilter } from '../utils/catalogQuery.js';
+import { parseGenderFilter, attachGenderFilter } from '../utils/catalogQuery.js';
+import { escapeRegex } from '../utils/regexEscape.js';
 
 /** Score adjustment for products in (+) / outside (-) the catalog a query names. */
 export const CATALOG_HINT_BOOST = Number(process.env.CATALOG_HINT_BOOST || 0.08);
@@ -170,35 +171,75 @@ export async function regexSearchAcrossCatalogs({ color, keywords = [], gender }
     ? CATALOGS.filter((c) => c.key === String(catalog).toLowerCase())
     : CATALOGS;
 
-  const orClauses = [];
-  const colorList = (Array.isArray(color) ? color : [color]).filter(Boolean);
-  for (const c of colorList) {
-    orClauses.push(
-      { primaryColor: { $regex: c, $options: 'i' } },
-      { primaryExactColor: { $regex: c, $options: 'i' } },
-      { exactColors: { $elemMatch: { $regex: c, $options: 'i' } } },
-      { colors: { $elemMatch: { $regex: c, $options: 'i' } } }
-    );
-  }
-  for (const kw of keywords.slice(0, 5)) {
-    if (!kw) continue;
-    orClauses.push(
-      { name: { $regex: kw, $options: 'i' } },
-      { tags: { $elemMatch: { $regex: kw, $options: 'i' } } },
-      { description: { $regex: kw, $options: 'i' } }
-    );
-  }
-  if (!orClauses.length) return { results: [], relaxedFloor: false, totalCandidates: 0 };
+  // User text goes into $regex: ALWAYS escape it (an unescaped "(a+)+$" is a slow-regex / injection risk).
+  const colorList = (Array.isArray(color) ? color : [color]).filter(Boolean).map(escapeRegex);
+  const terms = keywords.filter(Boolean).slice(0, 6);
+  const termRx = terms.map(escapeRegex);
+  if (!colorList.length && !termRx.length) return { results: [], relaxedFloor: false, totalCandidates: 0 };
 
-  const query = { $or: orClauses, inStock: { $ne: false } };
-  attachGenderFilter(query, gender);
+  const colorClause = colorList.length
+    ? { $or: colorList.flatMap((c) => [
+        { primaryColor: { $regex: c, $options: 'i' } },
+        { primaryExactColor: { $regex: c, $options: 'i' } },
+        { exactColors: { $elemMatch: { $regex: c, $options: 'i' } } },
+        { colors: { $elemMatch: { $regex: c, $options: 'i' } } },
+      ]) }
+    : null;
+  const termClause = (kw) => ({ $or: [
+    { name: { $regex: kw, $options: 'i' } },
+    { tags: { $elemMatch: { $regex: kw, $options: 'i' } } },
+    { description: { $regex: kw, $options: 'i' } },
+  ] });
 
-  const perCatalog = await Promise.all(
-    wantCatalogs.map(async ({ key, Model }) => {
-      const docs = await Model.find(query, { embedding: 0 }).limit(limit).lean();
-      return docs.map((d) => ({ ...d, catalog: key }));
-    })
-  );
-  const results = perCatalog.flat().slice(0, limit);
+  // Two tiers. Tier 1 is SPECIFIC: every term (and the colour) must match, so "white kurta" finds white kurtas even in
+  // a catalog with thousands of kurtas. Tier 2 widens to ANY term, only if tier 1 came up short. Within each tier
+  // results are ranked by keywordScore. (A single wide $or with a fixed pool could miss the best match entirely.)
+  const base = () => { const q = { inStock: { $ne: false } }; attachGenderFilter(q, gender); return q; };
+  const specific = { ...base(), $and: [...termRx.map(termClause), ...(colorClause ? [colorClause] : [])] };
+  const wide = { ...base(), $or: [...(colorClause ? colorClause.$or : []), ...termRx.flatMap((kw) => termClause(kw).$or)] };
+  const pool = Math.min(Math.max(limit * 6, 60), 200);
+  const fetch = async (query) => (await Promise.all(
+    wantCatalogs.map(async ({ key, Model }) => (await Model.find(query, { embedding: 0 }).limit(pool).lean()).map((d) => ({ ...d, catalog: key }))),
+  )).flat();
+  const rank = (docs) => docs
+    .map((d) => ({ d, s: keywordScore(d, terms, colorList) }))
+    .sort((a, b) => b.s - a.s || (b.d.metadataScore ?? 0) - (a.d.metadataScore ?? 0))
+    .map((x) => x.d);
+
+  const first = termRx.length ? rank(await fetch(specific)) : [];
+  let results = first.slice(0, limit);
+  if (results.length < limit) {
+    const seen = new Set(results.map((d) => String(d._id)));
+    const more = rank(await fetch(wide)).filter((d) => !seen.has(String(d._id)));
+    results = [...results, ...more].slice(0, limit);
+  }
   return { results, relaxedFloor: false, totalCandidates: results.length };
+}
+
+/**
+ * Words worth searching for in a free-text request: lower-case, no stop words, no amounts or currency
+ * ("under 8000 PKR" must not become the search terms "under", "8000", "pkr").
+ */
+export function keywordTerms(text) {
+  const STOP = new Set(['a', 'an', 'the', 'for', 'and', 'with', 'under', 'below', 'over', 'above', 'budget', 'total', 'each', 'piece', 'pieces', 'pkr', 'rs', 'rupees', 'my', 'me', 'to', 'of', 'in', 'on', 'some', 'something', 'want', 'need', 'looking', 'show', 'find', 'give', 'please', 'any', 'good', 'nice', 'best', 'look', 'outfit', 'wear']);
+  return [...new Set(
+    String(text || '').toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+k?$/.test(w)),
+  )];
+}
+
+/** How well one product matches the search terms: name 3, tags 2, description 1, colour 2. Pure; used to rank the keyword fallback. */
+export function keywordScore(doc, terms, colors = []) {
+  const name = String(doc.name || '').toLowerCase();
+  const tags = (doc.tags || []).join(' ').toLowerCase();
+  const desc = String(doc.description || '').toLowerCase();
+  const colorBlob = [doc.primaryColor, doc.primaryExactColor, ...(doc.colors || []), ...(doc.exactColors || [])].join(' ').toLowerCase();
+  let s = 0;
+  for (const t of terms) {
+    const lt = String(t).toLowerCase();
+    if (name.includes(lt)) s += 3;
+    else if (tags.includes(lt)) s += 2;
+    else if (desc.includes(lt)) s += 1;
+  }
+  for (const c of colors) if (colorBlob.includes(String(c).toLowerCase())) s += 2;
+  return s;
 }

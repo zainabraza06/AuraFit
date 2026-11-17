@@ -51,3 +51,23 @@ test('head-final compounds: "bracelet watch" asks for a watch; lists keep every 
   assert.deepEqual(inferCatalogHints('sandal'), ['shoes'], '"and" inside "sandal" is not a conjunction');
   assert.deepEqual(inferCatalogHints('golden band watch'), ['watches']);
 });
+
+import { keywordTerms, keywordScore } from '../services/crossCatalogSearch.js';
+
+test('keywordTerms drops stop words, amounts and currency; keeps the product words', () => {
+  assert.deepEqual(keywordTerms('a white kurta for eid under 8000 PKR'), ['white', 'kurta', 'eid']);
+  assert.deepEqual(keywordTerms('my budget is 8k rupees, green outfit with shoes'), ['green', 'shoes']);
+  assert.deepEqual(keywordTerms(''), []);
+  assert.deepEqual(keywordTerms('Kurta kurta KURTA'), ['kurta'], 'deduplicated');
+});
+
+test('keywordScore ranks a white kurta above white trousers and above a red kurta', () => {
+  const terms = ['white', 'kurta'];
+  const whiteKurta = { name: 'Cotton Kurta', primaryColor: 'White', colors: ['White'] };
+  const whitePants = { name: 'Wide Leg Pants', primaryColor: 'White', colors: ['White'] };
+  const redKurta = { name: 'Embroidered Kurta', primaryColor: 'Red', colors: ['Red'] };
+  const score = (d) => keywordScore(d, terms, ['white']);
+  assert.ok(score(whiteKurta) > score(whitePants), 'matches both words and the colour');
+  assert.ok(score(whiteKurta) > score(redKurta));
+  assert.equal(keywordScore({ name: 'x' }, [], []), 0);
+});
