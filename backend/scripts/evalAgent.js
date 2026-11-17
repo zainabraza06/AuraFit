@@ -59,8 +59,8 @@ async function main() {
     const stockById = await stockLookup(run.picks.map((p) => String(p.id)));
     const checks = judgeAgentRun(task, run, { stockById, misfiled });
     const passed = taskPassed(checks);
-    rows.push({ id: task.id, message: task.message, passed, checks, ms: run.ms, toolCalls: run.toolCalls, steps: run.steps, stopReason: run.stopReason, answer: run.answer, picks: run.picks.map((p) => ({ id: p.id, catalog: p.catalog, name: p.name, price: p.price, color: p.color })) });
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${String(run.ms).padStart(6)} ms  ${run.toolCalls} tools  ${run.picks.length} picks${passed ? '' : `   <- ${checks.filter((c) => !c.ok).map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`).join('; ')}`}`);
+    rows.push({ id: task.id, message: task.message, passed, checks, ms: run.ms, toolCalls: run.toolCalls, steps: run.steps, revisions: run.revisions || 0, unresolved: run.unresolvedViolations || [], stopReason: run.stopReason, answer: run.answer, picks: run.picks.map((p) => ({ id: p.id, catalog: p.catalog, name: p.name, price: p.price, color: p.color })) });
+    console.log(`${passed ? 'PASS' : 'FAIL'}  ${String(run.ms).padStart(6)} ms  ${run.toolCalls} tools  ${run.picks.length} picks${run.revisions ? `  (revised x${run.revisions})` : ''}${passed ? '' : `   <- ${checks.filter((c) => !c.ok).map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`).join('; ')}`}`);
   }
 
   const s = summarizeAgentEval(rows);

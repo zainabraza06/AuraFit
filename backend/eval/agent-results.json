@@ -20,6 +20,10 @@
         "passed": 13,
         "of": 13
       },
+      "catalog_sane": {
+        "passed": 13,
+        "of": 13
+      },
       "has_picks": {
         "passed": 13,
         "of": 13
@@ -45,8 +49,8 @@
         "of": 1
       }
     },
-    "medianMs": 15354,
-    "p90Ms": 42403,
+    "medianMs": 21825,
+    "p90Ms": 89461,
     "meanToolCalls": 1.8461538461538463
   },
   "rows": [
@@ -73,6 +77,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -92,11 +100,11 @@
           "ok": true
         }
       ],
-      "ms": 53127,
+      "ms": 41664,
       "toolCalls": 2,
       "steps": 3,
       "stopReason": "answered",
-      "answer": "Here’s a chic maroon Eid look that stays well under your 15,000 PKR budget. The Alkaram Studio maroon shalwar‑kameez is a stylish, embroidered option perfect for a party, paired with elegant grey khussas for a subtle contrast. A pair of silver Cendria studs adds a touch of sparkle without overpowering the ensemble. This combination keeps you festive, comfortable, and budget‑friendly!",
+      "answer": "Here is a stunning maroon ready-to-wear outfit from Alkaram Studio paired with elegant grey fancy khussas from Stylo and delicate silver studs. The entire combination fits wonderfully within your 15,000 PKR budget while keeping you stylish and festive for your Eid party.",
       "picks": [
         {
           "id": "6af60907b6633c3d280ee05e",
@@ -144,6 +152,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -151,44 +163,44 @@
         {
           "name": "budget_total",
           "ok": true,
-          "detail": "total 7859 > 8000"
+          "detail": "total 4800 > 8000"
         },
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [green, olive, mint, emerald] in olive, golden, gold"
+          "detail": "none of [green, olive, mint, emerald] in Green, black, silver"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 23141,
-      "toolCalls": 2,
-      "steps": 3,
+      "ms": 121770,
+      "toolCalls": 3,
+      "steps": 5,
       "stopReason": "answered",
-      "answer": "Here’s a complete green mehndi look that stays under your 8000 PKR budget. Pair the olive‑green Kurta‑Dupatta‑Trouser set from Zellbury with the golden Khussa from Stylo for a festive touch, and finish off with a gold‑plated Satellite Necklace that complements the green hue. This combination keeps you stylish and within budget, while still giving you that traditional mehndi vibe.",
+      "answer": "I have curated a beautiful green mehndi outfit that fits perfectly within your 8000 PKR budget. This selection includes a stylish unstitched suit, elegant black formal slippers, and a delicate silver pendant to complete your look. The total cost for these items is 5049 PKR, leaving you plenty of room in your budget.",
       "picks": [
         {
-          "id": "6af6102663fcb05ccd9faee1",
+          "id": "6af60872b6633c3d280edaab",
           "catalog": "clothing",
-          "name": "Kurta Dupatta Trouser - 2979",
-          "price": 3990,
-          "color": "olive"
+          "name": "RTS | SHIRT & DUPATTA",
+          "price": 2590,
+          "color": "Green"
         },
         {
-          "id": "6af5f8b76c23d76cdef2a257",
+          "id": "6af5f8656c23d76cdef2a1b9",
           "catalog": "shoes",
-          "name": "Golden Fancy Khussa For Women EC8625",
-          "price": 2370,
-          "color": "golden"
+          "name": "Black Formal Slipper For Women FR5483",
+          "price": 1470,
+          "color": "black"
         },
         {
-          "id": "6af609fa6c23d76cdef2a3a7",
+          "id": "6af6086a6c23d76cdef2a325",
           "catalog": "jewelry",
-          "name": "Satellite Necklace",
-          "price": 1499,
-          "color": "gold"
+          "name": "Silver Pendant J42923",
+          "price": 740,
+          "color": "silver"
         }
       ]
     },
@@ -215,6 +227,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -222,26 +238,19 @@
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [black] in Black, Black"
+          "detail": "none of [black] in Black"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 13627,
+      "ms": 5168,
       "toolCalls": 1,
       "steps": 2,
       "stopReason": "answered",
-      "answer": "I have found several elegant black heel options that will pair beautifully with your navy dress. The Ndure Kitten Heels offer a classic, versatile look perfect for both office and formal settings, while the Stylo Back Open heels provide a more sophisticated, dressy aesthetic for special occasions.",
+      "answer": "Here are a few black heels that will look great with a navy dress—stylish, formal, and comfortable for a day or evening out.",
       "picks": [
-        {
-          "id": "6af60c9b6c23d76cdef2a6aa",
-          "catalog": "shoes",
-          "name": "Women's Kitten Heels",
-          "price": 4999,
-          "color": "Black"
-        },
         {
           "id": "6af5f89e6c23d76cdef2a216",
           "catalog": "shoes",
@@ -274,6 +283,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -287,17 +300,17 @@
           "ok": true
         }
       ],
-      "ms": 6655,
+      "ms": 5900,
       "toolCalls": 1,
       "steps": 2,
       "stopReason": "answered",
-      "answer": "Here’s a lovely gold jhumka-style pair that fits your budget: the Texture Drop Earrings from Limelight. They’re lightweight, gold‑colored, and perfect for casual or party occasions. The price is only 240 PKR, leaving plenty of room for other accessories if you wish!",
+      "answer": "Here’s a lovely gold drop earring that fits your budget and style—Crystal Drops from Limelight. They’re elegant, gold‑colored, and perfect for parties, Eid, or a casual day out. The price is just 1,199 PKR, well under your 3,000 PKR limit.",
       "picks": [
         {
-          "id": "6af60a136c23d76cdef2a44e",
+          "id": "6af609f16c23d76cdef2a365",
           "catalog": "jewelry",
-          "name": "Texture Drop Earrings",
-          "price": 240,
+          "name": "Crystal Drops",
+          "price": 1199,
           "color": "Gold"
         }
       ]
@@ -325,6 +338,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -332,25 +349,25 @@
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [white, ivory, off-white, cream] in offwhite, grey, silver"
+          "detail": "none of [white, ivory, off-white, cream] in off white, grey, silver, multicolor"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 24286,
-      "toolCalls": 3,
-      "steps": 4,
+      "ms": 8097,
+      "toolCalls": 2,
+      "steps": 3,
       "stopReason": "answered",
-      "answer": "Here is a stunning white kurta outfit curated specially for your Eid celebrations! We have paired a sophisticated raw silk kurta from Khaadi with elegant grey fancy khussa shoes from Stylo for a graceful contrast. Complete the festive look with delicate silver stud earrings and a timeless analog watch to match your elegance.",
+      "answer": "Here’s a polished Eid look: a crisp white off‑sleeve kurta paired with elegant grey khussas, subtle silver studs, and a classic Roman watch. The ensemble balances tradition with contemporary flair, keeping you cool and stylish for the celebrations.",
       "picks": [
         {
-          "id": "6af617acb6633c3d280eec8e",
+          "id": "6af617adb6633c3d280eec91",
           "catalog": "clothing",
-          "name": "Raw Silk Kurta",
-          "price": 10000,
-          "color": "offwhite"
+          "name": "Off-White Sleeveless Kurta",
+          "price": 12000,
+          "color": "off white"
         },
         {
           "id": "6af5f8b76c23d76cdef2a252",
@@ -365,6 +382,13 @@
           "name": "Cendria Studs",
           "price": 1099,
           "color": "silver"
+        },
+        {
+          "id": "6af5f9ff6c23d76cdef2a287",
+          "catalog": "watches",
+          "name": "Rectangular Roman Women's Watch",
+          "price": 3600,
+          "color": "multicolor"
         }
       ]
     },
@@ -391,6 +415,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -398,46 +426,32 @@
         {
           "name": "budget_total",
           "ok": true,
-          "detail": "total 7057 > 10000"
+          "detail": "total 8889 > 10000"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 42403,
-      "toolCalls": 3,
-      "steps": 4,
+      "ms": 89461,
+      "toolCalls": 2,
+      "steps": 3,
       "stopReason": "answered",
-      "answer": "I have curated a beautiful, budget-friendly office outfit for you featuring a blue 3-piece lawn suit. This ensemble is paired with crisp white slippers, a delicate silver pendant, and an elegant off-white analog watch, keeping your total well under 10,000 PKR. It is a professional yet comfortable look perfect for a casual office setting.",
+      "answer": "For a chic and professional office look, I recommend pairing the soft Pink Self Jacquard Kurti from Limelight with the versatile Beige All Day Pant from Zellbury. This combination stays well within your budget at 8,489 PKR, offering a sophisticated pastel aesthetic perfect for a casual office environment.",
       "picks": [
         {
-          "id": "6af5f80cac94b047d2ba3ffc",
+          "id": "6af5f7ecac94b047d2ba3ecd",
           "catalog": "clothing",
-          "name": "3 Piece Lawn Paste Suit (Unstitched)",
-          "price": 2799,
-          "color": "blue"
+          "name": "Self Jacquard Kurti- Embroidered (Pret)",
+          "price": 5499,
+          "color": "Pink"
         },
         {
-          "id": "6af5f8686c23d76cdef2a1d2",
-          "catalog": "shoes",
-          "name": "White Formal Slipper For Ladies FR8465",
-          "price": 2370,
-          "color": "white"
-        },
-        {
-          "id": "6af608696c23d76cdef2a321",
-          "catalog": "jewelry",
-          "name": "Silver Pendant J42945",
-          "price": 880,
-          "color": "silver"
-        },
-        {
-          "id": "6af5fa296c23d76cdef2a2bf",
-          "catalog": "watches",
-          "name": "Dobby Top",
-          "price": 1008,
-          "color": "off white"
+          "id": "6af5f9aeac94b047d2ba4843",
+          "catalog": "clothing",
+          "name": "Kurta Trouser - 2885",
+          "price": 3390,
+          "color": "Beige"
         }
       ]
     },
@@ -464,6 +478,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -473,31 +491,17 @@
           "ok": true
         }
       ],
-      "ms": 18812,
+      "ms": 3986,
       "toolCalls": 1,
       "steps": 2,
       "stopReason": "answered",
-      "answer": "Here are some stunning pearl and white jewelry options perfect for a Pakistani wedding. From Maria B's elegant Zohira Pendant featuring pearl white details to Limelight's affordable Orphena Necklace, these pieces will add a touch of grace to your formal attire.",
+      "answer": "Here is a beautiful pearl necklace that will complement your wedding attire beautifully. It’s crafted from genuine pearls and has a classic design that pairs well with both traditional and contemporary wedding outfits. The white pearl accents add a touch of elegance and sophistication. You’ll love how it catches the light and enhances your overall look. Enjoy your special day!",
       "picks": [
-        {
-          "id": "6af60c3c6c23d76cdef2a5e0",
-          "catalog": "jewelry",
-          "name": "Zohira Pendant",
-          "price": 9990,
-          "color": "White"
-        },
         {
           "id": "6af609fb6c23d76cdef2a3ac",
           "catalog": "jewelry",
           "name": "Orphena Necklace",
           "price": 1699,
-          "color": "White"
-        },
-        {
-          "id": "6af60c3b6c23d76cdef2a5d8",
-          "catalog": "jewelry",
-          "name": "Melzira Pendant",
-          "price": 6990,
           "color": "White"
         }
       ]
@@ -525,6 +529,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -534,18 +542,18 @@
           "ok": true
         }
       ],
-      "ms": 15354,
+      "ms": 6302,
       "toolCalls": 1,
       "steps": 2,
       "stopReason": "answered",
-      "answer": "Here’s a fun, kid‑friendly watch that’s perfect for everyday adventures. It’s a colorful digital watch with a durable strap, great for playtime and school. The design is playful yet reliable, making it a great choice for any child’s wrist. Enjoy the bright colors and easy‑to‑read display!",
+      "answer": "Here’s a fun, kid‑friendly watch that’s both stylish and affordable – the Kids Ferozy Watch from Stylo. It’s a bright pink digital watch that’s perfect for everyday wear, parties, or school. The watch’s durable strap and clear display make it easy for kids to read the time, while the playful design keeps them excited to wear it. It’s a great choice for a child who loves a pop of color and a reliable timepiece.",
       "picks": [
         {
-          "id": "6af5fa096c23d76cdef2a2ba",
+          "id": "6af5f9bd6c23d76cdef2a277",
           "catalog": "watches",
-          "name": "Floral Sprint",
-          "price": 1900,
-          "color": "Multicolor"
+          "name": "Kids Ferozy Watch J20013",
+          "price": 290,
+          "color": "Pink"
         }
       ]
     },
@@ -572,6 +580,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -579,25 +591,25 @@
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [red, maroon] in deep red, grey, gold, black"
+          "detail": "none of [red, maroon] in red, grey, gold, multicolor"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 12011,
+      "ms": 13962,
       "toolCalls": 2,
       "steps": 3,
       "stopReason": "answered",
-      "answer": "Here is a stunning, traditional bridal look featuring the exquisite 'Salome' red lehnga by Maria B. I have paired it with elegant grey fancy khussas from Stylo, the gorgeous Serevia gold-plated necklace from Limelight, and a matching analog watch to complete your special day ensemble with grace and sophistication.",
+      "answer": "For your bridal look, I recommend the 'Madara' red lehenga by Maria B, which offers a stunning traditional aesthetic. To complete the ensemble, I have paired it with elegant grey fancy khussas for a balanced contrast, a gold-plated Serevia necklace for a touch of glamour, and a sophisticated rectangular analog watch. This combination ensures a cohesive and regal appearance for your special day.",
       "picks": [
         {
-          "id": "6af60a01b6633c3d280ee2de",
+          "id": "6af609feb6633c3d280ee2c3",
           "catalog": "clothing",
-          "name": "Salome",
-          "price": 1150000,
-          "color": "deep red"
+          "name": "Madara",
+          "price": 235000,
+          "color": "red"
         },
         {
           "id": "6af5f8b76c23d76cdef2a252",
@@ -614,11 +626,11 @@
           "color": "gold"
         },
         {
-          "id": "6af5fa286c23d76cdef2a2bd",
+          "id": "6af5f9ff6c23d76cdef2a287",
           "catalog": "watches",
-          "name": "Premium Silk Co-ord Set- Embroidered",
-          "price": 3999,
-          "color": "black"
+          "name": "Rectangular Roman Women's Watch",
+          "price": 3600,
+          "color": "multicolor"
         }
       ]
     },
@@ -645,6 +657,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -656,39 +672,25 @@
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [yellow, mustard, gold] in Yellow, Yellow, Yellow"
+          "detail": "none of [yellow, mustard, gold] in yellow"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 17920,
-      "toolCalls": 1,
-      "steps": 2,
+      "ms": 63239,
+      "toolCalls": 2,
+      "steps": 3,
       "stopReason": "answered",
-      "answer": "I have found several beautiful yellow lawn suits for your summer wardrobe, all well within your 6000 PKR budget. My top recommendation is the 3-piece embroidered lawn suit from Limelight for a complete look, or the Alkaram Studio 3-piece set for a versatile casual-to-party option. These are perfect for staying cool and stylish during the summer season.",
+      "answer": "Here’s a bright, breezy yellow lawn suit that’s perfect for a hot summer day—lightweight, stylish, and well under your 6000 PKR budget. It’s a 2‑piece unstitched set from Limelight, so you can tailor the fit to your exact measurements. Pair it with simple sandals or a pair of white canvas sneakers for a casual look, or add a delicate gold chain for a touch of elegance. Enjoy the sunny season in style!",
       "picks": [
         {
-          "id": "6af5f81aac94b047d2ba409c",
+          "id": "6af5f813ac94b047d2ba4050",
           "catalog": "clothing",
-          "name": "3 Piece Lawn Suit- Embroidered (Unstitched)",
-          "price": 4999,
-          "color": "Yellow"
-        },
-        {
-          "id": "6af60878b6633c3d280edae7",
-          "catalog": "clothing",
-          "name": "RTS | SHIRT, TROUSER & DUPATTA",
-          "price": 3832,
-          "color": "Yellow"
-        },
-        {
-          "id": "6af5f811ac94b047d2ba4038",
-          "catalog": "clothing",
-          "name": "3 Piece Lawn Slub Suit- Embroidered (Unstitched)",
-          "price": 5599,
-          "color": "Yellow"
+          "name": "2 Piece Lawn Suit (Unstitched)",
+          "price": 1819,
+          "color": "yellow"
         }
       ]
     },
@@ -715,6 +717,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -722,18 +728,18 @@
         {
           "name": "color",
           "ok": true,
-          "detail": "none of [navy, blue] in navy blue, white, gold, off white"
+          "detail": "none of [navy, blue] in navy blue, white, gold, multicolor"
         },
         {
           "name": "catalogs",
           "ok": true
         }
       ],
-      "ms": 12607,
+      "ms": 21825,
       "toolCalls": 2,
       "steps": 3,
       "stopReason": "answered",
-      "answer": "Here’s a polished navy‑blue formal look that’s perfect for any wedding or formal event. The Sana Safinaz dress pairs beautifully with the classic white khussa for a subtle contrast, while the gold‑plated Miresta tassels add a touch of sparkle that complements the navy hue. A simple off‑white analog watch keeps the ensemble elegant without overpowering the outfit.",
+      "answer": "Here’s a polished navy blue shalwar‑kameez from Sana Safinaz that’s perfect for a formal event. Pair it with the crisp white khussa for a classic contrast, and add the gold‑plated Miresta Tassels earrings to elevate the look. A subtle Roman watch keeps the ensemble elegant without overpowering. All pieces are in stock and fit a formal occasion.",
       "picks": [
         {
           "id": "6af60ad8b6633c3d280ee451",
@@ -757,11 +763,11 @@
           "color": "gold"
         },
         {
-          "id": "6af5fa296c23d76cdef2a2bf",
+          "id": "6af5f9ff6c23d76cdef2a287",
           "catalog": "watches",
-          "name": "Dobby Top",
-          "price": 1008,
-          "color": "off white"
+          "name": "Rectangular Roman Women's Watch",
+          "price": 3600,
+          "color": "multicolor"
         }
       ]
     },
@@ -788,16 +794,20 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
         }
       ],
-      "ms": 8264,
+      "ms": 24164,
       "toolCalls": 3,
       "steps": 4,
       "stopReason": "answered",
-      "answer": "I searched our live catalog for a men's kurta for your brother, but unfortunately, we currently don't have any men's clothing items in stock. Please check back later when our men's collection becomes available!",
+      "answer": "I'm sorry, but our current live catalog doesn't have any men's kurtas in stock right now for your brother. We frequently update our inventory, so please check back soon for new arrivals!",
       "picks": []
     },
     {
@@ -823,6 +833,10 @@
           "ok": true
         },
         {
+          "name": "catalog_sane",
+          "ok": true
+        },
+        {
           "name": "has_picks",
           "ok": true,
           "detail": "no products were recommended"
@@ -833,25 +847,39 @@
           "detail": "a forbidden id was recommended"
         }
       ],
-      "ms": 8554,
+      "ms": 23736,
       "toolCalls": 2,
       "steps": 3,
       "stopReason": "answered",
-      "answer": "Here is a stunning festive outfit for you, featuring an elegant 3-piece embroidered suit paired with gorgeous traditional khussas. The white cross-hatch embroidered suit from Gul Ahmed pairs beautifully with the pearl-adorned khussas from ECS for a complete, graceful look.",
+      "answer": "Here is a stunning and elegant festive outfit put together just for you! The Zellbury Embroidered Kurta Dupatta Trouser offers a sophisticated white and cream palette that is perfect for parties and formal celebrations. We've paired it with chic grey fancy khussas from Stylo, a delicate gold Limelight necklace, and a refined ECS analog watch to complete your festive look effortlessly.",
       "picks": [
         {
-          "id": "6af60d02b6633c3d280ee7fb",
+          "id": "6af6103263fcb05ccd9faf6e",
           "catalog": "clothing",
-          "name": "3PC Cross Hatch Embroidered Suit",
-          "price": 8394,
-          "color": "White"
+          "name": "Embroidered Kurta Dupatta Trouser - 0768",
+          "price": 11990,
+          "color": "cream"
         },
         {
-          "id": "6af60a356c23d76cdef2a4c7",
+          "id": "6af5f8b76c23d76cdef2a252",
           "catalog": "shoes",
-          "name": "Pearl Strands Khussa",
+          "name": "Grey Fancy Khussa For Ladies EC8783",
+          "price": 2530,
+          "color": "grey"
+        },
+        {
+          "id": "6af60a066c23d76cdef2a3d5",
+          "catalog": "jewelry",
+          "name": "Serevia Necklace",
+          "price": 1499,
+          "color": "gold"
+        },
+        {
+          "id": "6af5f9ff6c23d76cdef2a287",
+          "catalog": "watches",
+          "name": "Rectangular Roman Women's Watch",
           "price": 3600,
-          "color": "White"
+          "color": "multicolor"
         }
       ]
     }
