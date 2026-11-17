@@ -1,14 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { analyzeImageWithProviderFallback } from '../services/llmClient.js';
 import WardrobeItem from '../models/WardrobeItem.js';
 
 export async function addWardrobeItem(req, res) {
   try {
     if (!req.file) return res.status(400).json({ error: 'Please upload an image of your clothing' });
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-    });
 
     const prompt = `
       Identify this piece of clothing.
@@ -21,9 +16,13 @@ export async function addWardrobeItem(req, res) {
       }
     `;
 
-    const imageParts = [{ inlineData: { data: req.file.buffer.toString('base64'), mimeType: req.file.mimetype } }];
-    const result = await model.generateContent([prompt, ...imageParts]);
-    const analysis = JSON.parse(result.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
+    // Goes through the shared vision chain (current Gemini models, circuit breaker, metrics) instead of a
+    // hard-coded model id that had been retired.
+    const { data: analysis } = await analyzeImageWithProviderFallback({
+      prompt,
+      imageBase64: req.file.buffer.toString('base64'),
+      mimeType: req.file.mimetype
+    });
 
     const wardrobeItem = await WardrobeItem.create({
       user: req.user._id,
