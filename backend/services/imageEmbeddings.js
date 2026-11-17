@@ -24,6 +24,7 @@
  * CURRENT model id are searched. Tests inject a fake with setImageEmbeddingBackend().
  */
 import path from 'path';
+import { currentPolicy } from './memoryProfile.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,5 +103,6 @@ export const embedTextForImages = (text) => serialised(() => backend.embedText(S
 
 /** Same rule as text embeddings: tests never load a model by accident. */
 export function isImageEmbeddingConfigured() {
-  return backend !== localBackend || process.env.NODE_ENV !== 'test';
+  if (backend !== localBackend) return true;
+  return process.env.NODE_ENV !== 'test' && currentPolicy().image;
 }
