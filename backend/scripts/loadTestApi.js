@@ -32,7 +32,10 @@ export const SCENARIOS = [
   { name: 'health', p95Ms: 50, requests: [{ method: 'GET', path: '/api/health' }] },
   { name: 'browse (cached list)', p95Ms: 150, requests: [{ method: 'GET', path: '/api/products?limit=24' }] },
   { name: 'featured (cached)', p95Ms: 150, requests: [{ method: 'GET', path: '/api/products/featured' }] },
-  { name: 'keyword search', p95Ms: 400, requests: QUERIES.map((s) => ({ method: 'GET', path: `/api/search?q=${encodeURIComponent(s.split(' ')[1])}` })) },
+  { name: 'keyword search (cached)', p95Ms: 400, requests: QUERIES.map((s) => ({ method: 'GET', path: `/api/search?q=${encodeURIComponent(s.split(' ')[1])}` })) },
+  // Unique query every time => always a cache miss: the true cost of a never-seen search. It is dominated by round trips to the
+  // database, so on a laptop talking to Atlas over the internet it is informational (no target), not a pass/fail gate.
+  { name: 'keyword search (uncached)', p95Ms: null, requests: Array.from({ length: 40 }, (_, i) => ({ method: 'GET', path: `/api/search?q=${encodeURIComponent(QUERIES[i % QUERIES.length].split(' ')[1])}&nocache=${i}` })) },
   { name: 'semantic search (warm)', p95Ms: 800, requests: QUERIES.map((_, i) => ({ method: 'GET', path: `/api/search/semantic?q=${q(i)}&limit=20` })) },
 ];
 const MAX_ERROR_RATE = 0.01;
@@ -67,8 +70,8 @@ async function main() {
     const row = { name: sc.name, rps: Math.round(res.requests.average), p50: res.latency.p50, p95: res.latency.p97_5 ?? res.latency.p95 ?? res.latency.p99, p99: res.latency.p99, errors: bad, rate, target: sc.p95Ms };
     // autocannon reports p97.5; use the closest percentile at/above 95 and say so in the header
     rows.push(row);
-    console.log(`${sc.name.padEnd(26)} ${String(row.rps).padStart(6)}  ${String(row.p50).padStart(5)}ms ${String(row.p95).padStart(6)}ms ${String(row.p99).padStart(6)}ms  ${String(bad).padStart(5)}   <= ${sc.p95Ms} ms`);
-    if (row.p95 > sc.p95Ms) failures.push(`${sc.name}: p97.5 ${row.p95} ms > target ${sc.p95Ms} ms`);
+    console.log(`${sc.name.padEnd(26)} ${String(row.rps).padStart(6)}  ${String(row.p50).padStart(5)}ms ${String(row.p95).padStart(6)}ms ${String(row.p99).padStart(6)}ms  ${String(bad).padStart(5)}   ${sc.p95Ms == null ? 'informational' : `<= ${sc.p95Ms} ms`}`);
+    if (sc.p95Ms != null && row.p95 > sc.p95Ms) failures.push(`${sc.name}: p97.5 ${row.p95} ms > target ${sc.p95Ms} ms`);
     if (rate > MAX_ERROR_RATE) failures.push(`${sc.name}: error rate ${(rate * 100).toFixed(1)}% > ${MAX_ERROR_RATE * 100}% (${bad}/${total} bad, e.g. non-2xx: ${res.non2xx})`);
   }
   console.log('\n(latency percentile reported = p97.5, the closest autocannon exposes above p95)');
