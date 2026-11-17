@@ -49,6 +49,20 @@ export const llmTokens = new client.Counter({
   registers: [registry],
 });
 
+export const agentRuns = new client.Counter({
+  name: 'agent_runs_total',
+  help: 'Stylist agent runs by how they ended (answered|budget|llm_failed)',
+  labelNames: ['outcome'],
+  registers: [registry],
+});
+
+export const agentSteps = new client.Histogram({
+  name: 'agent_steps',
+  help: 'Decision steps used per stylist agent run',
+  buckets: [1, 2, 3, 4, 5, 6, 8, 12],
+  registers: [registry],
+});
+
 export const llmUp = new client.Gauge({
   name: 'llm_provider_up',
   help: '1 if the provider passed its last self-test, 0 if it failed',
