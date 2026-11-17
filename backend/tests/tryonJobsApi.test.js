@@ -61,12 +61,11 @@ test('the same images again return the cached result at once (200, cached, nothi
   await until(() => gate);
   gate.resolve();
   await until(async () => (await request(app).get(`/api/tryon/jobs/${first.body.id}`).set('X-Forwarded-For', '9.9.9.1')).body.status === 'done');
-  gate = null;
   const again = await submit(5, 6, '9.9.9.2');
   assert.equal(again.status, 200);
   assert.equal(again.body.cached, true);
   assert.equal(again.body.resultUrl, 'https://cdn.example/result.png');
-  assert.equal(gate, null, 'no generation was started');
+  assert.deepEqual(app.locals.tryonQueue.stats(), { running: 0, queued: 0 }, 'no generation was started for the cached request');
 });
 
 test("another caller cannot read someone else's job (404)", async () => {
@@ -84,7 +83,8 @@ test('validation: missing images, non-images and unsafe URLs are 400 and never q
   const ssrf = await request(app).post('/api/tryon/jobs').set('X-Forwarded-For', '9.9.9.4')
     .field('personUrl', 'http://169.254.169.254/latest/meta-data').field('clothingUrl', 'https://cdn.example/c.jpg');
   assert.equal(ssrf.status, 400);
-  assert.equal(gate, null);
+  // beforeEach gave this test a fresh queue: nothing from these rejected requests may be in it
+  assert.deepEqual(app.locals.tryonQueue.stats(), { running: 0, queued: 0 });
 });
 
 test('a caller with too many jobs in flight gets 429 with Retry-After', async () => {
