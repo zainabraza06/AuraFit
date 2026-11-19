@@ -61,7 +61,7 @@ test/         core_test.dart          models, ApiClient (mock HTTP), config, aut
 
 ```bash
 flutter analyze
-flutter test        # 42 tests
+flutter test        # 43 tests
 ```
 
 Widget tests drive the real screens against a fake API, so they need no server, network or platform plugins.

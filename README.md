@@ -22,8 +22,10 @@ Every number above is measured by a script in this repo and explained in [docs/P
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Overview](#overview)
 - [Features](#features)
+- [Mobile App (Flutter)](#mobile-app-flutter)
 - [Tech Stack](#tech-stack)
 - [Agentic Stylist and MCP](#agentic-stylist-and-mcp)
 - [Event-Driven Ingestion Pipeline](#event-driven-ingestion-pipeline)
@@ -47,6 +49,36 @@ Every number above is measured by a script in this repo and explained in [docs/P
 - [Getting Started](#getting-started)
 - [Scripts Reference](#scripts-reference)
 - [Testing](#testing)
+
+---
+
+## Screenshots
+
+### Web (Next.js)
+
+| Home | Semantic search: "black heels for a party" |
+|---|---|
+| ![Home](docs/screenshots/web/home.png) | ![Search results](docs/screenshots/web/search-results.png) |
+
+| Product page | Stylist chat |
+|---|---|
+| ![Product page](docs/screenshots/web/product.png) | ![Stylist chat](docs/screenshots/web/stylist-chat.png) |
+
+| Visual search | Virtual try-on |
+|---|---|
+| ![Visual search](docs/screenshots/web/visual-search.png) | ![Try-on](docs/screenshots/web/try-on.png) |
+
+### Mobile (Flutter)
+
+Captured from the Flutter web build at phone size, against the real API (semantic and visual search on).
+
+| Home | Search | Product | Stylist | Photo search |
+|---|---|---|---|---|
+| <img src="docs/screenshots/mobile/home.png" width="180"> | <img src="docs/screenshots/mobile/search-results.png" width="180"> | <img src="docs/screenshots/mobile/product.png" width="180"> | <img src="docs/screenshots/mobile/stylist.png" width="180"> | <img src="docs/screenshots/mobile/photo-search.png" width="180"> |
+
+The stylist screenshot is a real answer: *"A green mehndi outfit with shoes, 8000 PKR in total"* returned a suit (PKR 4,699), slippers (PKR 1,470) and a necklace, within budget, after 2 catalog lookups. The photo-search shot starts from a photo of a sandal and shows the "Visual match" chip (image embeddings, not just tags).
+
+Not pictured: the admin console (it shows user emails and server logs) and a generated try-on (it needs a person's photo, and none was used).
 
 ---
 
@@ -140,6 +172,31 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 
 ### 📱 Mobile app (Flutter)
 - A native-feeling Flutter client for the same API: browse, search, product pages with "complete the look", the AI stylist chat, photo search, virtual try-on and favourites. See [Mobile app](#mobile-app-flutter).
+
+---
+
+## Mobile App (Flutter)
+
+`mobile/` is a Flutter client for the same API (Android, iOS and web from one codebase).
+
+| Tab | What it does |
+|---|---|
+| **Home** | featured pieces, brand filter, endless "new arrivals" |
+| **Search** | one box over clothing, shoes, jewellery and watches; the camera button searches with a photo |
+| **Stylist** | chat with the agentic stylist (`POST /api/stylist/ask`); each pick shows why it was chosen |
+| **Saved** | favourites (needs an account) |
+| **Account** | sign in / register, and the server address with a "Save and test" check (reports semantic vs keyword search) |
+
+Product pages add the gallery, "shoes to match" and "pairs well with", **Try on** (a background job: submit, then poll the queue) and a link to the retailer.
+
+```bash
+cd mobile && flutter pub get
+flutter run -d chrome                                          # talks to http://localhost:5000/api
+flutter run --dart-define=API_BASE_URL=https://your-server/api
+flutter analyze && flutter test                                # 43 tests, no server needed
+```
+
+Honest limits: tokens are in plain `shared_preferences` (use the keychain before a store release), there is no offline catalog or push, and it has not been run on a physical iOS device (no Mac here). Details in [mobile/README.md](mobile/README.md).
 
 ---
 
