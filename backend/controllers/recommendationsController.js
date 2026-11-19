@@ -6,6 +6,7 @@ import { getOutfitForQuery, getRecommendations } from '../services/recommendatio
 import { buildIntentParsePrompt } from '../services/intentPrompt.js';
 import { rawIntentToEngineIntent } from '../services/intentAdapter.js';
 import { logger } from '../utils/logger.js';
+import { stripVectors } from '../utils/stripVectors.js';
 
 export async function getProductRecommendations(req, res) {
   try {
@@ -13,7 +14,7 @@ export async function getProductRecommendations(req, res) {
     const maxShoes = Math.min(12, parseInt(req.query.maxShoes, 10) || 6);
     const maxClothing = Math.min(12, parseInt(req.query.maxClothing, 10) || 6);
     const data = await getRecommendations(productId, { maxShoes, maxClothing });
-    res.json(data);
+    res.json(stripVectors(data));
   } catch (err) {
     if (err.message === 'Product not found') {
       return res.status(404).json({ error: 'Product not found' });
@@ -40,12 +41,12 @@ export async function generateOutfit(req, res) {
 
     const outfit = await getOutfitForQuery(intent);
 
-    res.json({
+    res.json(stripVectors({
       intent,
       aiAnalysis: intent.aiAnalysis || raw?.aiAnalysis || '',
       ...outfit,
       outfit
-    });
+    }));
   } catch (err) {
     console.error('[generateOutfit]', err);
     logger.error('recommendation', `generateOutfit failed: ${err.message}`, {
@@ -70,7 +71,7 @@ export async function getPersonalStyleAdvice(req, res) {
       return res.status(400).json({ error: 'message is required' });
     }
     const result = await generatePersonalStyleAdvice(String(message).trim());
-    res.json(result);
+    res.json(stripVectors(result));
   } catch (err) {
     console.error('[getPersonalStyleAdvice]', err);
     logger.error('recommendation', `getPersonalStyleAdvice failed: ${err.message}`, {

@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-17",
+  "perCatalog": 200,
+  "results": [
+    {
+      "label": "CLIP ViT-B/32 (current, general)",
+      "repo": "Xenova/clip-vit-base-patch32",
+      "dtype": "q8",
+      "photos": 672,
+      "embedSeconds": 88,
+      "queriesScored": 28,
+      "text2img": {
+        "precision": 0.28214285714285714,
+        "recall": 0.3078231292517007,
+        "mrr": 0.4658163265306122,
+        "ndcg": 0.40172654620970283
+      },
+      "img2img": {
+        "sameCatalog": 0.9279761904761905,
+        "sameType": 0.537169517884914
+      }
+    },
+    {
+      "label": "FashionCLIP (ViT-B/32, fashion-tuned)",
+      "repo": "ff13/fashion-clip",
+      "dtype": "q8",
+      "photos": 672,
+      "embedSeconds": 182,
+      "queriesScored": 28,
+      "text2img": {
+        "precision": 0.4214285714285714,
+        "recall": 0.45901360544217684,
+        "mrr": 0.6878401360544217,
+        "ndcg": 0.5638895544163055
+      },
+      "img2img": {
+        "sameCatalog": 0.9300595238095238,
+        "sameType": 0.584758942457232
+      }
+    },
+    {
+      "label": "Marqo-FashionCLIP (ViT-B/16, fashion-tuned)",
+      "repo": "Marqo/marqo-fashionCLIP",
+      "dtype": "q8",
+      "textLength": 77,
+      "photos": 672,
+      "embedSeconds": 191,
+      "queriesScored": 28,
+      "text2img": {
+        "precision": 0.4321428571428572,
+        "recall": 0.4830215419501135,
+        "mrr": 0.7574829931972789,
+        "ndcg": 0.5983468633821479
+      },
+      "img2img": {
+        "sameCatalog": 0.9172619047619053,
+        "sameType": 0.5713841368584761
+      }
+    }
+  ]
+}

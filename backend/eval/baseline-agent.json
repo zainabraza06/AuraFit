@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-17",
+  "note": "13 tasks, one run, live LLMs. Run-to-run variation is about +-2 tasks (11/13 and 13/13 were both seen on the same code before the verify step), so the regression gate tolerates a 15% drop.",
+  "tasks": 13,
+  "passedAll": 13,
+  "perCheck": {
+    "answered": {
+      "passed": 13,
+      "of": 13
+    },
+    "grounded": {
+      "passed": 13,
+      "of": 13
+    },
+    "in_stock": {
+      "passed": 13,
+      "of": 13
+    },
+    "no_duplicates": {
+      "passed": 13,
+      "of": 13
+    },
+    "catalog_sane": {
+      "passed": 13,
+      "of": 13
+    },
+    "has_picks": {
+      "passed": 13,
+      "of": 13
+    },
+    "budget_total": {
+      "passed": 3,
+      "of": 3
+    },
+    "color": {
+      "passed": 7,
+      "of": 7
+    },
+    "catalogs": {
+      "passed": 11,
+      "of": 11
+    },
+    "budget_each": {
+      "passed": 2,
+      "of": 2
+    },
+    "forbidden_ids": {
+      "passed": 1,
+      "of": 1
+    }
+  },
+  "medianMs": 21825,
+  "p90Ms": 89461
+}

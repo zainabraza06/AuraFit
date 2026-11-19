@@ -13,6 +13,7 @@
  * Tests (and any alternative provider) can swap the backend with setEmbeddingBackend().
  */
 import path from 'path';
+import { currentPolicy } from './memoryProfile.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -163,5 +164,6 @@ export function cosine(a, b) {
  * backend has been injected with setEmbeddingBackend().
  */
 export function isEmbeddingConfigured() {
-  return backend !== localBackend || process.env.NODE_ENV !== 'test';
+  if (backend !== localBackend) return true; // an injected backend (tests, a remote provider) needs no local RAM
+  return process.env.NODE_ENV !== 'test' && currentPolicy().text; // ...but the local model must fit in memory
 }

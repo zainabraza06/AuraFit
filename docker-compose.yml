@@ -95,6 +95,8 @@ services:
       # /metrics requires this bearer token; Prometheus reads the same value from observability/secrets/metrics_token
       METRICS_TOKEN: ${METRICS_TOKEN:-dev-metrics-token}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+    volumes:
+      - models:/models   # embedding models download here on first use (~0.7 GB); keep them across restarts
     depends_on:
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
@@ -109,6 +111,26 @@ services:
       - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
       - ./observability/secrets:/etc/prometheus/secrets:ro
     depends_on: [consumer, worker]
+
+  # Receives Prometheus alerts. Notifications are sent only if ALERT_SLACK_WEBHOOK_URL and/or ALERT_WEBHOOK_URL are set
+  # (see observability/alertmanager.yml.tmpl); otherwise alerts are just visible at http://localhost:9093.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports: ["9093:9093"]
+    environment:
+      ALERT_SLACK_WEBHOOK_URL: ${ALERT_SLACK_WEBHOOK_URL:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    volumes:
+      - ./observability/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        {
+          grep -v '^#__RECEIVERS__' /etc/alertmanager/alertmanager.yml.tmpl
+          if [ -n "$$ALERT_SLACK_WEBHOOK_URL" ]; then printf '    slack_configs:\n      - api_url: %s\n        send_resolved: true\n' "$$ALERT_SLACK_WEBHOOK_URL"; fi
+          if [ -n "$$ALERT_WEBHOOK_URL" ]; then printf '    webhook_configs:\n      - url: %s\n        send_resolved: true\n' "$$ALERT_WEBHOOK_URL"; fi
+        } > /tmp/alertmanager.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -127,3 +149,4 @@ services:
 
 volumes:
   mongo-data:
+  models:

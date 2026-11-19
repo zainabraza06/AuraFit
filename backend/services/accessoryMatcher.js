@@ -18,8 +18,13 @@ function shoeColorFamilies(shoe) {
   return raw.map((c) => normalizeColor(String(c)) || c);
 }
 
-/** Contrast-aware + occasion + silhouette fit for footwear. */
-export function footwearFashionScore(dress, shoe) {
+/**
+ * Contrast-aware + occasion + silhouette fit for footwear.
+ * `total` is capped at 1 for display; `raw` is the same score WITHOUT the cap. Ranking must use `raw`: the cap makes
+ * many shoes tie at exactly 1, and picking "the first of the ties" was no better than random on colour
+ * (eval:outfits measured a 0.99x lift for shoes vs 1.06x / 1.16x for jewelry / watches).
+ */
+export function footwearScoreParts(dress, shoe) {
   const dFam = dressColorFamilies(dress);
   const sFam = shoeColorFamilies(shoe);
   let colorBest = 0;
@@ -67,13 +72,19 @@ export function footwearFashionScore(dress, shoe) {
   }
   if (occD.includes('office') && /loafer|pump|heel|oxford|flat/.test(shoeType)) silhouette = 0.2;
 
-  let total = Math.min(1, colorBest + contrastBoost + occHit + silhouette);
+  const rawSum = colorBest + contrastBoost + occHit + silhouette;
+  let total = Math.min(1, rawSum);
   // Multiplicative, applied AFTER the ceiling clamp — an additive penalty on
   // "silhouette" alone gets swallowed whenever color+contrast+occasion already
   // sum past 1 (exactly what let sneakers tie with slippers at score 1 despite
   // the fix above: strong color/occasion match papered over the mismatch).
   if (eastAthleticMismatch) total *= 0.12;
-  return parseFloat(total.toFixed(3));
+  const raw = eastAthleticMismatch ? rawSum * 0.12 : rawSum;
+  return { total: parseFloat(total.toFixed(3)), raw };
+}
+
+export function footwearFashionScore(dress, shoe) {
+  return footwearScoreParts(dress, shoe).total;
 }
 
 export function explainFootwearChoice(dress, shoe) {
@@ -94,11 +105,12 @@ export function pickBestShoe(dress, shoePool, usedIds = new Set()) {
   if (!pool.length) return null;
   let best = null;
   let bestScore = -1;
+  let bestRaw = -1;
   for (const shoe of pool) {
-    const base = footwearFashionScore(dress, shoe);
-    const score = base;
-    if (score > bestScore) {
-      bestScore = score;
+    const { total, raw } = footwearScoreParts(dress, shoe);
+    if (raw > bestRaw) {
+      bestRaw = raw;
+      bestScore = total;
       best = shoe;
     }
   }

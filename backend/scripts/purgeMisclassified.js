@@ -1,6 +1,6 @@
 /**
  * purgeMisclassified.js — remove accessory rows that are really something else
- * (clothing, footwear, bags, scarves, fragrance) from the jewelry and watches catalogs.
+ * (clothing, footwear, bags, scarves, fragrance) from the jewelry, watches and shoes catalogs.
  *
  *   npm run purge:misclassified            # dry run: lists what would be deleted
  *   npm run purge:misclassified -- --apply # delete them
@@ -14,13 +14,14 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { isNonJewelryName } from './scrapers/parsers/jewelryParser.js';
 import { isNonWatchName } from './scrapers/parsers/watchParser.js';
+import { isNonShoeName } from './scrapers/parsers/shoeParser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-/** Pure: which of these rows should go. `kind` is 'jewelry' or 'watches'. */
+/** Pure: which of these rows should go. `kind` is 'jewelry', 'watches' or 'shoes'. */
 export function findMisclassified(rows, kind = 'jewelry') {
-  const test = kind === 'watches' ? isNonWatchName : isNonJewelryName;
+  const test = kind === 'watches' ? isNonWatchName : kind === 'shoes' ? isNonShoeName : isNonJewelryName;
   return rows.filter((r) => test(r.name));
 }
 
@@ -43,8 +44,10 @@ async function main() {
   await mongoose.connect(process.env.MONGO_URI);
   const Jewelry = (await import('../models/JewelryProduct.js')).default;
   const Watch = (await import('../models/WatchProduct.js')).default;
+  const Shoe = (await import('../models/ShoeProduct.js')).default;
   await purge('jewelry', Jewelry, apply);
   await purge('watches', Watch, apply);
+  await purge('shoes', Shoe, apply);
   if (!apply) console.log('\nNothing changed. Re-run with --apply to delete.');
 }
 

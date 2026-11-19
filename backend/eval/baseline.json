@@ -1,12 +1,12 @@
 {
   "k": 10,
   "date": "2026-11-17",
-  "note": "256-dim search vectors + catalog hints + colourway collapse. History: 0.788/0.821/0.946/0.879 (first measurement) -> 0.809/0.842/0.946/0.892 (catalog hints, 1024 dims) -> this",
+  "note": "Re-baselined after fixing the EVAL and the DATA, not after a search change. Earlier 0.806/0.838/0.948/0.885 was flattered: (1) results from another catalog could count as hits (recall reached 2.5 on one query), (2) the 'ladies watch' predicate accepted bracelets, (3) 16 non-watches (Limelight) and 18 non-shoes (Borjan) polluted the catalogs. History: 0.788/0.821/0.946/0.879 (first measurement) -> catalog hints -> 256-dim default -> this stricter number.",
   "queries": 35,
   "scored": 34,
   "unanswerable": ["shalwar-kameez-men"],
-  "precision": 0.806,
-  "recall": 0.838,
+  "precision": 0.771,
+  "recall": 0.837,
   "mrr": 0.948,
-  "ndcg": 0.885
+  "ndcg": 0.880
 }

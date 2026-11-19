@@ -124,3 +124,37 @@ test('gender/category filters are applied in memory on ONE cached candidate set'
   assert.ok(both.results.every((r) => ['men', 'kids'].includes(r.gender)));
   assert.equal(vectorCacheSize(), 1, 'three different filters must share one cache entry');
 });
+
+test('keyword fallback (regexSearchAcrossCatalogs, used when local models are off) works, honours gender and hides sold-out items', async () => {
+  // Regression: the in-memory gender change removed an import this path still used, so every keyword-mode search threw.
+  const { regexSearchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
+  const all = await regexSearchAcrossCatalogs({ keywords: ['emerald'] }, { limit: 20, catalog: 'clothing' });
+  const names = all.results.map((r) => r.name);
+  assert.ok(names.includes('Emerald Lawn Suit'));
+  assert.ok(!names.includes('Emerald Lawn Suit Sold Out'), `sold-out item leaked: ${names}`);
+  const men = await regexSearchAcrossCatalogs({ keywords: ['kurta'], gender: 'men' }, { limit: 20, catalog: 'clothing' });
+  assert.ok(men.results.length >= 1 && men.results.every((r) => r.gender === 'men'));
+  assert.equal(all.results[0].catalog, 'clothing');
+});
+
+test('keyword fallback ranks by how many terms match and treats user text as text, not as a regex', async () => {
+  const { regexSearchAcrossCatalogs } = await import('../services/crossCatalogSearch.js');
+  await ClothingProduct.create([
+    { name: 'Zeta Cotton Kurta', brand: 'TestBrand', gender: 'women', price: 2000, productUrl: 'https://t.pk/zk', inStock: true, primaryColor: 'White', colors: ['White'], embedding: [0, 1, 0], embeddingModel: EMBEDDING_MODEL_ID },
+    { name: 'Zeta Wide Leg Pants', brand: 'TestBrand', gender: 'women', price: 2000, productUrl: 'https://t.pk/zp', inStock: true, primaryColor: 'White', colors: ['White'], embedding: [0, 1, 0], embeddingModel: EMBEDDING_MODEL_ID },
+    { name: 'Zeta Red Kurta', brand: 'TestBrand', gender: 'women', price: 2000, productUrl: 'https://t.pk/zr', inStock: true, primaryColor: 'Red', colors: ['Red'], embedding: [0, 1, 0], embeddingModel: EMBEDDING_MODEL_ID },
+  ]);
+  const { results } = await regexSearchAcrossCatalogs({ color: ['White'], keywords: ['zeta', 'kurta'] }, { limit: 3, catalog: 'clothing' });
+  assert.equal(results[0].name, 'Zeta Cotton Kurta', `ranked: ${results.map((r) => r.name)}`);
+  // regex metacharacters must be literal: this would match everything (or hang) if it were interpreted as a pattern
+  const hostile = await regexSearchAcrossCatalogs({ keywords: ['(a+)+$', '.*'] }, { limit: 5, catalog: 'clothing' });
+  assert.equal(hostile.results.length, 0);
+});
+
+test('product-page recommendations never ship raw embedding vectors to the client', async () => {
+  const src = await ClothingProduct.create({ name: 'Rec Source Suit', brand: 'TestBrand', gender: 'women', price: 3000, productUrl: 'https://t.pk/recsrc', inStock: true, embedding: [1, 0, 0], embeddingModel: EMBEDDING_MODEL_ID, primaryColor: 'Red', colors: ['Red'], occasion: ['party'] });
+  await ClothingProduct.create({ name: 'Rec Other Suit', brand: 'TestBrand', gender: 'women', price: 3200, productUrl: 'https://t.pk/recother', inStock: true, embedding: [1, 0, 0], embeddingModel: EMBEDDING_MODEL_ID, primaryColor: 'Red', colors: ['Red'], occasion: ['party'] });
+  const res = await request(app).get(`/api/recommendations/${src._id}`);
+  assert.equal(res.status, 200);
+  assert.ok(!JSON.stringify(res.body).includes('"embedding"'), 'a raw embedding vector reached the client');
+});
