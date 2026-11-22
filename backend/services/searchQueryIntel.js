@@ -58,11 +58,24 @@ const CATALOG_NOUNS = {
 };
 
 export function inferCatalogHints(lower) {
-  const hints = [];
+  const found = [];
   for (const [catalog, nouns] of Object.entries(CATALOG_NOUNS)) {
-    if (nouns.some((n) => new RegExp(`(^|[^a-z])${n}($|[^a-z])`).test(lower))) hints.push(catalog);
+    let last = -1;
+    for (const n of nouns) {
+      const re = new RegExp(`(^|[^a-z])${n}(?=$|[^a-z])`, 'g');
+      let m;
+      while ((m = re.exec(lower))) last = Math.max(last, m.index + m[1].length);
+    }
+    if (last >= 0) found.push({ catalog, last });
   }
-  return hints;
+  // "ladies bracelet watch": two catalogs named, but English noun compounds are head-final: the LAST product word
+  // ("watch") is what is being asked for and the earlier one ("bracelet") only describes it. A list ("heels and
+  // earrings", "shoes, necklace") really wants both, so keep every catalog when the query has a conjunction.
+  if (found.length > 1 && !/\b(and|with|plus)\b|[&+,]/.test(lower)) {
+    found.sort((a, b) => b.last - a.last);
+    return [found[0].catalog];
+  }
+  return found.map((f) => f.catalog);
 }
 
 function inferGenderHint(lower) {

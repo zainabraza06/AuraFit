@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-17",
+  "dresses": 80,
+  "alternatives": 20,
+  "validity": {
+    "ok": 240,
+    "of": 240
+  },
+  "summary": {
+    "shoe": {
+      "n": 80,
+      "harmony": 0.8956249999999997,
+      "randomHarmony": 0.77846875,
+      "lift": 1.1504957649231258,
+      "winRate": 1,
+      "occasion": 1,
+      "randomOccasion": 0.8887499999999997
+    },
+    "jewelry": {
+      "n": 80,
+      "harmony": 0.87625,
+      "randomHarmony": 0.8252499999999999,
+      "lift": 1.0617994547106937,
+      "winRate": 0.8625,
+      "occasion": 1,
+      "randomOccasion": 0.70875
+    },
+    "watch": {
+      "n": 80,
+      "harmony": 0.8756249999999998,
+      "randomHarmony": 0.7541562499999996,
+      "lift": 1.1610657605768038,
+      "winRate": 0.975,
+      "occasion": 1,
+      "randomOccasion": 1
+    }
+  }
+}

@@ -5,6 +5,11 @@ global:
 rule_files:
   - /etc/prometheus/alerts.yml
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [alertmanager:9093]
+
 scrape_configs:
   # DNS A-record discovery returns every replica, so `--scale consumer=N` is picked up automatically.
   - job_name: consumer

@@ -73,8 +73,9 @@ and re-normalises them (`EMBEDDING_SEARCH_DIMS`, default 256), and the database 
 Text vectors cannot tell a print or a silhouette. Each product photo also gets a CLIP vector (`Xenova/clip-vit-base-patch32`, 512-dim, local, ~150 ms/image;
 `npm run embed:images`, resumable). CLIP puts images and sentences in one space, so:
 
+* **model choice is measured, not assumed**: on the same 672 live photos, general CLIP B/32 scored 0.537 for "top-5 neighbours are the same product type", FashionCLIP 0.585, Marqo-FashionCLIP (ViT-B/16, ~4x the compute) 0.571, so FashionCLIP (pinned revision) is used; on the full catalog it reaches 0.699 (`npm run eval:visual`, `npm run compare:clip`)
 * **photo search** compares the uploaded picture with every product picture and fuses that ranking with the description-based one (reciprocal-rank fusion);
-* text-to-image works with the same vectors (verified: "gold earrings", "a pair of shoes", "a lawn suit dress", "a wrist watch" each ranked the right catalog photo first).
+* text-to-image works with the same vectors but is **weak on its own** (measured P@10 0.274 vs 0.806 for text search), so it is not used for text queries (verified in a 4-product smoke test: "gold earrings", "a pair of shoes", "a lawn suit dress", "a wrist watch" each ranked the right catalog photo first).
 
 ## What is still brute force, and when that stops being fine
 

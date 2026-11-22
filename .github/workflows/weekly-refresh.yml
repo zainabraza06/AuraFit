@@ -12,6 +12,9 @@ on:
         required: false
         default: ''
 
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip   # CPU only: do not download the CUDA libraries during npm ci
+
 # Never run two refreshes at once; let a running one finish instead of cancelling it half-way
 concurrency:
   group: weekly-refresh
@@ -44,11 +47,11 @@ jobs:
 
       - run: npm ci
 
-      # Text model (~600 MB) + CLIP image model (~90 MB): downloaded once, then restored from cache on later runs
+      # Text model (~600 MB) + FashionCLIP image model (~150 MB): downloaded once, then restored from cache on later runs
       - uses: actions/cache@v4
         with:
           path: backend/.model-cache
-          key: embedding-models-qwen3-0.6b-q8-clip-b32-q8-v2
+          key: embedding-models-qwen3-0.6b-q8-fashionclip-0f99955-q8-v3
 
       - name: Refresh catalog (scrape, stock check, embed)
         env:

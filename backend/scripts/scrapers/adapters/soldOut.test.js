@@ -67,3 +67,18 @@ test('an LLM outage during enrichment keeps the product instead of aborting the 
     process.env.SCRAPER_SKIP_AI = 'true';
   }
 });
+
+// ── regression: dead collections must not import the whole site into shoes/watches/jewelry ──
+class Probe extends BaseAdapter {
+  constructor(vertical, keywords = []) {
+    super({ brand: 'P', baseUrl: 'https://p.pk', category: vertical, collections: [], shopifyKeywords: keywords }, vertical === 'clothing' ? {} : { vertical, normalizeProduct: () => null, validateProduct: () => ({ valid: false }) });
+  }
+}
+
+test('site-wide /products.json fallback: allowed for clothing, blocked for other verticals unless keywords are set', () => {
+  assert.equal(new Probe('clothing').siteWideFallbackAllowed(), true);
+  for (const v of ['watches', 'shoes', 'jewelry']) {
+    assert.equal(new Probe(v).siteWideFallbackAllowed(), false, `${v} without keywords must not read the whole site`);
+    assert.equal(new Probe(v, ['watch']).siteWideFallbackAllowed(), true, `${v} with explicit keywords may`);
+  }
+});

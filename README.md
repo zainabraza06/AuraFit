@@ -1,14 +1,33 @@
 # AuraFit — AI-Powered Pakistani Fashion Platform
 
-> A full-stack fashion discovery, outfit-recommendation, and virtual try-on platform for the Pakistani market. AuraFit scrapes real product data from 14 Pakistani brands across four catalogs (clothing, shoes, jewellery, watches), and uses an **agentic, self-healing recommendation engine** — multi-provider LLMs, cross-catalog semantic search, and honest fashion-styling logic — to answer natural-language requests like *"bottle green 2-piece embroidered dress under 5000"* with real, in-stock products and truthful match reasons. A **Personal Stylist** mode goes further: describe yourself (body shape, skin tone, height) and an occasion, and the AI blends global styling principles with Pakistani traditional standards into genuine advice — honestly flagging when the truly ideal garment isn't in the catalog, rather than silently substituting or biasing the advice toward whatever is in stock.
+> A fashion discovery, outfit-recommendation and virtual try-on platform for the Pakistani market. AuraFit scrapes real products from Pakistani fashion retailers into four catalogs (clothing, shoes, jewellery, watches) and answers natural-language requests such as *"a green mehndi outfit with shoes, 8000 PKR in total"* with real, in-stock products and honest reasons. It has a Next.js web app, a Flutter mobile app, an agentic stylist (LangGraph + MCP), local semantic and visual search, and an event-driven ingestion pipeline (Kafka, RabbitMQ, Redis) with monitoring (Prometheus, Grafana, Alertmanager).
+
+## At a glance
+
+| | |
+|---|---|
+| **Catalog (live, in stock)** | 3,315 products: clothing 2,051 · shoes 565 · jewellery 643 · watches 56 |
+| **Retailers** | 14 scraped live. Elan (15th) is configured but offline (its site returns HTTP 500; its TLS certificate had also expired) |
+| **Search quality** (35 judged queries) | precision@10 0.771 · recall 0.837 · MRR 0.948 · nDCG 0.880 |
+| **Photo search** | same product type in the top 5 for 70% of photos, same catalog for 98% |
+| **Stylist agent** (13 graded tasks) | 13/13 pass: budget, colour, requested categories, grounding, stock, prompt-injection |
+| **API under load** (20 connections) | product list 924 req/s (p97.5 37 ms) · semantic search 63 req/s (p97.5 571 ms) |
+| **Pipeline** (Kafka, crash-tested) | 22,000 events, 0 lost, 0 duplicated, with consumers killed mid-run |
+| **Tests** | 423 backend + 48 pipeline, plus a real-Kafka end-to-end job in CI |
+
+Every number above is measured by a script in this repo and explained in [docs/PLAN.md](docs/PLAN.md), including what was *not* measured. Deeper docs:
+[architecture](docs/architecture.md) · [RAG / embeddings](docs/rag-architecture.md) · [agent and MCP](docs/agent-and-mcp.md) · [deployment](docs/deploy.md) · [why these brokers](docs/why-these-brokers.md) · [results](docs/results/README.md).
 
 ---
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Overview](#overview)
 - [Features](#features)
+- [Mobile App (Flutter)](#mobile-app-flutter)
 - [Tech Stack](#tech-stack)
+- [Agentic Stylist and MCP](#agentic-stylist-and-mcp)
 - [Event-Driven Ingestion Pipeline](#event-driven-ingestion-pipeline)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
@@ -23,6 +42,8 @@
 - [Scraper Pipeline](#scraper-pipeline)
 - [Multi-Provider AI Fallback Chain](#multi-provider-ai-fallback-chain)
 - [Color Theory Engine](#color-theory-engine)
+- [Evaluation and Quality](#evaluation-and-quality)
+- [Observability and Security](#observability-and-security)
 - [API Reference](#api-reference)
 - [Environment Variables](#environment-variables)
 - [Getting Started](#getting-started)
@@ -31,26 +52,56 @@
 
 ---
 
+## Screenshots
+
+### Web (Next.js)
+
+| Home | Semantic search: "black heels for a party" |
+|---|---|
+| ![Home](docs/screenshots/web/home.png) | ![Search results](docs/screenshots/web/search-results.png) |
+
+| Product page | Stylist chat |
+|---|---|
+| ![Product page](docs/screenshots/web/product.png) | ![Stylist chat](docs/screenshots/web/stylist-chat.png) |
+
+| Visual search | Virtual try-on |
+|---|---|
+| ![Visual search](docs/screenshots/web/visual-search.png) | ![Try-on](docs/screenshots/web/try-on.png) |
+
+### Mobile (Flutter)
+
+Captured from the Flutter web build at phone size, against the real API (semantic and visual search on).
+
+| Home | Search | Product | Stylist | Photo search |
+|---|---|---|---|---|
+| <img src="docs/screenshots/mobile/home.png" width="180"> | <img src="docs/screenshots/mobile/search-results.png" width="180"> | <img src="docs/screenshots/mobile/product.png" width="180"> | <img src="docs/screenshots/mobile/stylist.png" width="180"> | <img src="docs/screenshots/mobile/photo-search.png" width="180"> |
+
+The stylist screenshot is a real answer: *"A green mehndi outfit with shoes, 8000 PKR in total"* returned a suit (PKR 4,699), slippers (PKR 1,470) and a necklace, within budget, after 2 catalog lookups. The photo-search shot starts from a photo of a sandal and shows the "Visual match" chip (image embeddings, not just tags).
+
+Not pictured: the admin console (it shows user emails and server logs) and a generated try-on (it needs a person's photo, and none was used).
+
+---
+
 ## Overview
 
 Pakistani fashion shoppers have no single intelligent platform that aggregates products across the country's top brands and gives **honest, complete-outfit** recommendations. AuraFit solves this with:
 
-- **Four independently-scraped catalogs** — clothing (1,416 items / 9 brands), shoes (325 items / 5 brands), jewellery (564 items / 7 brands), watches (3 brands, schema-ready) — normalized into a rich, structured schema (exact color shade *and* canonical family, dress style, stitching, piece count, fabric, print, occasion).
+- **Four independently-scraped catalogs** — clothing (2,051 in stock / 8 brands live), shoes (565 / 5), jewellery (643), watches (56) — normalized into a rich, structured schema (exact color shade *and* canonical family, dress style, stitching, piece count, fabric, print, occasion, and a `styleCode` taken from the product URL because 58% of clothing rows share a generic title).
 - **An agentic recommendation loop**: an LLM sees real-time DB counts for every possible constraint relaxation and decides — round by round — whether to relax a filter, raise the budget, accept, or honestly report nothing was found. It never pads results to a fixed count.
 - **Self-healing data**: when the engine touches a product whose scraped field (dress style, fabric, gender, shoe silhouette, missing occasion tag) doesn't match its own title/description, it re-derives the correct value and writes the fix back to MongoDB — the catalog gets cleaner through normal use, with no full re-scrape needed.
 - **Cross-catalog search** — one query box (keyword or semantic) searches clothing + shoes + jewellery + watches together and ranks results by relevance, so "black heels" surfaces shoes and "gold jhumka" surfaces jewellery, automatically.
 - **World-standard styling logic** for accessory pairing: color-theory contrast (bold dress → neutral shoe), occasion-appropriate silhouette, and jewellery weight (statement vs minimal) based on the occasion.
-- **Free-first AI**: every AI capability (intent parsing, ranking, vision analysis, virtual try-on) has a multi-provider fallback chain that tries free/cheap providers before paid ones, and degrades gracefully — never crashes — when a provider is unconfigured or out of quota.
+- **Free-first, local-first AI**: text LLMs use a provider chain (Groq → Gemini → OpenRouter, optional local Ollama) with a circuit breaker and a startup self-test. Embeddings run **locally** (Qwen3 for text, FashionCLIP for photos): no API key and no per-call cost. On a host too small to hold the models (under 1.8 GB of RAM) the API detects that and serves keyword search instead of crashing. Every capability degrades instead of failing.
 
 ---
 
 ## Features
 
 ### 🧵 Multi-Catalog Product Data
-- **Clothing** (1,416 items) — Beechtree, Limelight, Zellbury, Alkaram Studio, Gul Ahmed, Khaadi, Maria B, Sana Safinaz, Elan
-- **Shoes** (325 items) — Stylo, ECS, Borjan, Hush Puppies, Ndure
-- **Jewellery** (564 items) — Stylo, Limelight, Gul Ahmed, Alkaram, Beechtree, Maria B, J.
-- **Watches** (schema-ready) — Stylo, Limelight, ECS
+- **Clothing** (2,051 in stock) — Khaadi, Alkaram Studio, Limelight, Zellbury, Gul Ahmed, Beechtree, Maria B, Sana Safinaz (Elan is configured; its site is down)
+- **Shoes** (565 in stock) — Stylo, ECS, Borjan, Ndure, Hush Puppies
+- **Jewellery** (643 in stock) — Maria B, Limelight, Gul Ahmed, J., Stylo
+- **Watches** (56 in stock) — ECS, Stylo (Limelight has no watch collection; a scraper bug used to fill it with clothing, fixed)
 - Dual color storage on every item: `primaryExactColor` (scraped shade, e.g. `"maroon"`) *and* `primaryColor` (canonical family, e.g. `"Red"`) — lets the engine match a user's exact shade first, then fall back to the family.
 - **3-strategy waterfall scraping**: Shopify JSON API → site-wide listing crawl → Cheerio HTML parsing, per brand.
 
@@ -71,8 +122,8 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 - One click ("Show Recommendations") runs the generated search prompt through the same agentic outfit engine described above.
 
 ### 🔍 Cross-Catalog Search
-- **Keyword search** (`/api/search`) — MongoDB `$text` + regex fallback, unioned and ranked across all four catalogs in one request.
-- **Semantic search** (`/api/search/semantic`) — HuggingFace `all-MiniLM-L6-v2` sentence embeddings + a hybrid facet-alignment score (occasion/color/garment/keyword overlap), merged across all four catalogs by score. A query like *"black heels for a party"* correctly surfaces shoes; *"elegant embroidered formal wear"* surfaces clothing.
+- **Keyword search** (`/api/search`) — MongoDB `$text` + regex fallback, unioned and ranked across all four catalogs in one request. Cached for 30 s with request coalescing.
+- **Semantic search** (`/api/search/semantic`) — local **Qwen3-Embedding-0.6B** vectors (searched at 256 dimensions: measured within noise of 1024, at a quarter of the data) + a hybrid facet-alignment score (occasion / colour / garment / keyword overlap), merged across all four catalogs. Queries that name a product type rank that catalog first (*"black heels"* → shoes, *"ladies bracelet watch"* → watches, because the last product word is the head noun). On a small host the model is not loaded and this endpoint answers 503 with a pointer to keyword search; `/api/health` reports which mode is active.
 - Both auto-relax their similarity floor and report it honestly when nothing scores above threshold, rather than silently returning irrelevant items.
 
 ### 📸 Visual Search
@@ -82,6 +133,7 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 - **Same agentic honesty for clothing photos**: instead of a plain similarity threshold, a clothing photo's derived intent (dress style/color/occasion) runs through the identical progressive-relaxation engine used by text search, so a photo of a rare style (e.g. saree — only a couple in stock) gets an honest "no exact match, here's what we relaxed" instead of silently substituting or returning nothing.
 - **Human-in-the-loop refinement**: after seeing results, free-text feedback like *"prioritize saree, color can change"* (`POST /api/search/visual/refine`) re-runs the same agentic engine with that instruction folded directly into what the relaxation planner reads — no re-upload needed.
 - Regex fallback (checking both canonical color family *and* exact shade) when no embedding provider is configured.
+- **Pixel-level similarity**: every product photo has a **FashionCLIP** vector (local, 512-dim). An uploaded photo is compared with all of them and that ranking is fused (reciprocal-rank fusion) with the description-based one, so print, silhouette and embellishment count, not just what a vision LLM can put into words. The model was chosen by measurement over general CLIP and Marqo-FashionCLIP ([docs/rag-architecture.md](docs/rag-architecture.md)). Best-effort: without the model (small host) it falls back to description-only.
 
 ### 🧥👠 Product-Page AI Accessory Picks
 - "Complete the Look" (shoes + complementary clothing) on every product page uses the same footwear-matching logic as the outfit builder (`accessoryMatcher.js`) — including a **silhouette-mismatch guard**: eastern traditional wear (shalwar-kameez, kurta, lehenga, saree, abaya) is never paired with Western athletic shoes (sneakers/trainers/joggers) regardless of how "casual" the occasion is, a real global + Pakistani pairing standard the old occasion-only heuristic missed.
@@ -92,6 +144,7 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 - **Free-first, two-provider fallback**: tries the free Hugging Face Space (`yisol/IDM-VTON`, shared ZeroGPU hardware — no billing required) first; Replicate (paid, fast, ~30–90s) is an opportunistic fallback used automatically if it's configured with credit.
 - **Photo validation + auto-extension**: a vision check rejects unusable photos (no person, face not visible, more than a minor crop missing) upfront rather than generating a broken result; a nearly-full-length photo missing only feet/ankles is automatically extended (outpainted) instead of rejected.
 - "Try On Yourself" button on every clothing product card (not shown for shoes/jewellery/watches, where virtual try-on has no meaning); prompts to log in / set a profile picture if either is missing.
+- **Async jobs**: `POST /api/tryon/jobs` returns `202` immediately; poll `GET /api/tryon/jobs/:id` or stream `GET /api/tryon/jobs/:id/events` (Server-Sent Events). Bounded concurrency and queue, a result cache keyed by a hash of the images, de-duplication of identical in-flight requests, a per-user cap and per-job timeouts. The old synchronous `POST /api/tryon` still works but holds the request open for 60–120 s.
 
 ### 🩹 Self-Healing Catalog
 - Query-time re-derivation + DB write-back for: clothing `dressStyle`/`fabric`, shoe `gender`/`shoeType`/missing `casual` occasion tags, jewellery `jewelryType` and non-jewellery contamination (footwear/bags scraped into the jewellery collection from mixed-catalog source pages).
@@ -106,13 +159,53 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 - JWT auth (30-day tokens), personal favorites, saved outfit boards, digital wardrobe (Gemini vision auto-tagging).
 - Admin dashboard: live scraper status via Server-Sent Events, manual scrape trigger, per-brand scrape history, product stats, brand deletion, catalog lexical audit, system logs.
 
+### 🧠 Agentic Stylist and MCP
+- `POST /api/stylist/ask` runs a **LangGraph** agent (search, product details, accessory pairing, compatibility scoring) with a hard budget (steps, tool calls, time), **grounded answers** (it can only recommend products a tool returned), untrusted-data handling for scraped text, a **verify-and-revise step** (stated budgets and named categories are checked after the answer) and a deterministic fallback when no LLM is reachable.
+- The same read-only tools are exposed as an **MCP server** (stdio for Claude Desktop / IDEs, authenticated HTTP at `/mcp`). See [docs/agent-and-mcp.md](docs/agent-and-mcp.md).
+
+### 📈 Production hardening
+- **Security**: SSRF guard on every server-side download, magic-byte upload validation, prompt-injection hardening, per-caller quotas on costly endpoints, 0 known production vulnerabilities.
+- **Reliability**: circuit breakers (shared across instances through Redis), request ids and structured logs, fail-open Redis, graceful degradation on small hosts.
+- **Observability**: Prometheus metrics, Grafana dashboards, 10 alert rules, Alertmanager.
+- **Quality gates**: golden-query search eval, photo-search eval, agent eval and outfit eval, run weekly in CI where they are cheap.
+- **Weekly refresh**: a scheduled GitHub Actions job re-scrapes every brand, marks sold-out items, embeds new and changed products and fails loudly if a catalog loses most of its stock.
+
+### 📱 Mobile app (Flutter)
+- A native-feeling Flutter client for the same API: browse, search, product pages with "complete the look", the AI stylist chat, photo search, virtual try-on and favourites. See [Mobile app](#mobile-app-flutter).
+
+---
+
+## Mobile App (Flutter)
+
+`mobile/` is a Flutter client for the same API (Android, iOS and web from one codebase).
+
+| Tab | What it does |
+|---|---|
+| **Home** | featured pieces, brand filter, endless "new arrivals" |
+| **Search** | one box over clothing, shoes, jewellery and watches; the camera button searches with a photo |
+| **Stylist** | chat with the agentic stylist (`POST /api/stylist/ask`); each pick shows why it was chosen |
+| **Saved** | favourites (needs an account) |
+| **Account** | sign in / register, and the server address with a "Save and test" check (reports semantic vs keyword search) |
+
+Product pages add the gallery, "shoes to match" and "pairs well with", **Try on** (a background job: submit, then poll the queue) and a link to the retailer.
+
+```bash
+cd mobile && flutter pub get
+flutter run -d chrome                                          # talks to http://localhost:5000/api
+flutter run --dart-define=API_BASE_URL=https://your-server/api
+flutter analyze && flutter test                                # 43 tests, no server needed
+```
+
+Honest limits: tokens are in plain `shared_preferences` (use the keychain before a store release), there is no offline catalog or push, and it has not been run on a physical iOS device (no Mac here). Details in [mobile/README.md](mobile/README.md).
+
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js (App Router), React, TypeScript |
+| Web | Next.js 16 (App Router), React, TypeScript |
+| Mobile | Flutter (Android / iOS / web), Dart |
 | Styling | Vanilla CSS — custom Editorial Fashion design system |
 | HTTP Client | Axios with JWT interceptors |
 | Backend | Node.js, Express 4 (ES Modules) |
@@ -121,15 +214,46 @@ Pakistani fashion shoppers have no single intelligent platform that aggregates p
 | AI — Text | Provider chain, order configurable (`LLM_PROVIDER_ORDER`): Groq (`gpt-oss`) → Gemini 3.x → OpenRouter; optional local Ollama. Circuit breaker, per-feature timeouts, startup self-test (`npm run llm:selftest`) |
 | AI — Vision | Gemini 3.x |
 | Text embeddings | Qwen3-Embedding-0.6B, local (no API key), searched at 256 dims (measured vs 1024: [docs/rag-architecture.md](docs/rag-architecture.md)) |
-| Image embeddings | CLIP ViT-B/32, local; photo search fuses visual similarity with the description-based ranking |
+| Image embeddings | FashionCLIP (fashion-tuned CLIP, local, pinned revision), chosen over general CLIP and Marqo-FashionCLIP by measurement; photo search fuses visual similarity with the description-based ranking |
 | Agent / MCP | LangGraph stylist agent (`POST /api/stylist/ask`) and an MCP server (stdio + HTTP) over the same read-only tools: [docs/agent-and-mcp.md](docs/agent-and-mcp.md) |
 | Virtual Try-On (paid) | Replicate `IDM-VTON` |
 | Virtual Try-On (free) | Hugging Face Space `yisol/IDM-VTON` via `@gradio/client` |
 | Image Hosting | Cloudinary |
 | Web Scraping | Axios, Cheerio |
 | Scheduling | node-cron |
-| Security | Helmet, CORS, express-rate-limit |
-| Testing | Node's built-in `node --test` + Supertest |
+| Security | Helmet, CORS, express-rate-limit (Redis-backed when available), per-caller quotas, SSRF guard, upload validation |
+| Messaging / cache | Kafka (kafkajs), RabbitMQ, Redis |
+| Observability | Prometheus, Grafana, Alertmanager (`prom-client`) |
+| CI / CD | GitHub Actions: tests, multi-service e2e, weekly catalog refresh + quality gate, deploy job (not yet run) |
+| Testing | Node's built-in `node --test` + Supertest, Flutter test |
+
+---
+
+## Agentic Stylist and MCP
+
+Open-ended requests ("a budget outfit for my cousin's mehndi, I love green, under 8000 PKR") go to an agent that decides what to look up, instead of a fixed pipeline.
+
+```
+POST /api/stylist/ask { "message": "..." }
+
+START -> decide --(tool)--> act --> decide ...
+            |
+            +--(final)--> verify --(breaks a stated budget / named category, once)--> decide
+            |               |
+            |               +--(ok)--> END
+            +--(budget exhausted | LLM down)--> END (deterministic fallback)
+```
+
+| Tool (all read-only) | Purpose |
+|---|---|
+| `search_catalog` | semantic + facet search across all four catalogs, in stock only, optional catalog / gender / max price |
+| `get_product` | full details of one product |
+| `suggest_accessories` | best shoe, jewellery set and watch for an outfit, each with a reason |
+| `score_pair` | compatibility (0-1) of two products |
+| `get_wardrobe` | the signed-in user's saved items |
+
+What keeps it honest: a hard step / tool / time budget; picks must come from tool results (invented ids are dropped); scraped text is wrapped as untrusted data; a budget or a category the shopper asked for is checked by code and the model is sent back once with the exact problem; every tool is read-only (asserted by a test), so the loop cannot spend money or change data.
+The same tools are served over **MCP** (stdio for Claude Desktop, authenticated HTTP at `/mcp`). Measured results and the bugs the evaluation found: [docs/agent-and-mcp.md](docs/agent-and-mcp.md).
 
 ---
 
@@ -152,16 +276,16 @@ Why each broker is here: [docs/why-these-brokers.md](docs/why-these-brokers.md).
 
 | Claim | Status |
 |---|---|
-| Event validation, dedupe, locks, retry/DLQ, worker idempotency, crash-resume, ordering | **Unit-tested** (34 tests, including a real in-memory MongoDB for the store), run in CI |
+| Event validation, dedupe, locks, retry/DLQ, worker idempotency, crash-resume, ordering | **Unit-tested** (48 tests, including a real in-memory MongoDB for the store), run in CI |
 | Scraper and consumer agree on the event format | **Verified** by a contract test |
 | Full stack via `docker compose up` | **Run end to end** (Kafka, RabbitMQ, Redis, Mongo, 2 consumers, worker, Prometheus, Grafana) |
 | Load test and consumer-crash tests | **Run and passing**, see [Results](#results) |
-| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboard below shows live data from those runs |
-| CI | **Passing on GitHub** ([PR #1](https://github.com/zainabraza06/AuraFit/pull/1)): tests on every push/PR, both Docker images build, and the end-to-end job brings up the whole stack on a GitHub runner and passes the load test (5,500 events) and the consumer-SIGKILL test (11,000 events) with 0 lost and 0 duplicated |
-| Search quality | **Measured**: 35 predicate-judged queries, P@10 0.806, recall 0.838, MRR 0.948, nDCG 0.885 (`npm run eval:search`); runs in the weekly workflow and fails on regression |
+| Monitoring | **Running**: Prometheus scrapes every replica; Grafana dashboards (39 validated queries); 10 alert rules routed through Alertmanager (delivery to a webhook verified) |
+| CI | **Passing on GitHub** (PRs #1-#3): tests on every push/PR, both Docker images build, and the end-to-end job brings up Kafka, RabbitMQ, Redis and MongoDB on a runner and passes the load test (5,500 events), the consumer-SIGKILL test (11,000 events, 0 lost, 0 duplicated), the feedback test and the shared-circuit-breaker test |
+| Search quality | **Measured**: 35 predicate-judged queries, P@10 0.771, recall 0.837, MRR 0.948, nDCG 0.880 (`npm run eval:search`); the baseline was restated downward after the eval itself was found to be lenient. Photo search: same product type in the top 5 for 70% of photos (`eval:visual`) |
 | API performance | **Load-tested** (20 connections, real catalog): product list 924 req/s p97.5 37 ms, semantic search 63 req/s p97.5 571 ms; the test found and fixed an uncached "cached" endpoint. Details in [docs/PLAN.md](docs/PLAN.md) |
 | Security | SSRF guard on server-side fetches, upload validation (magic bytes), prompt-injection hardening, per-caller quotas on costly endpoints, 0 known production vulnerabilities (`npm audit`) |
-| Agent and MCP | **Verified live** (real LLMs, real catalog, real MCP client); grounded answers; budget-limited |
+| Agent and MCP | **Verified live** and **measured** (`npm run eval:agent`: 13 tasks, 13/13 pass every programmatic check including budget, requested categories, grounding and prompt injection; one run, output varies). Verify-and-revise step catches budget overshoot and forgotten categories |
 | Feedback events | API → Kafka → consumer → Mongo, idempotent. **Run against the real stack**: 200 stored exactly once under 100 duplicate deliveries, malformed events dead-lettered; also in the CI e2e job |
 | CD (deploy) | **Implemented, not yet run.** On `main` the pipeline publishes images to GHCR and deploys over SSH with a health smoke test ([docs/deploy.md](docs/deploy.md)). It needs a server and the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` settings, and is skipped until then. Nothing is deployed yet |
 
@@ -221,47 +345,40 @@ cd backend && npm test
 ## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Next.js Frontend (App Router)                     │
-│  Home("Style Me") · Discover · Search · Visual Search · Product · Account │
-│  Try-On button (every ProductCard) · Wardrobe · Boards · Favorites · Admin│
-└───────────────────────────────┬────────────────────────────────────────┘
-                                 │ Axios (JWT Bearer)
-┌───────────────────────────────▼────────────────────────────────────────┐
-│                          Express API Server                              │
-│   Helmet → CORS → rate limit → routes (thin) → controllers → services    │
-│                                                                          │
-│  /api/auth  /api/products  /api/recommendations  /api/search             │
-│  /api/search/semantic  /api/search/visual  /api/tryon  /api/wardrobe     │
-│  /api/favorites  /api/outfits  /api/admin  /api/support                  │
-└───┬───────────────┬───────────────┬───────────────┬─────────────────────┘
-    │               │               │               │
-┌───▼─────────┐ ┌───▼──────────┐ ┌──▼────────────┐ ┌▼────────────────────┐
-│Recommendation│ │Cross-Catalog │ │  Vision /     │ │   Scraper Pipeline  │
-│   Engine     │ │   Search     │ │  Try-On       │ │  14 Brand Adapters  │
-│ ──────────── │ │ ──────────── │ │ ────────────  │ │  4 Verticals        │
-│ Agentic      │ │ Keyword      │ │ Groq/Gemini   │ │  (clothing/shoes/   │
-│ relaxation   │ │ (Mongo text) │ │ Pixtral →     │ │   jewelry/watches)  │
-│ loop         │ │ Semantic     │ │ Gemini vision │ │  3-strategy waterfall│
-│ Self-healing │ │ (embeddings) │ │ free HF Space │ │  node-cron scheduler │
-│ Color theory │ │ merged/      │ │ → Replicate   │ └──────────┬───────────┘
-│ pairing      │ │ ranked       │ │ try-on        │            │
-└──────┬───────┘ └──────┬───────┘ └──────┬────────┘            │
-       │                │                │                      │
-┌──────▼────────────────▼────────────────▼──────────────────────▼───────┐
-│                              MongoDB                                    │
-│  ClothingProduct · ShoeProduct · JewelryProduct · WatchProduct          │
-│  User · Favorite · Outfit · WardrobeItem · ScraperLog · SystemLog       │
-└──────────────────────────────────────────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼────────────────────────────────────────┐
-│                  Multi-Provider AI Fallback (per capability)             │
-│  Text:   Groq → Gemini → OpenRouter                                      │
-│  Vision: Gemini                                                          │
-│  Embed:  Qwen3 (local) + CLIP images                                     │
-│  Try-On: Replicate (paid) → Hugging Face Space (free)                    │
-│  Images: Cloudinary                                                      │
-└──────────────────────────────────────────────────────────────────────┘
+ Web (Next.js)                 Mobile (Flutter)                 External AI clients
+      │                              │                                  │ MCP (stdio / HTTP)
+      └──────────────┬───────────────┘                                  │
+                     │ REST + JWT                                       │
+┌────────────────────▼──────────────────────────────────────────────────▼───────────┐
+│                               Express API (Node 20)                                │
+│  request id → helmet → CORS → rate limit → routes → controllers → services         │
+│  /api/auth /products /search /search/semantic /search/visual /recommendations      │
+│  /stylist/ask /tryon (+ /jobs) /feedback /favorites /outfits /wardrobe /admin /mcp │
+└──┬──────────────┬───────────────┬──────────────┬───────────────┬───────────────────┘
+   │              │               │              │               │
+┌──▼───────────┐ ┌▼─────────────┐ ┌▼────────────┐ ┌▼────────────┐ ┌▼──────────────────┐
+│Recommendation│ │ Search       │ │ Agent       │ │ Try-on      │ │ Scraper (weekly   │
+│engine        │ │ keyword +    │ │ LangGraph   │ │ job queue   │ │ GitHub Action)    │
+│agentic       │ │ semantic     │ │ + MCP tools │ │ + SSE       │ │ 13 live retailers │
+│relaxation,   │ │ (Qwen3) +    │ │ verify step │ │ HF Space →  │ │ 4 verticals       │
+│self-healing, │ │ photo        │ │ grounding   │ │ Replicate   │ │ stock sweep       │
+│colour theory │ │ (FashionCLIP)│ │             │ │             │ └─────────┬─────────┘
+└──────┬───────┘ └──────┬───────┘ └──────┬──────┘ └──────┬──────┘           │ events
+       └────────────────┴────────┬───────┴───────────────┘                  ▼
+                                 │                          ┌───────────────────────────┐
+                    ┌────────────▼─────────────┐            │ Kafka → consumer → Mongo  │
+                    │ MongoDB                   │◄───────────┤ RabbitMQ → image/notify   │
+                    │ 4 catalogs + users, etc.  │            │ workers · Redis · DLQ     │
+                    └───────────────────────────┘            └─────────────┬─────────────┘
+                                                                           │ /metrics
+              ┌───────────────────────────────────────┐        ┌───────────▼─────────────┐
+              │ AI providers (per capability)         │        │ Prometheus → Grafana    │
+              │ Text:   Groq → Gemini → OpenRouter    │        │ Alertmanager (webhook / │
+              │ Vision: Gemini                        │        │ Slack)                  │
+              │ Embed:  Qwen3 + FashionCLIP (local)   │        └─────────────────────────┘
+              │ Try-on: HF Space (free) → Replicate   │
+              │ Images: Cloudinary                    │
+              └───────────────────────────────────────┘
 ```
 
 ### Request flow — "Style Me" (agentic relaxation)
@@ -297,63 +414,35 @@ Response: { results[], matchQuality: { tier, message }, relaxationMessage,
 
 ```
 Fashion/
-├── backend/
-│   ├── config/db.js                       # MongoDB connection
-│   ├── middleware/auth.js                 # JWT verification + admin guard
-│   ├── models/
-│   │   ├── ClothingProduct.js  ShoeProduct.js  JewelryProduct.js  WatchProduct.js
-│   │   ├── User.js  Favorite.js  Outfit.js  WardrobeItem.js
-│   │   └── ScraperLog.js  SystemLog.js
-│   ├── controllers/
-│   │   ├── recommendationsController.js   # Style Me + product-page recs
-│   │   ├── searchController.js            # cross-catalog keyword search
-│   │   ├── vectorSearchController.js      # cross-catalog semantic search
-│   │   ├── imageSearchController.js       # visual search (vision → catalog-scoped agentic/semantic) + refine
-│   │   ├── tryonController.js             # free HF Space → Replicate fallback
-│   │   ├── productsController.js  authController.js  favoritesController.js
-│   │   ├── outfitsController.js  wardrobeController.js  adminController.js
-│   ├── routes/                            # thin route → controller wiring
+├── backend/                       # Express API, scrapers, AI services (Node 20, ESM)
+│   ├── app.js  server.js          # app factory / entrypoint (boot log reports the memory policy)
+│   ├── routes/  controllers/      # thin wiring; stylist, feedback, tryon (jobs + SSE), mcp, search, ...
+│   ├── middleware/                # auth, quota (per-caller daily limits), uploads (magic bytes), cache, requestLogger
+│   ├── models/                    # Clothing/Shoe/Jewelry/Watch products, User, Favorite, Outfit, TryOnJob, ...
 │   ├── services/
-│   │   ├── recommendationEngine.js        # agentic loop + self-healing + pairing
-│   │   ├── aiService.js                   # ranking, relaxation planner, personal-stylist advice, shoe/clothing AI reasoning
-│   │   ├── llmClient.js                   # multi-provider text/vision fallback
-│   │   ├── crossCatalogSearch.js          # shared embedding+facet search (text & visual)
-│   │   ├── searchQueryIntel.js            # query → signals (color/occasion/garment)
-│   │   ├── accessoryMatcher.js            # shoe/jewellery/watch scoring
-│   │   ├── colorTheory.js  colorNormalize.js
-│   │   ├── embeddingText.js               # per-catalog embedding text builders
-│   │   ├── cloudinary.js                  # explicit-credential image hosting
-│   │   ├── productCompat.js               # legacy field aliasing
-│   │   └── intentPrompt.js  intentAdapter.js  intentScoring.js
-│   ├── jobs/scraperJob.js                 # node-cron weekly scheduler
+│   │   ├── recommendationEngine.js  aiService.js  accessoryMatcher.js  colorTheory.js
+│   │   ├── crossCatalogSearch.js  searchQueryIntel.js  vectorCache.js  visualSearch.js
+│   │   ├── embeddings.js (Qwen3)  imageEmbeddings.js (FashionCLIP)  memoryProfile.js
+│   │   ├── llmClient.js  llmProviders.js  llmCircuitBreaker.js  llmHealth.js
+│   │   ├── tryonQueue.js  tryonStore.js
+│   │   └── agent/                 # tools.js  graph.js (LangGraph)  constraints.js  mcpServer.js
+│   ├── events/                    # product + feedback events published to Kafka
+│   ├── observability/             # Prometheus metrics
 │   ├── scripts/
-│   │   ├── scrapers/
-│   │   │   ├── index.js                   # clothing orchestrator
-│   │   │   ├── runVertical.js             # shoes/jewelry/watches/all runner
-│   │   │   ├── config/                    # per-vertical brand + collection config
-│   │   │   ├── adapters/                  # 15 brand adapters (BaseAdapter + 14)
-│   │   │   ├── extractors/                # shopifyExtractor.js, htmlExtractor.js
-│   │   │   ├── parsers/                   # productParser.js, shoeParser.js, jewelryParser.js, watchParser.js
-│   │   │   └── utils/                     # colorInference.js, logger.js, catalogQA.js
-│   │   ├── embedAll.js  embedAccessories.js
-│   │   ├── exportCatalog.js  auditCatalog.js  seedAdmin.js
-│   ├── tests/                             # node --test suite (151 tests)
-│   ├── app.js                             # Express app factory
-│   └── server.js                          # entrypoint
-│
-└── frontend/
-    └── src/
-        ├── app/
-        │   ├── page.tsx                   # Home — "Style Me" hero + featured
-        │   ├── discover/  search/  search/visual/  product/[id]/
-        │   ├── favorites/  boards/  wardrobe/  try-on/
-        │   ├── account/  login/  register/  admin/  categories/  chat/ (Personal Stylist full page)
-        ├── components/
-        │   ├── Navbar.tsx  ProductCard.tsx  TryOnButton.tsx (clothing only)
-        │   ├── ChatWidget.tsx                # Personal Stylist chat (floating widget)
-        │   ├── RecommendationResult.tsx
-        ├── context/AuthContext.tsx
-        └── lib/api.ts                     # typed Axios client
+│   │   ├── scrapers/              # adapters, extractors, parsers, utils (3-strategy waterfall)
+│   │   ├── refreshCatalog.js  evalSearch.js  evalVisual.js  evalAgent.js  evalOutfits.js
+│   │   ├── loadTestApi.js  benchVectors.js  compareImageModels.js  llmSelfTest.js  mcpStdio.js
+│   │   └── embedAll.js  embedImages.js  purgeMisclassified.js  clearCatalog.js  ...
+│   ├── eval/                      # golden queries, agent tasks, committed baselines and results
+│   ├── tests/  (+ *.test.js beside code)   # 423 tests, node --test
+│   └── Dockerfile                 # Debian (glibc): onnxruntime cannot load on Alpine
+├── frontend/                      # Next.js 16 (App Router) web app
+├── mobile/                        # Flutter app (Android / iOS / web)
+├── pipeline/                      # Kafka consumer + RabbitMQ worker, load / crash / feedback tests (48 tests)
+├── observability/                 # Prometheus, alert rules, Alertmanager template, Grafana dashboards
+├── docs/                          # architecture, RAG, agent + MCP, deploy, plan with measured results, screenshots
+├── .github/workflows/             # ci.yml (tests, images, real-Kafka e2e) · weekly-refresh.yml (scrape, embed, quality gate)
+└── docker-compose.yml             # Kafka, RabbitMQ, Redis, Mongo, consumer, worker, API, Prometheus, Alertmanager, Grafana
 ```
 
 ---
@@ -447,9 +536,9 @@ Both search endpoints run against **all four catalogs simultaneously** and merge
 
 | | Keyword (`/api/search`) | Semantic (`/api/search/semantic`) |
 |---|---|---|
-| Engine | MongoDB `$text` index, regex fallback for partial words | HuggingFace `all-MiniLM-L6-v2` cosine similarity + facet-alignment hybrid score |
+| Engine | MongoDB `$text` index, regex fallback for partial words (tiered: all terms first, then any, ranked by match quality) | Local Qwen3-Embedding cosine similarity (256 dims) + facet-alignment hybrid score + product-type hints |
 | Cross-catalog | ✅ unions clothing/shoes/jewelry/watches, sorted by text score | ✅ same, sorted by hybrid score |
-| Graceful degradation | Falls back to regex when `$text` finds nothing | Falls back to keyword search if `HUGGING_FACE_API_KEY` is unset or the request errors |
+| Graceful degradation | Falls back to regex when `$text` finds nothing | 503 with a pointer to keyword search when the host has under 1.8 GB RAM (the model is not loaded); `GET /api/health` shows the active mode |
 | Honesty | Reports the true merged total across catalogs | Reports `relaxedFloor: true` when nothing passed the similarity threshold and the nearest matches are shown instead |
 
 Restrict either endpoint to one catalog with `?catalog=shoes` (or `clothing`/`jewelry`/`watches`).
@@ -600,12 +689,14 @@ Brand collection URL
 
 ### Coverage by vertical
 
-| Vertical | Brands | Items | Run |
+| Vertical | Brands live | Items in stock (2026-11-17) | Run |
 |---|---|---|---|
-| Clothing | Beechtree, Limelight, Zellbury, Alkaram Studio, Gul Ahmed, Khaadi, Maria B, Sana Safinaz, Elan | 1,416 | `npm run scrape` |
-| Shoes | Stylo, ECS, Borjan, Hush Puppies, Ndure | 325 | `npm run scrape:shoes` |
-| Jewellery | Stylo, Limelight, Gul Ahmed, Alkaram, Beechtree, Maria B, J. | 564 | `npm run scrape:jewelry` |
-| Watches | Stylo, Limelight, ECS | schema-ready | `npm run scrape:watches` |
+| Clothing | Khaadi, Alkaram Studio, Limelight, Zellbury, Gul Ahmed, Beechtree, Maria B, Sana Safinaz (Elan: site down) | 2,051 | `npm run scrape` |
+| Shoes | Stylo, ECS, Borjan, Ndure, Hush Puppies | 565 | `npm run scrape:shoes` |
+| Jewellery | Maria B, Limelight, Gul Ahmed, J., Stylo | 643 | `npm run scrape:jewelry` |
+| Watches | ECS, Stylo (Limelight configured, but has no watch collection) | 56 | `npm run scrape:watches` |
+
+Non-clothing verticals never fall back to the site-wide product list when a collection is empty (that fallback once filled the watches catalog with tops and sunglasses). Names that are clearly another kind of product are rejected at parse time, and `npm run purge:misclassified` cleans existing rows.
 
 Run everything with `npm run scrape:all-verticals`. `SCRAPER_DRY_RUN=true` parses without writing to the DB.
 
@@ -619,7 +710,7 @@ Every AI capability tries providers in order, records success/failure per provid
 |---|---|
 | Text (intent parsing, ranking, relaxation planning) | Groq → Gemini → OpenRouter (multi-model chain) |
 | Vision (photo analysis, wardrobe tagging) | Gemini |
-| Embeddings (semantic/visual search) | HuggingFace `all-MiniLM-L6-v2` (no fallback — endpoints degrade to keyword search if unset) |
+| Embeddings (semantic / photo search) | Local models: Qwen3-Embedding (text), FashionCLIP (photos). No API; on small hosts search degrades to keyword / description-only |
 | Virtual try-on | Hugging Face Space (free) → Replicate (paid, opportunistic) |
 | Image hosting | Cloudinary |
 
@@ -633,6 +724,35 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 - **Alias resolution** — Pakistani/Urdu color transliterations map to canonical families (`ferozi/firozi`→Teal, `jamuni/baingan`→Purple, `gulabi`→Pink, `mehroon/surkh/laal`→Red, `nila`→Blue, `narangi`→Orange, `zard/peela`→Yellow, `safed`→White, `dhani/mehendi/sabz`→Green).
 - **Exact-shade-first matching** — "maroon" tries to match `exactColors` before falling back to the `Red` family.
 - **Accessory pairing** uses contrast rules (bold dress + neutral shoe = bonus), occasion overlap, and silhouette-formality fit — see `accessoryMatcher.js`.
+
+---
+
+## Evaluation and Quality
+
+Everything that makes a quality claim has a script, a committed baseline and a test for the scoring code. Numbers from 2026-11-17 on the live catalog:
+
+| Area | Command | Result |
+|---|---|---|
+| Text search (35 queries judged by attribute predicates over the *whole* catalog) | `npm run eval:search` | P@10 0.771 · recall 0.837 · MRR 0.948 · nDCG 0.880. Runs in the weekly workflow and fails on a regression |
+| Search on shorter vectors | `eval:search` with `EMBEDDING_SEARCH_DIMS` | 256 dims 0.806 vs 1024 dims 0.809 (P@10, before the eval was tightened): 4× less data for no measurable loss; 128 is visibly worse |
+| Photo search index | `npm run eval:visual` | photo→photo: same catalog 98.0%, same product type 69.9% (top 5) |
+| Which image model | `npm run compare:clip` | general CLIP 0.537 · Marqo-FashionCLIP 0.571 · **FashionCLIP 0.585** (same-type, 672 photos); FashionCLIP chosen |
+| Stylist agent (13 tasks, graded by code) | `npm run eval:agent` | 13/13 (budget 3/3, categories 11/11, grounded 13/13, in stock 13/13) |
+| Outfit matcher vs random picks | `npm run eval:outfits` | colour harmony 1.15× (shoes) · 1.06× (jewellery) · 1.16× (watches), every suggestion valid |
+| Vector search latency | `npm run bench:vectors` | 3 ms at today's 3.4k products, 143 ms at 100k: no index needed below ~50k |
+| API load | `npm run load:api` | see [docs/PLAN.md](docs/PLAN.md#load-test-2026-11-17-npm-run-loadapi-20-concurrent-connections-x-10-s-per-scenario) |
+
+The evaluations paid for themselves: they found a shoe matcher no better than random (a score cap made ties arbitrary), a scraper fallback that imported the whole site into the watches catalog, wrong watch genders, an unauthenticated route that re-embedded the catalog, and a lenient eval of their own. The full list is in [docs/PLAN.md](docs/PLAN.md#bugs-the-evaluations-found-2026-11-17).
+Not measured: whether an outfit is *stylish* (needs human judgement), and agent output varies run to run (the same code has scored 11/13 and 13/13).
+
+---
+
+## Observability and Security
+
+- **Metrics** at `GET /metrics` (bearer token): HTTP latency and errors per route pattern, LLM calls / latency / tokens per provider, provider health, agent runs, feedback events, plus the pipeline's lag and queue depth. Grafana has two dashboards (39 queries validated against a live Prometheus); 10 alert rules go to Alertmanager (webhook delivery verified; Slack configured but untested).
+- **Logs**: one JSON line per request with an `X-Request-Id`, route *pattern* only (no ids or query strings).
+- **Security**: SSRF guard (private/loopback/metadata addresses, redirects re-checked, DNS-rebinding-safe) on every server-side fetch; uploads checked by file signature and size; scraped text treated as untrusted in every LLM prompt; per-caller daily quotas on try-on, photo search, the agent, outfit advice and support; `POST /api/search/embed-all` is admin-only; `npm audit` shows 0 production vulnerabilities.
+- **Small hosts**: the API reads its memory limit; below 1.8 GB the local models stay off and search is keyword-based. `GET /api/health` shows `search`, `memoryLimitMB` and `rssMB`.
 
 ---
 
@@ -706,6 +826,24 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 ### Admin — `/api/admin` (JWT + admin role)
 `GET /stats` · `GET /scraper/logs` · `GET /scraper/status` · `GET /scraper/stream` (SSE) · `POST /scraper/run` · `DELETE /products/brand/:brand` · `POST /catalog/lexical-audit` · `GET /system-logs` · `POST /system-logs/:id/resolve`
 
+### Stylist agent — `/api/stylist`
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/ask` | Body `{ "message": "..." }` (3–500 chars). Returns `{ answer, picks[], meta: { stopReason, steps, toolCalls, ms, requestId } }`. Each pick is a full product record plus `why`. Daily quota (30 signed-in / 5 anonymous by default). Sign in to let the agent read your wardrobe. |
+
+### Try-on jobs — `/api/tryon/jobs`
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/tryon/jobs` | Multipart `person` + `clothing` images (or `personUrl` / `clothingUrl`). `202` with a job, or `200` if the same images were already done (cache). `429` when busy or you have too many jobs running. |
+| GET | `/api/tryon/jobs/:id` | `{ id, status: queued\|running\|done\|failed, resultUrl?, provider?, error?, reason?, queuedAhead }` (owner only) |
+| GET | `/api/tryon/jobs/:id/events` | Server-Sent Events: the current state, then every change, closes when the job finishes |
+
+### Feedback — `/api/feedback`
+`POST /` — body `{ action, clientEventId, surface?, productUrl?, catalog?, query?, position?, sessionId? }` where `action` is one of `result_click, save, unsave, thumb_up, thumb_down, tryon_start, outfit_accept, outfit_reject`. Returns `202`; the event is published to Kafka (`user.feedback`) with a salted hash instead of the user or session id, and is idempotent on `clientEventId`.
+
+### Health, metrics, MCP
+`GET /api/health` → `{ status, search: "semantic"|"keyword", photoSearchVisual, memoryLimitMB, rssMB }` · `GET /metrics` (bearer `METRICS_TOKEN`) · `POST /mcp` (bearer `MCP_TOKEN`; only mounted when the token is set).
+
 ---
 
 ## Environment Variables
@@ -721,17 +859,24 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 | `GROQ_API_KEY` | One of the three | Text LLM (default model `openai/gpt-oss-20b`, override `GROQ_MODEL`) |
 | `GEMINI_API_KEY` | One of the three | Text + vision LLM (models `gemini-3.5-flash-lite` / `3.5-flash` / `3.1-flash-lite`, override `GEMINI_FALLBACK_MODELS`) |
 | `OPENROUTER_API_KEY` | One of the three | Text LLM fallback (`OPENROUTER_MODEL`) |
-| `GEMINI_API_KEY` | No | Fallback text + vision LLM |
-| `GROQ_API_KEY` | No | Fallback text LLM |
-| `OPENROUTER_API_KEY` | No | Fallback text LLM |
-| `HUGGING_FACE_API_KEY` | Recommended | Embeddings (semantic/visual search) + free try-on rate limits |
-| `REPLICATE_API_KEY` | No | Paid, fast virtual try-on (falls back to free HF Space if unset/out of credit) |
-| `CLOUDINARY_URL` | No | `cloudinary://<api_key>:<api_secret>@<cloud_name>` — profile picture uploads |
-| `SCRAPER_DRY_RUN` | No | `true` = parse only, no DB writes |
-| `SCRAPER_MAX_PER_BRAND` | No | Max products per brand |
-| `SCRAPER_DELAY_MS` | No | Delay between scraper requests |
-| `SCRAPER_RETRY_LIMIT` | No | Max retries per request |
-| `SCRAPER_CRON_SCHEDULE` | No | Cron expression for the weekly auto-scrape |
+| `LLM_PROVIDER_ORDER` | No | Provider order, default `ollama,groq,gemini,openrouter` |
+| `OLLAMA_URL`, `OLLAMA_MODEL` | No | Local LLM for development |
+| `LOCAL_MODELS` | No | `true` / `false` forces the local embedding models on or off. Default: automatic from the memory limit (text model needs 1.8 GB, image model 2.4 GB) |
+| `MEMORY_LIMIT_MB` | No | State the memory limit when the host reports it wrongly (or to rehearse a small host) |
+| `EMBEDDING_SEARCH_DIMS` | No | Dimensions used for semantic search (default `256`, max `1024`) |
+| `EMBEDDING_CACHE_DIR` | No | Where models are downloaded (default `backend/.model-cache`; `/models` in Docker) |
+| `REPLICATE_API_TOKEN` | No | Paid, fast virtual try-on (falls back to the free HF Space if unset or out of credit) |
+| `HUGGING_FACE_API_KEY` | No | Higher rate limits for the free try-on Space (embeddings no longer need it) |
+| `CLOUDINARY_URL` | No | `cloudinary://<api_key>:<api_secret>@<cloud_name>` — profile pictures and try-on results |
+| `REDIS_URL` | No | Shared cache, rate limits, quotas and LLM circuit breaker across instances. Without it, in-process equivalents are used |
+| `PIPELINE_ENABLED`, `KAFKA_BROKERS` | No | Publish product and feedback events to Kafka |
+| `FEEDBACK_SALT` | Prod | Salt for hashing user identity in feedback events |
+| `METRICS_TOKEN` | Prod | Bearer token required by `GET /metrics` |
+| `MCP_TOKEN` | No | Enables `POST /mcp`; clients send `Authorization: Bearer <token>` |
+| `TRYON_DAILY_LIMIT`, `TRYON_ANON_DAILY_LIMIT`, `AGENT_DAILY_LIMIT`, `AGENT_ANON_DAILY_LIMIT`, `IMAGE_SEARCH_DAILY_LIMIT` | No | Per-caller daily quotas on costly endpoints |
+| `ALERT_SLACK_WEBHOOK_URL`, `ALERT_WEBHOOK_URL` | No | Where Alertmanager sends alerts (docker compose) |
+| `SCRAPER_DRY_RUN`, `SCRAPER_MAX_PER_BRAND`, `SCRAPER_DELAY_MS`, `SCRAPER_RETRY_LIMIT`, `SCRAPER_ONLY_BRANDS` | No | Scraper behaviour |
+| `SCRAPER_CRON_ENABLED`, `SCRAPER_CRON_SCHEDULE` | No | In-process weekly scrape (off by default; production uses the GitHub workflow) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Yes | Seed the admin account |
 
 ### Frontend (`frontend/.env.local`)
@@ -740,25 +885,34 @@ A handcrafted color compatibility matrix (`colorTheory.js`) covering the canonic
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL |
 
+### Mobile (`--dart-define`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `API_BASE_URL` | `http://localhost:5000/api` (`http://10.0.2.2:5000/api` on the Android emulator) | Backend API base URL. It can also be changed inside the app (Account → Server) |
+
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js v18+
-- MongoDB (local or Atlas)
-- Free API keys: [Groq](https://console.groq.com) / [Gemini](https://aistudio.google.com) (LLM), [HuggingFace](https://huggingface.co/settings/tokens) (embeddings), [Cloudinary](https://cloudinary.com) (images) — all have generous free tiers
+- Node.js 20+ and MongoDB (local or Atlas)
+- Free API keys: [Groq](https://console.groq.com) and/or [Gemini](https://aistudio.google.com) (LLM), [Cloudinary](https://cloudinary.com) (images). Embeddings need no key: they run locally.
+- For the mobile app: Flutter 3.x ([install](https://docs.flutter.dev/get-started/install))
+- Optional: Docker (Kafka / RabbitMQ / Redis / monitoring stack)
 
 ### 1. Install
 ```bash
 cd backend && npm install
 cd ../frontend && npm install
+cd ../pipeline && npm install        # only if you run the event pipeline
+cd ../mobile && flutter pub get      # only for the mobile app
 ```
 
 ### 2. Configure environment
 ```bash
 cd backend
-cp .env.example .env   # fill in MONGO_URI, JWT_SECRET, FRONTEND_URL, ADMIN_*, and the AI keys above
+cp .env.example .env   # fill in MONGO_URI, JWT_SECRET, FRONTEND_URL, ADMIN_*, and one LLM key
 ```
 ```bash
 cd frontend
@@ -767,51 +921,65 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api" > .env.local
 
 ### 3. Run
 ```bash
-cd backend && npm run dev     # http://localhost:5000
+cd backend && npm run dev     # http://localhost:5000   (GET /api/health shows which search mode is active)
 cd frontend && npm run dev    # http://localhost:3000
+cd mobile && flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000/api
 ```
+The first semantic search downloads the embedding models (about 0.7 GB, once). On a machine with under 1.8 GB of RAM the API skips them and uses keyword search.
 
 ### 4. Seed admin + populate catalogs
 ```bash
 cd backend
 npm run seed:admin
+npm run refresh:catalog           # scrape every vertical, mark sold-out items, embed everything (what the weekly job runs)
+# or step by step:
 npm run scrape                    # clothing
 npm run scrape:all-verticals      # shoes + jewelry + watches
-npm run embed:clothing            # backfill embeddings for semantic/visual search
-npm run embed:accessories         # same, for shoes + jewelry
+npm run embed:all                 # text vectors
+npm run embed:images              # photo vectors
+```
+
+### 5. Check it
+```bash
+npm run llm:selftest              # does every configured LLM provider answer?
+npm run search:smoke              # eight real queries through the full search path
+npm test                          # 423 tests
 ```
 
 ---
 
 ## Scripts Reference
 
+All in `backend/` unless noted.
+
 | Script | Command | Description |
 |---|---|---|
-| Start (prod) | `npm start` | `node server.js` |
-| Start (dev) | `npm run dev` | `nodemon server.js` |
-| Scrape clothing | `npm run scrape` | Full scrape, writes to DB |
-| Scrape (dry run) | `npm run scrape:dry` | Parse only, no DB writes |
-| Scrape shoes | `npm run scrape:shoes` | |
-| Scrape jewelry | `npm run scrape:jewelry` | |
-| Scrape watches | `npm run scrape:watches` | |
-| Scrape all verticals | `npm run scrape:all-verticals` | |
-| Fresh scrape | `npm run scrape:fresh` | Clears DB, then full clothing scrape |
-| Export catalog | `npm run export:catalog` | Dumps all catalogs to JSON/CSV for external audit |
-| Audit catalog | `npm run audit:catalog` | Consistency checker (field vs. description mismatches) |
-| Seed admin | `npm run seed:admin` | Create admin from `.env` |
-| Embed clothing | `npm run embed:clothing` | Backfill HuggingFace embeddings for products missing one |
-| Embed accessories | `npm run embed:accessories` | Same, for shoes + jewelry |
-| Test | `npm test` | Runs the full `node --test` suite |
+| Start | `npm start` / `npm run dev` | `node server.js` / nodemon |
+| Weekly refresh | `npm run refresh:catalog` | scrape all verticals, stock sweep, embed text + photos, summary (what CI runs every Sunday) |
+| Scrape | `npm run scrape`, `scrape:shoes`, `scrape:jewelry`, `scrape:watches`, `scrape:all-verticals`, `scrape:dry` | per vertical; `SCRAPER_ONLY_BRANDS=Khaadi,Maria B` limits brands |
+| Embeddings | `npm run embed:all`, `embed:images` | resumable; only products that are new, changed or from another model |
+| Catalog hygiene | `npm run profile:catalog`, `purge:misclassified`, `repair:catalog`, `backfill:stylekeys`, `backfill:watchgender`, `clear:catalog`, `backup:db` | read-only profile, and dry-run-by-default fixers (`-- --apply` to write) |
+| LLM check | `npm run llm:selftest` | one live call to every configured provider |
+| Evaluation | `npm run eval:search`, `eval:visual`, `eval:agent`, `eval:outfits`, `compare:clip`, `search:smoke` | see [Evaluation and Quality](#evaluation-and-quality); `-- --write-baseline` updates a baseline |
+| Performance | `npm run load:api`, `bench:vectors` | autocannon against the real API; vector-search latency by catalog size |
+| Agent | `npm run agent:demo -- "your request"`, `npm run mcp:stdio` | run the agent once; start the MCP server over stdio |
+| Seed admin | `npm run seed:admin` | create the admin from `.env` |
+| Test | `npm test` | the full `node --test` suite |
+| Pipeline (in `pipeline/`) | `npm run loadtest`, `failuretest`, `feedbacktest` | needs `docker compose up` |
+| Mobile (in `mobile/`) | `flutter analyze`, `flutter test`, `flutter build apk` | |
 
 ---
 
 ## Testing
 
 ```bash
-cd backend && npm test
+cd backend  && npm test                # 423 tests: parsers, search, agent, quotas, SSRF, uploads, try-on queue, eval scoring, ...
+cd pipeline && npm test                # 48 tests, incl. an in-memory MongoDB for the consumer store
+cd mobile   && flutter test            # widget + model tests
 ```
 
-151 tests across 26 suites covering: scraper field-extraction correctness (piece count, stitching, dress style, fabric, gender, color inference), search-query intent signals, hybrid scoring math, and outfit-recommendation logic. Run with `node --test`; no separate test runner install required.
+CI (`.github/workflows/ci.yml`) runs the backend and pipeline tests, builds both Docker images, and then brings up Kafka, RabbitMQ, Redis and MongoDB on a runner to run the load test, the consumer-crash test, the feedback end-to-end test and the shared-circuit-breaker test against real services.
+The weekly workflow (`weekly-refresh.yml`) refreshes the catalog and then runs the smoke queries and the golden-query eval, failing on a regression.
 
 ---
 

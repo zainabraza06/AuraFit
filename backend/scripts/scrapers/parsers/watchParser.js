@@ -53,6 +53,19 @@ function inferWater(blob) {
   return 'unknown';
 }
 
+/**
+ * Gender stated in the product NAME ("Golden Gents Watch", "Kids Purple Watch", "Women's Watch"). The name beats the
+ * collection config: Stylo's /collections/watches is configured as women's but contains gents' and kids' watches, so
+ * they were all stored as gender "women".
+ */
+export function genderFromWatchName(name) {
+  const n = String(name || '').toLowerCase();
+  if (/\b(kids?|boys?|girls?|children|child|junior)\b/.test(n)) return 'kids';
+  if (/\b(men|mens|men's|gents?|gentlemen)\b/.test(n)) return 'men';
+  if (/\b(women|womens|women's|ladies|lady)\b/.test(n)) return 'women';
+  return null;
+}
+
 export function normalizeWatchProduct(raw, brandConfig) {
   if (!raw || !brandConfig) return null;
   const name = (raw.title || raw.name || '').trim();
@@ -73,6 +86,7 @@ export function normalizeWatchProduct(raw, brandConfig) {
   const colorFamily = FAMILY_MAP[primaryColor] || 'multicolor';
 
   const gender =
+    genderFromWatchName(name) ||
     brandConfig.gender ||
     (/\bmen\b|\bmens\b|\bgents\b/.test(blob) ? 'men' : /\bkids\b/.test(blob) ? 'kids' : /\bwomen\b|\bladies\b/.test(blob) ? 'women' : 'unisex');
 
@@ -146,6 +160,8 @@ const NON_WATCH_NAME = new RegExp(
     'bag|bags|clutch|purse|wallet|backpack|tote|handbag|satchel|' +
     'scarf|scarves|shawl|stole|shirt|kurta|kurti|dupatta|suit|trouser|trousers|piece|pret|rtw|rts|khaddar|lawn|abaya|hijab|saree|lehenga|' +
     'kameez|shalwar|salwar|waistcoat|jacket|coat|frock|tunic|blouse|' +
+    // seen leaking from a site-wide fallback (Limelight): tops, co-ords, knitwear, hosiery, slides, eyewear, jewelry
+    'top|tops|cardigan|co[-\\s]?ord|coord|tights|slip[-\\s]?ons?|slides?|sunglass|sunglasses|hoop|hoops|bracelet|bracelets|' +
     'perfume|fragrance|lipstick|makeup|earring|earrings|necklace|bangle|bangles' +
   ')\\b',
   'i'

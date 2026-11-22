@@ -12,6 +12,7 @@ import { enableSharedCircuit } from './services/llmCircuitBreaker.js';
 import { buildProviders } from './services/llmProviders.js';
 import { selfTestProviders } from './services/llmHealth.js';
 import { warmUpSearch } from './services/searchWarmup.js';
+import { currentPolicy } from './services/memoryProfile.js';
 
 export const app = createApp();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +23,10 @@ export async function bootstrap() {
     console.log(`\n🚀 Fashion Stylist API running on http://localhost:${PORT}`);
     console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}\n`);
   });
+
+  // Say plainly what search will do on this host (a 512 MB instance cannot hold the 920 MB embedding model).
+  const policy = currentPolicy();
+  console.log(JSON.stringify({ level: policy.text ? 'info' : 'warn', msg: 'local_models', text: policy.text, image: policy.image, memoryMB: policy.limitMB, reason: policy.reason }));
 
   // Share LLM circuit-breaker cooldowns across API instances when Redis is available.
   const redis = getRedis();

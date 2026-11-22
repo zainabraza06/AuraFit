@@ -18,6 +18,25 @@ const SHOE_NEGATIVE = [
   'perfume', 'handbag', 'wallet', 'clutch bag'
 ];
 
+/**
+ * Product NAMES that are clearly not footwear. Borjan sells scarves and shoulder bags next to its shoes and they
+ * ended up in the shoes catalog (14 scarves + 4 bags). Name-based and word-bounded. Deliberately NOT included:
+ * "top" (High Top sneakers), "belt" (belt-buckle sandals), "coat" (ECS sells "Coat Shoes", a real shoe style).
+ */
+const NON_SHOE_NAME = new RegExp(
+  '\\b(' +
+    'scarf|scarves|shawl|stole|bag|bags|tote|backpack|clutch|purse|wallet|handbag|satchel|' +
+    'sunglass|sunglasses|cardigan|tights|co[-\\s]?ord|coord|shirt|kurta|kurti|dupatta|trouser|trousers|kameez|shalwar|' +
+    'perfume|fragrance|earring|earrings|necklace|bracelet|bangle|bangles' +
+  ')\\b',
+  'i'
+);
+
+/** True when a product NAME is clearly not footwear. Used by the parser and the cleanup script. */
+export function isNonShoeName(name) {
+  return NON_SHOE_NAME.test(String(name || ''));
+}
+
 const SHOE_TYPE_RULES = [
   { kw: ['khussa', 'khussay', 'khusa'], val: 'khussa' },
   { kw: ['kohati', 'kohati chappal'], val: 'kohati' },
@@ -183,6 +202,7 @@ export function normalizeShoeProduct(raw, brandConfig) {
   const tagsLc = (raw.tags || []).join(' ').toLowerCase();
   const cleanBlob = `${titleLc} ${tagsLc}`;
   if (SHOE_NEGATIVE.some((n) => blob.includes(n))) return null;
+  if (isNonShoeName(name)) return null; // scarves / bags sold next to shoes
 
   const price = raw.price;
   if (!price || price <= 0) return null;

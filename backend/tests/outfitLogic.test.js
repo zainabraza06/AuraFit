@@ -4,7 +4,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { lexicalTaxonomyAlignment, summarizeCatalogHealth } from '../services/catalogTaxonomyAudit.js';
-import { footwearFashionScore, pickJewelrySet } from '../services/accessoryMatcher.js';
+import { footwearFashionScore, footwearScoreParts, pickBestShoe, pickJewelrySet } from '../services/accessoryMatcher.js';
 import { validateAccessoryPlan, stripAccessoryPlanForClient } from '../services/accessorySearchPlanner.js';
 import { escapeRegex } from '../utils/regexEscape.js';
 import { inferSearchCatalog } from '../services/intentAdapter.js';
@@ -129,6 +129,27 @@ describe('inferSearchCatalog', () => {
 
   test('infers watches', () => {
     assert.equal(inferSearchCatalog('minimal smartwatch for office', { color: 'Any' }), 'watches');
+  });
+});
+
+describe('pickBestShoe tie-breaking (regression: the 1.0 cap made the first of the tied shoes win)', () => {
+  const dress = { primaryColor: 'Red', colors: ['Red'], occasion: ['party', 'wedding'], dressStyle: 'frock' };
+  const heel = (id, color, extra = {}) => ({ _id: id, primaryColor: color, colors: [color], occasion: ['party', 'wedding'], shoeType: 'heel', ...extra });
+
+  test('when several shoes hit the 1.0 cap, the one with the better raw score wins, whatever the order', () => {
+    const pool = [heel('a', 'Black'), heel('b', 'Gold'), heel('c', 'Red')];
+    const parts = pool.map((s) => footwearScoreParts(dress, s));
+    assert.ok(parts.filter((p) => p.total === 1).length >= 2, 'precondition: at least two shoes are capped at 1');
+    const bestRaw = Math.max(...parts.map((p) => p.raw));
+    const expected = pool[parts.findIndex((p) => p.raw === bestRaw)]._id;
+    assert.equal(pickBestShoe(dress, pool)?.product._id, expected);
+    assert.equal(pickBestShoe(dress, [...pool].reverse())?.product._id, expected, 'order must not matter');
+  });
+
+  test('displayed score stays capped at 1 while raw can exceed it', () => {
+    const p = footwearScoreParts(dress, heel('x', 'Black'));
+    assert.ok(p.total <= 1 && p.raw >= p.total);
+    assert.equal(pickBestShoe(dress, [heel('x', 'Black')]).score, p.total);
   });
 });
 

@@ -25,3 +25,44 @@ The deploy job is skipped, not failed, while `DEPLOY_HOST` is unset.
 
 Re-run an earlier successful workflow, or on the server:
 `IMAGE_PREFIX=ghcr.io/<owner>/<repo> TAG=<old sha> docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build`
+
+## Alerts and what to expose
+
+Prometheus evaluates the rules in `observability/alerts.yml` and sends firing alerts to Alertmanager (in `docker-compose.yml`).
+Alertmanager sends notifications only if you set one of these in the server's environment (for example in the deploy `.env`):
+
+| Variable | Sends to |
+|---|---|
+| `ALERT_SLACK_WEBHOOK_URL` | a Slack channel (incoming webhook) |
+| `ALERT_WEBHOOK_URL` | any HTTP endpoint (Alertmanager's JSON webhook payload; use it for Discord/Teams relays, PagerDuty adapters, your own handler) |
+
+With neither set, alerts are still evaluated and visible at `:9093` and in Prometheus, but nothing is sent. Webhook delivery was verified with a
+synthetic alert; Slack delivery was not (no workspace was available).
+
+**Do not publish ports 9090 (Prometheus), 9093 (Alertmanager) or 3000 (Grafana) to the internet.** Prometheus and Alertmanager have no login; the compose
+file maps them for local use. On a server, firewall them or bind them to `127.0.0.1` and reach them through an SSH tunnel or a reverse proxy with authentication.
+
+## Memory: small hosts (Render free tier, 512 MB)
+
+Measured process memory (RSS), `backend`:
+
+| What is loaded | Memory |
+|---|---|
+| The API alone (Express, Mongoose, routes) | ~190 MB (115 MB right after boot with a database) |
+| + Qwen3 text-embedding model (semantic search) | ~920 MB |
+| + FashionCLIP image model (visual photo search) | ~1,120 MB |
+
+A 512 MB instance cannot hold either model, so loading one gets the process killed ("exceeded available memory"). The API now checks its memory limit at startup
+(container limit first, then machine RAM) and decides:
+
+| Memory available | Search | Photo search |
+|---|---|---|
+| under 1,800 MB (Render free / starter 512 MB) | **keyword search** (the same results the site's search box uses) | description-based only |
+| 1,800 MB or more | semantic (local Qwen3) | description-based |
+| 2,400 MB or more | semantic | description + visual similarity (FashionCLIP) |
+
+What it chose is logged at boot (`local_models`) and shown by `GET /api/health` (`search`, `photoSearchVisual`, `memoryLimitMB`, `rssMB`), so you can check a deployed instance without guessing.
+Overrides: `LOCAL_MODELS=true|false` forces it; `MEMORY_LIMIT_MB=<n>` states the limit for a host that reports it wrongly.
+
+Recommended for a small host: set `NODE_OPTIONS=--max-old-space-size=384` so V8 collects garbage before the host's limit is hit, and leave `SEARCH_WARMUP`/`LOCAL_MODELS` unset.
+For semantic search in production use an instance with 2 GB or more (Render "Standard" and up), or run the embedding step on the weekly job's runner only (already the case: vectors are computed there) and accept keyword search at query time.

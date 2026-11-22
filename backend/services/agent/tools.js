@@ -17,7 +17,7 @@ import JewelryProduct from '../../models/JewelryProduct.js';
 import WatchProduct from '../../models/WatchProduct.js';
 import WardrobeItem from '../../models/WardrobeItem.js';
 import { analyzeSearchQuery, buildSemanticQueryText } from '../searchQueryIntel.js';
-import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs } from '../crossCatalogSearch.js';
+import { getEmbedding, searchAcrossCatalogs, regexSearchAcrossCatalogs, keywordTerms } from '../crossCatalogSearch.js';
 import { pickBestShoe, pickJewelrySet, pickWatch } from '../accessoryMatcher.js';
 import { scoreProduct } from '../recommendationEngine.js';
 import { isEmbeddingConfigured } from '../embeddings.js';
@@ -70,8 +70,8 @@ export const TOOLS = [
       query: z.string().min(2).max(300),
       catalog: CatalogEnum.optional().describe('restrict to one catalog'),
       gender: z.enum(['women', 'men', 'kids', 'unisex']).optional(),
-      maxPrice: z.number().positive().optional().describe('maximum price in PKR'),
-      limit: z.number().int().min(1).max(10).default(5),
+      maxPrice: z.coerce.number().positive().optional().describe('maximum price in PKR'),
+      limit: z.coerce.number().int().min(1).max(10).default(5),
     }),
     readOnly: true,
     async handler({ query, catalog, gender, maxPrice, limit = 5 }) {
@@ -84,7 +84,7 @@ export const TOOLS = [
         ({ results } = await searchAcrossCatalogs(signals, embedding, { limit: want, catalog, gender }));
       } else {
         mode = 'keyword';
-        const keywords = signals.lower.split(/\s+/).filter((w) => w.length > 2);
+        const keywords = keywordTerms(signals.lower);
         ({ results } = await regexSearchAcrossCatalogs({ color: signals.hasExplicitColor ? signals.colorIntel.colors : [], keywords, gender }, { limit: want, catalog }));
       }
       if (maxPrice) results = results.filter((r) => r.price <= maxPrice);
@@ -172,6 +172,16 @@ export const TOOLS = [
 export const TOOL_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
 /**
+ * LLMs fill optional arguments with null, "" or "none" instead of leaving them out. Treat those as absent so a
+ * harmless sloppy call is not rejected as "invalid arguments" (which the model then misreports to the shopper as a
+ * technical problem with the filters).
+ */
+export function cleanArgs(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null && v !== undefined && v !== '' && !(typeof v === 'string' && /^(none|null|n\/a|any)$/i.test(v.trim()))));
+}
+
+/**
  * Validate input with the tool's schema, run it, and never throw: agents and MCP clients get a
  * structured error they can react to.
  */
@@ -179,7 +189,7 @@ export async function runTool(name, rawArgs, ctx = {}) {
   const tool = TOOL_BY_NAME[name];
   if (!tool) return { error: 'unknown_tool', tool: name };
   if (tool.needsUser && !ctx.userId) return { error: 'not_signed_in' };
-  const parsed = tool.input.safeParse(rawArgs ?? {});
+  const parsed = tool.input.safeParse(cleanArgs(rawArgs));
   if (!parsed.success) return { error: 'invalid_arguments', issues: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.') || 'input'}: ${i.message}`) };
   try {
     return await tool.handler(parsed.data, ctx);

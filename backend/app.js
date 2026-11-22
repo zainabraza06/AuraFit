@@ -28,6 +28,7 @@ import { getRedis }         from './config/redis.js';
 import { httpMetrics, metricsHandler } from './observability/metrics.js';
 import { RedisStore }       from 'rate-limit-redis';
 import { requestLogger }    from './middleware/requestLogger.js';
+import { currentPolicy }     from './services/memoryProfile.js';
 import { createMcpRouter }  from './routes/mcp.js';
 import stylistRoutes        from './routes/stylist.js';
 import feedbackRoutes       from './routes/feedback.js';
@@ -117,7 +118,15 @@ export function createApp() {
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date(), version: '1.0.0' });
+    const policy = currentPolicy();
+    res.json({
+      status: 'ok', timestamp: new Date(), version: '1.0.0',
+      // what search is doing on this host: "semantic" needs the local embedding model, which needs enough RAM
+      search: policy.text ? 'semantic' : 'keyword',
+      photoSearchVisual: policy.image,
+      memoryLimitMB: policy.limitMB,
+      rssMB: Math.round(process.memoryUsage().rss / 1048576),
+    });
   });
 
   // ─── 404 Handler ─────────────────────────────────────────────────────────

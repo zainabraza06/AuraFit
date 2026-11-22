@@ -29,8 +29,13 @@ function clauseMatches(p, clause) {
   return clause.any.some((t) => wordRe(t).test(blob));
 }
 
-/** Number of clauses satisfied (0..clauses.length). */
+/**
+ * Number of clauses satisfied (0..clauses.length). A product from a different catalog than the spec asks for scores 0:
+ * without this, a jewelry bracelet counted as a hit for "ladies bracelet watch" while the relevant set (watches only)
+ * did not contain it, so recall could exceed 1.
+ */
 export function gradeProduct(p, spec) {
+  if (spec.catalog && p.catalog && p.catalog !== spec.catalog) return 0;
   return spec.clauses.reduce((n, c) => n + (clauseMatches(p, c) ? 1 : 0), 0);
 }
 

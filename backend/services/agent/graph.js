@@ -22,9 +22,10 @@ import { z } from 'zod';
 import { TOOLS, TOOL_BY_NAME, runTool } from './tools.js';
 import { completeJsonWithProviderFallback } from '../llmClient.js';
 import { untrusted, UNTRUSTED_NOTICE } from '../../utils/promptSafety.js';
+import { findViolations, violationFeedback } from './constraints.js';
 import { agentRuns, agentSteps } from '../../observability/metrics.js';
 
-export const DEFAULT_BUDGET = { maxSteps: 6, maxToolCalls: 5, maxMs: 45_000, maxObservationChars: 5000 };
+export const DEFAULT_BUDGET = { maxSteps: 7, maxToolCalls: 5, maxMs: 60_000, maxObservationChars: 5000, maxRevisions: 1 };
 
 const ToolCall = z.object({ action: z.literal('tool'), tool: z.string(), args: z.record(z.string(), z.any()).default({}), thought: z.string().max(300).optional() });
 const Final = z.object({
@@ -56,6 +57,7 @@ export function buildSystemPrompt(tools, budget) {
     '',
     'Rules:',
     `- You have at most ${budget.maxToolCalls} tool calls. Be efficient: search first, then get_product / suggest_accessories only if it helps.`,
+    '- The catalog is mostly womenswear (there is almost no menswear). Do NOT set the gender filter unless the shopper clearly says who it is for (for example "for my brother" or "kids"); a garment word like kurta or kameez does not mean men.',
     '- Only recommend products that appeared in tool results, using their exact "id". Never invent products, prices or ids.',
     '- Respect the shopper\'s budget, occasion, colours and gender. If nothing fits, say so honestly and suggest the closest alternative.',
     `- ${UNTRUSTED_NOTICE}`,
@@ -70,6 +72,9 @@ const State = Annotation.Root({
   toolCalls: Annotation({ reducer: (_a, b) => b, default: () => 0 }),
   final: Annotation(),
   stopReason: Annotation(),
+  feedback: Annotation({ reducer: (_a, b) => b, default: () => '' }), // why the previous answer was sent back
+  revisions: Annotation({ reducer: (_a, b) => b, default: () => 0 }),
+  unresolved: Annotation({ reducer: (_a, b) => b, default: () => [] }),
 });
 
 function renderHistory(history, maxChars) {
@@ -130,6 +135,9 @@ export async function runStylistAgent({ message, ctx = {}, budget: b = {}, llm, 
       '',
       renderHistory(state.history, budget.maxObservationChars),
       '',
+      state.feedback ? `
+${state.feedback}
+` : '',
       outOfBudget ? 'Your tool budget is used up. Reply now with a "final" action using what you have.' : 'What is your next action?',
     ].join('\n');
     let decision;
@@ -152,17 +160,41 @@ export async function runStylistAgent({ message, ctx = {}, budget: b = {}, llm, 
     return { history: [{ tool, args, observation }], toolCalls: state.toolCalls + 1 };
   }
 
-  const route = (state) => (state.decision?.action === 'tool' && !state.final ? 'act' : END);
+  /**
+   * Verify: the model's answer is checked against requirements stated in the request that can be checked with
+   * certainty (a budget in PKR, catalogs that were named). On a violation the model gets ONE chance to fix it, with the
+   * exact problem spelled out; the eval showed it otherwise overshoots budgets and forgets categories.
+   * No revision is attempted when the budget for steps/tools/time is already spent (it could not search again).
+   */
+  async function verify(state) {
+    const known = collectProducts(state.history || []);
+    const picks = (state.decision?.picks || []).filter((p) => known.has(p.id)).map((p) => known.get(p.id));
+    const violations = findViolations(state.message, picks);
+    const canRevise = state.revisions < budget.maxRevisions && state.steps < budget.maxSteps - 1 && state.toolCalls < budget.maxToolCalls && now() - started < budget.maxMs;
+    if (violations.length && canRevise) {
+      return { feedback: violationFeedback(violations), revisions: state.revisions + 1, decision: { action: 'revise' } };
+    }
+    return { unresolved: violations.map((v) => v.type) };
+  }
+
+  const afterDecide = (state) => {
+    if (state.final) return END; // fallback answer: nothing to verify
+    if (state.decision?.action === 'tool') return 'act';
+    return 'verify';
+  };
+  const afterVerify = (state) => (state.decision?.action === 'revise' ? 'decide' : END);
 
   const graph = new StateGraph(State)
     .addNode('decide', decide)
     .addNode('act', act)
+    .addNode('verify', verify)
     .addEdge(START, 'decide')
-    .addConditionalEdges('decide', route, { act: 'act', [END]: END })
+    .addConditionalEdges('decide', afterDecide, { act: 'act', verify: 'verify', [END]: END })
     .addEdge('act', 'decide')
+    .addConditionalEdges('verify', afterVerify, { decide: 'decide', [END]: END })
     .compile();
 
-  const out = await graph.invoke({ message }, { recursionLimit: budget.maxSteps * 2 + 6 });
+  const out = await graph.invoke({ message }, { recursionLimit: budget.maxSteps * 3 + 8 });
 
   // Grounding: keep only picks whose id a tool actually returned.
   const known = collectProducts(out.history || []);
@@ -177,6 +209,8 @@ export async function runStylistAgent({ message, ctx = {}, budget: b = {}, llm, 
     steps: out.steps,
     toolCalls: out.toolCalls,
     droppedUngroundedPicks: dropped,
+    revisions: out.revisions || 0,
+    unresolvedViolations: out.unresolved || [],
     trace: (out.history || []).map((h) => ({ tool: h.tool, args: h.args, ok: !h.observation?.error })),
     ms: now() - started,
   };

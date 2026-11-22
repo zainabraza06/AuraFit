@@ -68,7 +68,7 @@ function SearchContent() {
 
           <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.9rem', maxWidth: 560, margin: '0.9rem auto 0', lineHeight: 1.6 }}>
             Describe an outfit in your own words — our AI reads every product's full description and finds the closest matches
-            by meaning, using <strong style={{ color: 'var(--text-secondary)' }}>all-MiniLM-L6-v2</strong> sentence embeddings.
+            by meaning, using <strong style={{ color: 'var(--text-secondary)' }}>Qwen3-Embedding</strong> sentence embeddings.
           </p>
 
           {/* Search bar */}
