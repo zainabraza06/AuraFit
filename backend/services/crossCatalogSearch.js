@@ -10,6 +10,7 @@ import JewelryProduct from '../models/JewelryProduct.js';
 import WatchProduct from '../models/WatchProduct.js';
 import { embedQuery, isEmbeddingConfigured, EMBEDDING_MODEL_ID, EMBEDDING_DIM, searchDims, truncateAndNormalize } from './embeddings.js';
 import { loadCandidates } from './vectorCache.js';
+import { useAtlas, vectorSearch, buildFilter } from './atlasVector.js';
 import { facetAlignmentScore, hybridSearchScore, similarityFloor, precomputeFacetData } from './searchQueryIntel.js';
 
 // Query-independent facet data per cached product (the cached candidate objects keep their identity between queries).
@@ -21,6 +22,9 @@ const facetDataOf = (d) => {
 };
 import { parseGenderFilter, attachGenderFilter } from '../utils/catalogQuery.js';
 import { escapeRegex } from '../utils/regexEscape.js';
+
+/** How many nearest vectors Atlas returns per catalog before the hybrid (cosine + facet) re-rank. */
+const ATLAS_CANDIDATES = Number(process.env.ATLAS_VECTOR_CANDIDATES || 300);
 
 /** Score adjustment for products in (+) / outside (-) the catalog a query names. */
 export const CATALOG_HINT_BOOST = Number(process.env.CATALOG_HINT_BOOST || 0.08);
@@ -70,7 +74,11 @@ export async function getEmbedding(text) {
   if (!isEmbeddingConfigured()) return null;
   const v = await embedQuery(text);
   const dims = searchDims();
-  return dims < EMBEDDING_DIM && v.length > dims ? truncateAndNormalize(v, dims) : v;
+  if (!(dims < EMBEDDING_DIM && v.length > dims)) return v;
+  const short = truncateAndNormalize(v, dims);
+  // The in-process search ranks with the short vector; Atlas Vector Search indexes the full stored vectors and needs the full one.
+  Object.defineProperty(short, 'full', { value: v, enumerable: false });
+  return short;
 }
 
 export function cosineSimilarity(a, b) {
@@ -99,9 +107,36 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
     ? CATALOGS.filter((c) => c.key === String(catalog).toLowerCase())
     : CATALOGS;
 
+  const genders = parseGenderFilter(gender ?? signals.genderHint);
+  const wantCategoryFor = (key) => (category && key === 'clothing' ? category : null);
+  const fullVector = queryEmbedding?.full || (queryEmbedding?.length === EMBEDDING_DIM ? queryEmbedding : null);
+  const backendsUsed = new Set();
+
   const perCatalogResults = await Promise.all(
     wantCatalogs.map(async ({ key, Model, fields }) => {
-      // Only vectors from the CURRENT model are comparable with the query vector
+      const wantCategory = wantCategoryFor(key);
+
+      // 1) Atlas Vector Search: the database returns the nearest in-stock vectors of the current model (pre-filtered).
+      if (fullVector && (await useAtlas(Model))) {
+        try {
+          const projection = fields.split(' ').filter((f) => f !== 'embedding').reduce((o, f) => ({ ...o, [f]: 1 }), {});
+          const hits = await vectorSearch(Model, {
+            path: 'embedding',
+            vector: fullVector,
+            filter: buildFilter({ modelField: 'embeddingModel', modelId: EMBEDDING_MODEL_ID, genders, category: wantCategory }),
+            limit: ATLAS_CANDIDATES,
+            numCandidates: ATLAS_CANDIDATES * 4,
+            projection,
+          });
+          backendsUsed.add('atlas');
+          return hits.map(({ cosine: c, ...d }) => ({ d, catalog: key, cos: c }));
+        } catch (e) {
+          console.warn(`[search] Atlas vector search failed for ${key} (${String(e.message).slice(0, 100)}); using the in-process search`);
+        }
+      }
+
+      // 2) In-process: whole candidate set cached as Float32 vectors, cosine in Node.
+      // Only vectors from the CURRENT model are comparable with the query vector.
       // The cache key is the catalog only: gender/category are applied in memory below, so one warm cache
       // serves every filter combination (it used to be one ~30 MB database fetch per distinct filter).
       const matchQuery = { embedding: { $exists: true, $ne: [] }, embeddingModel: EMBEDDING_MODEL_ID, inStock: { $ne: false } };
@@ -111,20 +146,19 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
       if (dims < EMBEDDING_DIM) selectObj.embedding = { $slice: dims };
       // Whole candidate set (cached, Float32 vectors) - this used to be .limit(400), i.e. most of the catalog was never searched
       const docs = await loadCandidates(Model, key, matchQuery, selectObj, { truncate: dims < EMBEDDING_DIM ? dims : 0 });
-      const genders = parseGenderFilter(gender ?? signals.genderHint);
-      const wantCategory = category && key === 'clothing' ? category : null;
+      backendsUsed.add('memory');
       const kept = (genders || wantCategory) ? docs.filter((d) => (!genders || genders.includes(d.gender)) && (!wantCategory || d.category === wantCategory)) : docs;
       return kept.map((d) => ({ d, catalog: key })); // references only: copying 3,000+ product objects per query was a top CPU cost
     })
   );
 
   const products = perCatalogResults.flat();
-  if (products.length === 0) return { results: [], relaxedFloor: false, totalCandidates: 0 };
+  if (products.length === 0) return { results: [], relaxedFloor: false, totalCandidates: 0, backend: [...backendsUsed].join('+') || 'none' };
 
   const qlen = signals.raw.length;
   const hints = signals.catalogHints || [];
-  const scoredAll = products.map(({ d, catalog: cat }) => {
-    const cos = cosineSimilarity(queryEmbedding, d.embedding);
+  const scoredAll = products.map(({ d, catalog: cat, cos: dbCos }) => {
+    const cos = dbCos ?? cosineSimilarity(queryEmbedding, d.embedding);
     const facet = facetAlignmentScore(signals, d, facetDataOf(d));
     // A query that names a product type ("choker", "heels", "watch") should rank that catalog first.
     const catalogAdj = hints.length ? (hints.includes(cat) ? CATALOG_HINT_BOOST : -CATALOG_HINT_BOOST) : 0;
@@ -156,7 +190,7 @@ export async function searchAcrossCatalogs(signals, queryEmbedding, opts = {}) {
     };
   });
 
-  return { results, relaxedFloor: relaxed, totalCandidates: products.length };
+  return { results, relaxedFloor: relaxed, totalCandidates: products.length, backend: [...backendsUsed].join('+') };
 }
 
 /**
