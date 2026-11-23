@@ -66,3 +66,9 @@ Overrides: `LOCAL_MODELS=true|false` forces it; `MEMORY_LIMIT_MB=<n>` states the
 
 Recommended for a small host: set `NODE_OPTIONS=--max-old-space-size=384` so V8 collects garbage before the host's limit is hit, and leave `SEARCH_WARMUP`/`LOCAL_MODELS` unset.
 For semantic search in production use an instance with 2 GB or more (Render "Standard" and up), or run the embedding step on the weekly job's runner only (already the case: vectors are computed there) and accept keyword search at query time.
+
+## Vector indexes (once per Atlas cluster)
+
+Text and photo search use MongoDB Atlas Vector Search. After the catalog is loaded and embedded, run `cd backend && npm run vector:index` against the production `MONGO_URI`
+(the database user must be allowed to create search indexes), then check `GET /api/health`: `vectorSearch.indexed` lists the catalogs served by Atlas.
+A free cluster allows 3 search indexes (watches stay in-process). With no index at all, search still works through the in-process path. Details: [rag-architecture.md](rag-architecture.md).
