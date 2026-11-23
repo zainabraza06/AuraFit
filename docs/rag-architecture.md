@@ -53,6 +53,31 @@ Unchanged: scraping, text cleaning, the facet/hybrid scoring, constraint relaxat
 - **First start** downloads about 600 MB (cached afterwards in `backend/.model-cache`).
 - **Switching models** later only means changing `EMBEDDING_MODEL_ID`/repo: `npm run embed:all` then re-embeds everything stale. Vectors of different models are never mixed.
 
+## Vector database: Atlas Vector Search (measured)
+
+Vectors live on the product documents in MongoDB Atlas, and since the move to `$vectorSearch` Atlas does the nearest-neighbour search.
+`npm run vector:index` creates one index (`vector_index`, type `vectorSearch`) per catalog collection holding both vector fields (`embedding` 1024-d,
+`imageEmbedding` 512-d, cosine) plus the pre-filter fields `inStock`, `embeddingModel`, `imageEmbeddingModel`, `gender`, `category`.
+A query asks the database for the nearest 300 **in-stock vectors of the current model** (HNSW, `numCandidates` = 1200); the existing hybrid
+re-rank (cosine + facet alignment, catalog hint, colourway folding) then runs on those 300. Photo search does the same on `imageEmbedding`.
+
+**Fallback, per catalog.** `VECTOR_BACKEND=auto` uses Atlas only for catalogs whose index is queryable and the in-process search (`vectorCache.js`)
+for the others; any `$vectorSearch` error also falls back. A free Atlas cluster allows 3 search indexes, so clothing, shoes and jewellery are
+indexed and watches (56 items) stay in-process. `/api/health` reports `vectorSearch: { backend, indexed }`.
+
+| Check (35 golden queries, same script as before) | Precision@10 | Recall@10 | MRR | nDCG@10 |
+|---|---|---|---|---|
+| In-process (`VECTOR_BACKEND=memory`, 256-d) | 0.771 | 0.837 | 0.948 | 0.880 |
+| Atlas Vector Search (3 of 4 catalogs; full 1024-d) | 0.771 | 0.838 | 0.946 | 0.888 |
+
+Photo search (`eval:visual`) is identical on both: text to image P@10 0.429, image to image same catalog 0.980, same product type 0.699.
+Approximate vs exact (`npm run bench:atlas`, 30 random products per catalog, top 20): recall 1.000 on clothing, shoes and jewellery; median query about
+90-100 ms including the network round trip, which is slower than the warm in-process path (a few ms) but needs no memory for vectors,
+no cold-start load, and does not grow with the catalog.
+
+A lesson from the first run: forcing Atlas on the un-indexed watches catalog returned nothing (not an error), dropping watch queries to zero. Atlas is
+therefore only used where an index is reported queryable.
+
 ## Searching on shorter vectors (measured)
 
 Qwen3-Embedding is trained so the first N dimensions of a vector are themselves a usable embedding. Stored vectors stay 1024-dim; search truncates

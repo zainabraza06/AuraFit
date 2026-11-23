@@ -9,11 +9,12 @@
 | **Catalog (live, in stock)** | 3,315 products: clothing 2,051 · shoes 565 · jewellery 643 · watches 56 |
 | **Retailers** | 14 scraped live. Elan (15th) is configured but offline (its site returns HTTP 500; its TLS certificate had also expired) |
 | **Search quality** (35 judged queries) | precision@10 0.771 · recall 0.837 · MRR 0.948 · nDCG 0.880 |
+| **Vector search** | Atlas Vector Search on 3 of 4 catalogs (free tier allows 3 indexes; watches, 56 items, stay in-process): recall@20 1.000 vs exact, same eval scores as before |
 | **Photo search** | same product type in the top 5 for 70% of photos, same catalog for 98% |
 | **Stylist agent** (13 graded tasks) | 13/13 pass: budget, colour, requested categories, grounding, stock, prompt-injection |
 | **API under load** (20 connections) | product list 924 req/s (p97.5 37 ms) · semantic search 63 req/s (p97.5 571 ms) |
 | **Pipeline** (Kafka, crash-tested) | 22,000 events, 0 lost, 0 duplicated, with consumers killed mid-run |
-| **Tests** | 423 backend + 48 pipeline, plus a real-Kafka end-to-end job in CI |
+| **Tests** | 437 backend + 48 pipeline, plus a real-Kafka end-to-end job in CI |
 
 Every number above is measured by a script in this repo and explained in [docs/PLAN.md](docs/PLAN.md), including what was *not* measured. Deeper docs:
 [architecture](docs/architecture.md) · [RAG / embeddings](docs/rag-architecture.md) · [agent and MCP](docs/agent-and-mcp.md) · [deployment](docs/deploy.md) · [why these brokers](docs/why-these-brokers.md) · [results](docs/results/README.md).
@@ -214,6 +215,7 @@ Honest limits: tokens are in plain `shared_preferences` (use the keychain before
 | AI — Text | Provider chain, order configurable (`LLM_PROVIDER_ORDER`): Groq (`gpt-oss`) → Gemini 3.x → OpenRouter; optional local Ollama. Circuit breaker, per-feature timeouts, startup self-test (`npm run llm:selftest`) |
 | AI — Vision | Gemini 3.x |
 | Text embeddings | Qwen3-Embedding-0.6B, local (no API key), searched at 256 dims (measured vs 1024: [docs/rag-architecture.md](docs/rag-architecture.md)) |
+| Vector database | **MongoDB Atlas Vector Search** (`$vectorSearch`, HNSW, cosine): one index per catalog holding the text (1024-d) and photo (512-d) vectors, pre-filtered by stock, model, gender and category. Recall vs exact search 1.000; search quality identical to the in-process path. Falls back to in-process search per catalog if an index is missing |
 | Image embeddings | FashionCLIP (fashion-tuned CLIP, local, pinned revision), chosen over general CLIP and Marqo-FashionCLIP by measurement; photo search fuses visual similarity with the description-based ranking |
 | Agent / MCP | LangGraph stylist agent (`POST /api/stylist/ask`) and an MCP server (stdio + HTTP) over the same read-only tools: [docs/agent-and-mcp.md](docs/agent-and-mcp.md) |
 | Virtual Try-On (paid) | Replicate `IDM-VTON` |
@@ -421,7 +423,7 @@ Fashion/
 │   ├── models/                    # Clothing/Shoe/Jewelry/Watch products, User, Favorite, Outfit, TryOnJob, ...
 │   ├── services/
 │   │   ├── recommendationEngine.js  aiService.js  accessoryMatcher.js  colorTheory.js
-│   │   ├── crossCatalogSearch.js  searchQueryIntel.js  vectorCache.js  visualSearch.js
+│   │   ├── crossCatalogSearch.js  searchQueryIntel.js  vectorCache.js  atlasVector.js  visualSearch.js
 │   │   ├── embeddings.js (Qwen3)  imageEmbeddings.js (FashionCLIP)  memoryProfile.js
 │   │   ├── llmClient.js  llmProviders.js  llmCircuitBreaker.js  llmHealth.js
 │   │   ├── tryonQueue.js  tryonStore.js
@@ -434,7 +436,7 @@ Fashion/
 │   │   ├── loadTestApi.js  benchVectors.js  compareImageModels.js  llmSelfTest.js  mcpStdio.js
 │   │   └── embedAll.js  embedImages.js  purgeMisclassified.js  clearCatalog.js  ...
 │   ├── eval/                      # golden queries, agent tasks, committed baselines and results
-│   ├── tests/  (+ *.test.js beside code)   # 423 tests, node --test
+│   ├── tests/  (+ *.test.js beside code)   # 437 tests, node --test
 │   └── Dockerfile                 # Debian (glibc): onnxruntime cannot load on Alpine
 ├── frontend/                      # Next.js 16 (App Router) web app
 ├── mobile/                        # Flutter app (Android / iOS / web)
@@ -739,7 +741,8 @@ Everything that makes a quality claim has a script, a committed baseline and a t
 | Which image model | `npm run compare:clip` | general CLIP 0.537 · Marqo-FashionCLIP 0.571 · **FashionCLIP 0.585** (same-type, 672 photos); FashionCLIP chosen |
 | Stylist agent (13 tasks, graded by code) | `npm run eval:agent` | 13/13 (budget 3/3, categories 11/11, grounded 13/13, in stock 13/13) |
 | Outfit matcher vs random picks | `npm run eval:outfits` | colour harmony 1.15× (shoes) · 1.06× (jewellery) · 1.16× (watches), every suggestion valid |
-| Vector search latency | `npm run bench:vectors` | 3 ms at today's 3.4k products, 143 ms at 100k: no index needed below ~50k |
+| Atlas Vector Search | `npm run bench:atlas` | approximate vs exact top-20 on 30 random products per catalog: recall 1.000 on clothing, shoes and jewellery; median query about 90-100 ms including the round trip to Atlas |
+| In-process vector search latency | `npm run bench:vectors` | 3 ms at today's 3.4k products, 143 ms at 100k: no index needed below ~50k |
 | API load | `npm run load:api` | see [docs/PLAN.md](docs/PLAN.md#load-test-2026-11-17-npm-run-loadapi-20-concurrent-connections-x-10-s-per-scenario) |
 
 The evaluations paid for themselves: they found a shoe matcher no better than random (a score cap made ties arbitrary), a scraper fallback that imported the whole site into the watches catalog, wrong watch genders, an unauthenticated route that re-embedded the catalog, and a lenient eval of their own. The full list is in [docs/PLAN.md](docs/PLAN.md#bugs-the-evaluations-found-2026-11-17).
@@ -863,7 +866,9 @@ Not measured: whether an outfit is *stylish* (needs human judgement), and agent 
 | `OLLAMA_URL`, `OLLAMA_MODEL` | No | Local LLM for development |
 | `LOCAL_MODELS` | No | `true` / `false` forces the local embedding models on or off. Default: automatic from the memory limit (text model needs 1.8 GB, image model 2.4 GB) |
 | `MEMORY_LIMIT_MB` | No | State the memory limit when the host reports it wrongly (or to rehearse a small host) |
-| `EMBEDDING_SEARCH_DIMS` | No | Dimensions used for semantic search (default `256`, max `1024`) |
+| `EMBEDDING_SEARCH_DIMS` | No | Dimensions used by the **in-process** search (default `256`, max `1024`). Atlas Vector Search always uses the full stored vectors |
+| `VECTOR_BACKEND` | No | `auto` (default): Atlas Vector Search for every catalog whose index is ready, in-process for the rest. `memory` forces the in-process search (the eval baseline) |
+| `VECTOR_INDEX_NAME`, `ATLAS_VECTOR_CANDIDATES`, `VECTOR_EXACT` | No | Index name (default `vector_index`); nearest vectors fetched per catalog before the hybrid re-rank (default 300); `1` = exact instead of approximate search |
 | `EMBEDDING_CACHE_DIR` | No | Where models are downloaded (default `backend/.model-cache`; `/models` in Docker) |
 | `REPLICATE_API_TOKEN` | No | Paid, fast virtual try-on (falls back to the free HF Space if unset or out of credit) |
 | `HUGGING_FACE_API_KEY` | No | Higher rate limits for the free try-on Space (embeddings no longer need it) |
@@ -937,13 +942,14 @@ npm run scrape                    # clothing
 npm run scrape:all-verticals      # shoes + jewelry + watches
 npm run embed:all                 # text vectors
 npm run embed:images              # photo vectors
+npm run vector:index              # create the Atlas Vector Search indexes (once; takes a minute or two)
 ```
 
 ### 5. Check it
 ```bash
 npm run llm:selftest              # does every configured LLM provider answer?
 npm run search:smoke              # eight real queries through the full search path
-npm test                          # 423 tests
+npm test                          # 437 tests
 ```
 
 ---
@@ -958,6 +964,7 @@ All in `backend/` unless noted.
 | Weekly refresh | `npm run refresh:catalog` | scrape all verticals, stock sweep, embed text + photos, summary (what CI runs every Sunday) |
 | Scrape | `npm run scrape`, `scrape:shoes`, `scrape:jewelry`, `scrape:watches`, `scrape:all-verticals`, `scrape:dry` | per vertical; `SCRAPER_ONLY_BRANDS=Khaadi,Maria B` limits brands |
 | Embeddings | `npm run embed:all`, `embed:images` | resumable; only products that are new, changed or from another model |
+| Vector indexes | `npm run vector:index`, `bench:atlas` | create / check the Atlas Vector Search indexes; measure recall and latency against exact search |
 | Catalog hygiene | `npm run profile:catalog`, `purge:misclassified`, `repair:catalog`, `backfill:stylekeys`, `backfill:watchgender`, `clear:catalog`, `backup:db` | read-only profile, and dry-run-by-default fixers (`-- --apply` to write) |
 | LLM check | `npm run llm:selftest` | one live call to every configured provider |
 | Evaluation | `npm run eval:search`, `eval:visual`, `eval:agent`, `eval:outfits`, `compare:clip`, `search:smoke` | see [Evaluation and Quality](#evaluation-and-quality); `-- --write-baseline` updates a baseline |
@@ -973,7 +980,7 @@ All in `backend/` unless noted.
 ## Testing
 
 ```bash
-cd backend  && npm test                # 423 tests: parsers, search, agent, quotas, SSRF, uploads, try-on queue, eval scoring, ...
+cd backend  && npm test                # 437 tests: parsers, search, agent, quotas, SSRF, uploads, try-on queue, eval scoring, ...
 cd pipeline && npm test                # 48 tests, incl. an in-memory MongoDB for the consumer store
 cd mobile   && flutter test            # widget + model tests
 ```

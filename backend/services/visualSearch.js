@@ -12,6 +12,7 @@ import { CATALOGS } from './crossCatalogSearch.js';
 import { loadCandidates } from './vectorCache.js';
 import { IMAGE_EMBEDDING_MODEL_ID } from './imageEmbeddings.js';
 import { parseGenderFilter } from '../utils/catalogQuery.js';
+import { useAtlas, vectorSearch, buildFilter } from './atlasVector.js';
 
 function dot(a, b) {
   if (!a || !b || a.length !== b.length) return 0;
@@ -30,6 +31,22 @@ export async function searchByImageVector(vector, { catalog, gender, limit = 30,
   const q = Float32Array.from(vector);
   const perCatalog = await Promise.all(
     wanted.map(async ({ key, Model, fields }) => {
+      if (await useAtlas(Model)) {
+        try {
+          const projection = fields.split(' ').filter((f) => f !== 'embedding').reduce((o, f) => ({ ...o, [f]: 1 }), {});
+          const hits = await vectorSearch(Model, {
+            path: 'imageEmbedding',
+            vector: q,
+            filter: buildFilter({ modelField: 'imageEmbeddingModel', modelId: IMAGE_EMBEDDING_MODEL_ID, genders }),
+            limit,
+            numCandidates: Math.max(limit * 10, 200),
+            projection,
+          });
+          return hits.map(({ cosine, ...d }) => ({ d, key, score: cosine }));
+        } catch (e) {
+          console.warn(`[visual] Atlas vector search failed for ${key} (${String(e.message).slice(0, 100)}); using the in-process search`);
+        }
+      }
       const match = { imageEmbedding: { $exists: true, $ne: [] }, imageEmbeddingModel: IMAGE_EMBEDDING_MODEL_ID, inStock: { $ne: false } };
       const projection = fields.split(' ').filter((f) => f !== 'embedding').reduce((o, f) => ({ ...o, [f]: 1 }), { imageEmbedding: 1 });
       const docs = await loadCandidates(Model, `${key}:img`, match, projection, { field: 'imageEmbedding' });
