@@ -30,6 +30,8 @@ import { RedisStore }       from 'rate-limit-redis';
 import { requestLogger }    from './middleware/requestLogger.js';
 import { currentPolicy }     from './services/memoryProfile.js';
 import { createMcpRouter }  from './routes/mcp.js';
+import { vectorSummary } from './services/atlasVector.js';
+import { CATALOGS } from './services/crossCatalogSearch.js';
 import stylistRoutes        from './routes/stylist.js';
 import feedbackRoutes       from './routes/feedback.js';
 
@@ -117,13 +119,16 @@ export function createApp() {
   if (process.env.MCP_TOKEN) app.use('/mcp', createMcpRouter());
 
   // Health check
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', async (req, res) => {
     const policy = currentPolicy();
+    const vector = await vectorSummary(CATALOGS).catch(() => ({ backend: 'memory', indexed: [] }));
     res.json({
       status: 'ok', timestamp: new Date(), version: '1.0.0',
       // what search is doing on this host: "semantic" needs the local embedding model, which needs enough RAM
       search: policy.text ? 'semantic' : 'keyword',
       photoSearchVisual: policy.image,
+      // where vectors are searched: Atlas Vector Search for the indexed catalogs, in-process for the rest
+      vectorSearch: vector,
       memoryLimitMB: policy.limitMB,
       rssMB: Math.round(process.memoryUsage().rss / 1048576),
     });
