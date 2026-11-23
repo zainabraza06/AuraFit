@@ -945,6 +945,15 @@ npm run embed:images              # photo vectors
 npm run vector:index              # create the Atlas Vector Search indexes (once; takes a minute or two)
 ```
 
+**Vector indexes (MongoDB Atlas Vector Search).** The `vector:index` step is needed once per Atlas cluster, after the data and embeddings exist:
+
+1. Point `MONGO_URI` in `backend/.env` at the cluster (its database user must be allowed to create search indexes).
+2. Load and embed the catalog (the commands above).
+3. `npm run vector:index` creates one `vector_index` per catalog and waits until each is ready (a minute or two). It is safe to re-run.
+4. Check with `npm run vector:index -- --status`, `curl localhost:5000/api/health` (look for `vectorSearch.indexed`) and `npm run bench:atlas` (recall and latency).
+
+A free (M0) cluster allows 3 search indexes, so clothing, shoes and jewellery are indexed and watches (56 items) stay on the in-process search. Without any index, search still works through the in-process path (`VECTOR_BACKEND=auto` decides per catalog); `VECTOR_BACKEND=memory` forces it.
+
 ### 5. Check it
 ```bash
 npm run llm:selftest              # does every configured LLM provider answer?
